@@ -252,13 +252,32 @@ const collect = (ctx: Ctx, node: JsonNode, before: unknown, after: unknown, inli
 export const serializeJson = (next: unknown, style: JsonStyle = { eol: "\n", unit: "  ", asciiOnly: false }, finalNewline = true) =>
   `${prettyJson(next, style)}${finalNewline ? style.eol : ""}`;
 
-/** `text` with only what differs from `next` rewritten; see the file comment. */
-export const patchJson = (text: string, next: unknown): string => {
+/** A write and whether the format-keeping patch had to give way to re-writing the whole file (P5 audits + shows it). */
+export type WriteResult = { text: string; rewroteWholeFile: boolean };
+
+const stripBom = (text: string) => text.replace(/^\uFEFF/, "");
+/** What `next` becomes once written as JSON (undefined properties dropped, NaN → null…): what the result must equal. */
+const asJson = (value: unknown) => JSON.parse(JSON.stringify(value ?? null)) as unknown;
+
+/**
+ * Accept `candidate` only when it parses back to `next`; otherwise re-write the whole file in its own style and say so.
+ * Exported so tests (and future writers) can check any candidate the same way.
+ */
+export const finishJsonPatch = (text: string, next: unknown, candidate: string): WriteResult => {
+  let parsed: unknown;
+  try { parsed = JSON.parse(stripBom(candidate)); } catch { parsed = Symbol("unparsable"); }
+  if (sameValue(parsed, asJson(next))) return { text: candidate, rewroteWholeFile: false };
+  const lead = /^\uFEFF?\s*/.exec(text)![0];
+  return { text: `${lead}${prettyJson(next, detectJsonStyle(text))}${/\s*$/.exec(text)![0]}`, rewroteWholeFile: true };
+};
+
+/** `text` with only what differs from `next` rewritten, plus the fallback flag; see the file comment. */
+export const patchJsonDetailed = (text: string, next: unknown): WriteResult => {
   const style = detectJsonStyle(text);
   const root = parseJsonSpans(text);
-  const before = JSON.parse(text.replace(/^﻿/, "")) as unknown;
-  const result = applyEdits(text, collect({ text, style }, root, before, next, false));
-  if (sameValue(JSON.parse(result.replace(/^﻿/, "")), next)) return result;
-  const lead = /^﻿?\s*/.exec(text)![0];
-  return `${lead}${prettyJson(next, style)}${/\s*$/.exec(text)![0]}`;
+  const before = JSON.parse(stripBom(text)) as unknown;
+  return finishJsonPatch(text, next, applyEdits(text, collect({ text, style }, root, before, next, false)));
 };
+
+/** `text` with only what differs from `next` rewritten (the text only). */
+export const patchJson = (text: string, next: unknown): string => patchJsonDetailed(text, next).text;

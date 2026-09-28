@@ -1,9 +1,10 @@
 /**
- * P3: the CMS store, as three small interfaces so the Worker uses Cloudflare bindings and tests use memory:
- * - ContentSource — the site's content as it was built into the Worker (read-only; "bundled" source).
- * - DraftStore    — drafts in KV, one per (user, resource), with a revision number.
- * - DraftIndex    — the list of drafts in D1 (migrations/0001_draft_index.sql).
- * createDrafts() keeps DraftStore and DraftIndex in step. Nothing here writes to GitHub (P5).
+ * The CMS store, as small interfaces so the Worker uses Cloudflare bindings and tests use memory:
+ * - ContentSource — the site's content as it was built into the Worker (read-only; "bundled" source). P3.
+ * - DraftStore    — drafts in D1, one per (user, resource), with a revision checked atomically. P3b: D1 is the only
+ *                   source of truth (KV is eventually consistent — up to ~60 s between locations — so a revision check
+ *                   on KV is not safe); KV keeps sessions only.
+ * Nothing here writes to GitHub (P5).
  */
 import type { CmsConfig } from "../config/index.js";
 import { parseMarkdown } from "../writer/markdown.js";
@@ -91,15 +92,20 @@ export const createContentReader = (config: CmsConfig, source: ContentSource) =>
   };
 };
 
-// ---------------------------------------------------------------- drafts (KV)
+// ---------------------------------------------------------------- drafts (D1 = source of truth)
 
-/** The part of Cloudflare's KVNamespace the store uses. */
-export interface KvLike {
-  get(key: string): Promise<string | null>;
-  put(key: string, value: string): Promise<void>;
-  delete(key: string): Promise<void>;
-  list(options: { prefix: string; cursor?: string }): Promise<{ keys: Array<{ name: string }>; list_complete: boolean; cursor?: string }>;
-}
+/** A CMS user's internal id (P6 issues them, e.g. "usr_7f3a9c"). Never an email or a name. */
+export const INTERNAL_USER_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+export const assertUserId = (userId: string) => {
+  if (!INTERNAL_USER_ID.test(userId)) throw new RangeError(`not an internal user id: use the CMS user's id (letters, digits, "_", "-"), never an email or a name`);
+};
+
+/**
+ * Largest draft content (UTF-8 bytes of its JSON) kept in one D1 row. D1 allows 2,000,000 bytes per row / string; the
+ * rest of the row (ids, label, version) needs far less than the 100,000 bytes kept free. The largest content file seen
+ * on the sites so far is ~750 KB (P3 round-trip).
+ */
+export const MAX_DRAFT_BYTES = 1_900_000;
 
 export type Draft = {
   userId: string;
@@ -108,116 +114,12 @@ export type Draft = {
   content: unknown;
   /** Version of the source this draft started from — publish refuses when the source moved on (409). */
   sourceVersion: string;
-  /** 1 on the first save, +1 on every save. */
+  /** 1 on the first save, +1 on every save; checked atomically when expectedRevision is given. */
   revision: number;
   updatedAt: string;
 };
-
-export interface DraftStore {
-  get(userId: string, resource: string): Promise<Draft | undefined>;
-  put(draft: Draft): Promise<void>;
-  delete(userId: string, resource: string): Promise<void>;
-  /** Every draft key (for checks); resource ids, grouped by user. */
-  keys(): Promise<Array<{ userId: string; resource: string }>>;
-}
-
-const DRAFT_PREFIX = "draft:";
-const draftKey = (userId: string, resource: string) => `${DRAFT_PREFIX}${encodeURIComponent(userId)}:${resource}`;
-const splitDraftKey = (key: string) => {
-  const rest = key.slice(DRAFT_PREFIX.length);
-  const cut = rest.indexOf(":");
-  return { userId: decodeURIComponent(rest.slice(0, cut)), resource: rest.slice(cut + 1) };
-};
-
-export const createKvDraftStore = (kv: KvLike): DraftStore => ({
-  async get(userId, resource) { const text = await kv.get(draftKey(userId, resource)); return text === null ? undefined : (JSON.parse(text) as Draft); },
-  async put(draft) { await kv.put(draftKey(draft.userId, draft.resource), JSON.stringify(draft)); },
-  async delete(userId, resource) { await kv.delete(draftKey(userId, resource)); },
-  async keys() {
-    const found: Array<{ userId: string; resource: string }> = [];
-    let cursor: string | undefined;
-    do {
-      const page = await kv.list({ prefix: DRAFT_PREFIX, ...(cursor ? { cursor } : {}) });
-      found.push(...page.keys.map((key) => splitDraftKey(key.name)));
-      cursor = page.list_complete ? undefined : page.cursor;
-    } while (cursor);
-    return found;
-  },
-});
-
-/** In-memory KV for tests and local tools. */
-export const createMemoryKv = (): KvLike & { size(): number } => {
-  const map = new Map<string, string>();
-  return {
-    get: async (key) => map.get(key) ?? null,
-    put: async (key, value) => { map.set(key, value); },
-    delete: async (key) => { map.delete(key); },
-    list: async ({ prefix }) => ({ keys: [...map.keys()].filter((key) => key.startsWith(prefix)).sort().map((name) => ({ name })), list_complete: true }),
-    size: () => map.size,
-  };
-};
-
-// ---------------------------------------------------------------- draft index (D1)
-
-export type DraftIndexEntry = {
-  userId: string;
-  resource: string;
-  kind: "file" | "item";
-  resourceKey: string;
-  itemId: string | null;
-  label: string;
-  sourceVersion: string;
-  revision: number;
-  updatedAt: string;
-};
-
-export interface DraftIndex {
-  upsert(entry: DraftIndexEntry): Promise<void>;
-  remove(userId: string, resource: string): Promise<void>;
-  byUser(userId: string): Promise<DraftIndexEntry[]>;
-  byResource(resource: string): Promise<DraftIndexEntry[]>;
-  all(): Promise<DraftIndexEntry[]>;
-}
-
-/** The part of Cloudflare's D1Database the index uses. */
-export interface D1Like {
-  prepare(query: string): { bind(...values: unknown[]): D1StatementLike } & D1StatementLike;
-}
-interface D1StatementLike {
-  run(): Promise<unknown>;
-  all<T = Record<string, unknown>>(): Promise<{ results: T[] }>;
-}
-
-type Row = { user_id: string; resource: string; kind: "file" | "item"; resource_key: string; item_id: string | null; label: string; source_version: string; revision: number; updated_at: string };
-const fromRow = (row: Row): DraftIndexEntry => ({ userId: row.user_id, resource: row.resource, kind: row.kind, resourceKey: row.resource_key, itemId: row.item_id, label: row.label, sourceVersion: row.source_version, revision: Number(row.revision), updatedAt: row.updated_at });
-const COLUMNS = "user_id, resource, kind, resource_key, item_id, label, source_version, revision, updated_at";
-
-export const createD1DraftIndex = (db: D1Like): DraftIndex => ({
-  async upsert(entry) {
-    await db.prepare(`INSERT INTO cms_draft_index (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT (user_id, resource) DO UPDATE SET label = excluded.label, source_version = excluded.source_version, revision = excluded.revision, updated_at = excluded.updated_at`)
-      .bind(entry.userId, entry.resource, entry.kind, entry.resourceKey, entry.itemId, entry.label, entry.sourceVersion, entry.revision, entry.updatedAt).run();
-  },
-  async remove(userId, resource) { await db.prepare("DELETE FROM cms_draft_index WHERE user_id = ? AND resource = ?").bind(userId, resource).run(); },
-  async byUser(userId) { return (await db.prepare(`SELECT ${COLUMNS} FROM cms_draft_index WHERE user_id = ? ORDER BY updated_at DESC, resource`).bind(userId).all<Row>()).results.map(fromRow); },
-  async byResource(resource) { return (await db.prepare(`SELECT ${COLUMNS} FROM cms_draft_index WHERE resource = ? ORDER BY updated_at DESC, user_id`).bind(resource).all<Row>()).results.map(fromRow); },
-  async all() { return (await db.prepare(`SELECT ${COLUMNS} FROM cms_draft_index ORDER BY user_id, resource`).all<Row>()).results.map(fromRow); },
-});
-
-export const createMemoryDraftIndex = (): DraftIndex => {
-  const rows = new Map<string, DraftIndexEntry>();
-  const key = (userId: string, resource: string) => JSON.stringify([userId, resource]);
-  const newest = (a: DraftIndexEntry, b: DraftIndexEntry) => b.updatedAt.localeCompare(a.updatedAt) || a.resource.localeCompare(b.resource);
-  return {
-    upsert: async (entry) => { rows.set(key(entry.userId, entry.resource), { ...entry }); },
-    remove: async (userId, resource) => { rows.delete(key(userId, resource)); },
-    byUser: async (userId) => [...rows.values()].filter((row) => row.userId === userId).sort(newest),
-    byResource: async (resource) => [...rows.values()].filter((row) => row.resource === resource).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.userId.localeCompare(b.userId)),
-    all: async () => [...rows.values()].sort((a, b) => a.userId.localeCompare(b.userId) || a.resource.localeCompare(b.resource)),
-  };
-};
-
-// ---------------------------------------------------------------- drafts service
+export type DraftSummary = Omit<Draft, "content"> & { kind: "file" | "item"; resourceKey: string; itemId: string | null };
+export type SaveDraft = { userId: string; resource: string; label?: string; content: unknown; sourceVersion: string; expectedRevision?: number };
 
 export class DraftConflictError extends Error {
   constructor(public readonly current: number, public readonly expected: number) {
@@ -225,38 +127,117 @@ export class DraftConflictError extends Error {
     this.name = "DraftConflictError";
   }
 }
+export class DraftTooLargeError extends Error {
+  constructor(public readonly bytes: number) {
+    super(`The draft is ${bytes} bytes; the most one draft can hold is ${MAX_DRAFT_BYTES}.`);
+    this.name = "DraftTooLargeError";
+  }
+}
 
-export type SaveDraft = { userId: string; resource: string; label?: string; content: unknown; sourceVersion: string; expectedRevision?: number };
+export interface DraftStore {
+  get(userId: string, resource: string): Promise<Draft | undefined>;
+  /**
+   * Create or replace a user's draft of one resource. With expectedRevision the save only happens when the stored
+   * revision is exactly that (0 = no draft yet); otherwise DraftConflictError. Without it, the last save wins.
+   */
+  save(input: SaveDraft): Promise<Draft>;
+  /** Throw a draft away (Discard). True when there was one. */
+  discard(userId: string, resource: string): Promise<boolean>;
+  /** After a successful publish (P8): the publisher's draft of that resource goes; others keep theirs (now stale). */
+  clearAfterPublish(userId: string, resource: string): Promise<void>;
+  /** "My drafts", newest first (no content). */
+  mine(userId: string): Promise<DraftSummary[]>;
+  /** Everyone's drafts of one resource, newest first (no content). */
+  forResource(resource: string): Promise<DraftSummary[]>;
+}
 
-/** Drafts in KV + their index in D1, kept in step. `now` is injectable for tests. */
-export const createDrafts = ({ store, index, now = () => new Date().toISOString() }: { store: DraftStore; index: DraftIndex; now?: () => string }) => ({
-  get: (userId: string, resource: string) => store.get(userId, resource),
+const prepare = (input: SaveDraft) => {
+  assertUserId(input.userId);
+  const resource = parseResourceId(input.resource);
+  const content = JSON.stringify(input.content ?? null);
+  const bytes = new TextEncoder().encode(content).length;
+  if (bytes > MAX_DRAFT_BYTES) throw new DraftTooLargeError(bytes);
+  return { resource, content };
+};
+const summary = (draft: Draft): DraftSummary => {
+  const resource = parseResourceId(draft.resource);
+  const { content: _content, ...rest } = draft;
+  return { ...rest, kind: resource.kind, resourceKey: resource.key, itemId: resource.kind === "item" ? resource.id : null };
+};
 
-  /** Save (create or replace) a user's draft of one resource. expectedRevision guards against a lost update. */
-  async save(input: SaveDraft): Promise<Draft> {
-    const resource = parseResourceId(input.resource);
-    const existing = await store.get(input.userId, input.resource);
-    const current = existing?.revision ?? 0;
-    if (input.expectedRevision !== undefined && input.expectedRevision !== current) throw new DraftConflictError(current, input.expectedRevision);
-    const draft: Draft = { userId: input.userId, resource: input.resource, label: input.label ?? existing?.label ?? "", content: input.content, sourceVersion: input.sourceVersion, revision: current + 1, updatedAt: now() };
-    await store.put(draft);
-    await index.upsert({ userId: draft.userId, resource: draft.resource, kind: resource.kind, resourceKey: resource.key, itemId: resource.kind === "item" ? resource.id : null, label: draft.label, sourceVersion: draft.sourceVersion, revision: draft.revision, updatedAt: draft.updatedAt });
-    return draft;
-  },
+/** The part of Cloudflare's D1Database the store uses. */
+export interface D1Like {
+  prepare(query: string): D1StatementLike & { bind(...values: unknown[]): D1StatementLike };
+}
+interface D1StatementLike {
+  run(): Promise<unknown>;
+  all<T = Record<string, unknown>>(): Promise<{ results: T[] }>;
+  first<T = Record<string, unknown>>(): Promise<T | null>;
+}
 
-  /** Throw a draft away (Discard). */
-  async discard(userId: string, resource: string) { await store.delete(userId, resource); await index.remove(userId, resource); },
+type Row = { user_id: string; resource: string; kind: "file" | "item"; resource_key: string; item_id: string | null; label: string; source_version: string; revision: number; updated_at: string; content?: string };
+const fromRow = (row: Row): DraftSummary => ({ userId: row.user_id, resource: row.resource, kind: row.kind, resourceKey: row.resource_key, itemId: row.item_id, label: row.label, sourceVersion: row.source_version, revision: Number(row.revision), updatedAt: row.updated_at });
+const SUMMARY = "user_id, resource, kind, resource_key, item_id, label, source_version, revision, updated_at";
 
-  /** After a successful publish (P8): the publisher's draft of that resource is removed. Others keep theirs (now stale). */
-  async clearAfterPublish(userId: string, resource: string) { await store.delete(userId, resource); await index.remove(userId, resource); },
+/** Drafts in D1 (table cms_draft_index, migrations 0001 + 0002). Revision checks are single atomic statements. */
+export const createD1DraftStore = (db: D1Like, now: () => string = () => new Date().toISOString()): DraftStore => {
+  const current = async (userId: string, resource: string) => Number((await db.prepare("SELECT revision FROM cms_draft_index WHERE user_id = ? AND resource = ?").bind(userId, resource).first<{ revision: number }>())?.revision ?? 0);
+  return {
+    async get(userId, resource) {
+      const row = await db.prepare(`SELECT ${SUMMARY}, content FROM cms_draft_index WHERE user_id = ? AND resource = ?`).bind(userId, resource).first<Row>();
+      if (!row) return undefined;
+      const { kind: _kind, resourceKey: _key, itemId: _id, ...rest } = fromRow(row);
+      return { ...rest, content: JSON.parse(row.content ?? "null") as unknown };
+    },
+    async save(input) {
+      const { resource, content } = prepare(input);
+      const at = now();
+      const label = input.label ?? "";
+      const itemId = resource.kind === "item" ? resource.id : null;
+      let row: { revision: number; label: string } | null;
+      if (input.expectedRevision === undefined) {
+        row = await db.prepare(`INSERT INTO cms_draft_index (${SUMMARY}, content) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+          ON CONFLICT (user_id, resource) DO UPDATE SET content = excluded.content, source_version = excluded.source_version, updated_at = excluded.updated_at,
+            label = CASE WHEN excluded.label = '' THEN cms_draft_index.label ELSE excluded.label END, revision = cms_draft_index.revision + 1
+          RETURNING revision, label`).bind(input.userId, input.resource, resource.kind, resource.key, itemId, label, input.sourceVersion, at, content).first();
+      } else if (input.expectedRevision === 0) {
+        row = await db.prepare(`INSERT INTO cms_draft_index (${SUMMARY}, content) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+          ON CONFLICT (user_id, resource) DO NOTHING RETURNING revision, label`).bind(input.userId, input.resource, resource.kind, resource.key, itemId, label, input.sourceVersion, at, content).first();
+      } else {
+        row = await db.prepare(`UPDATE cms_draft_index SET content = ?, source_version = ?, updated_at = ?, label = CASE WHEN ? = '' THEN label ELSE ? END, revision = revision + 1
+          WHERE user_id = ? AND resource = ? AND revision = ? RETURNING revision, label`).bind(content, input.sourceVersion, at, label, label, input.userId, input.resource, input.expectedRevision).first();
+      }
+      if (!row) throw new DraftConflictError(await current(input.userId, input.resource), input.expectedRevision ?? 0);
+      return { userId: input.userId, resource: input.resource, label: row.label, content: JSON.parse(content) as unknown, sourceVersion: input.sourceVersion, revision: Number(row.revision), updatedAt: at };
+    },
+    async discard(userId, resource) {
+      return Boolean(await db.prepare("DELETE FROM cms_draft_index WHERE user_id = ? AND resource = ? RETURNING revision").bind(userId, resource).first());
+    },
+    async clearAfterPublish(userId, resource) { await db.prepare("DELETE FROM cms_draft_index WHERE user_id = ? AND resource = ?").bind(userId, resource).run(); },
+    async mine(userId) { return (await db.prepare(`SELECT ${SUMMARY} FROM cms_draft_index WHERE user_id = ? ORDER BY updated_at DESC, resource`).bind(userId).all<Row>()).results.map(fromRow); },
+    async forResource(resource) { return (await db.prepare(`SELECT ${SUMMARY} FROM cms_draft_index WHERE resource = ? ORDER BY updated_at DESC, user_id`).bind(resource).all<Row>()).results.map(fromRow); },
+  };
+};
 
-  mine: (userId: string) => index.byUser(userId),
-  forResource: (resource: string) => index.byResource(resource),
-
-  /** KV keys and index rows that do not match (should be empty). */
-  async mismatches() {
-    const keys = new Set((await store.keys()).map(({ userId, resource }) => JSON.stringify([userId, resource])));
-    const rows = new Set((await index.all()).map(({ userId, resource }) => JSON.stringify([userId, resource])));
-    return { onlyInKv: [...keys].filter((key) => !rows.has(key)).map((key) => JSON.parse(key) as [string, string]), onlyInIndex: [...rows].filter((key) => !keys.has(key)).map((key) => JSON.parse(key) as [string, string]) };
-  },
-});
+/** In-memory drafts for tests / local tools. The compare-and-set runs without an await in between, so it is atomic. */
+export const createMemoryDraftStore = (now: () => string = () => new Date().toISOString()): DraftStore => {
+  const rows = new Map<string, Draft>();
+  const key = (userId: string, resource: string) => JSON.stringify([userId, resource]);
+  const newest = (a: Draft, b: Draft) => b.updatedAt.localeCompare(a.updatedAt);
+  return {
+    get: async (userId, resource) => structuredClone(rows.get(key(userId, resource))),
+    save: async (input) => {
+      const { content } = prepare(input);
+      const existing = rows.get(key(input.userId, input.resource));
+      const revision = existing?.revision ?? 0;
+      if (input.expectedRevision !== undefined && input.expectedRevision !== revision) throw new DraftConflictError(revision, input.expectedRevision);
+      const draft: Draft = { userId: input.userId, resource: input.resource, label: input.label || existing?.label || "", content: JSON.parse(content) as unknown, sourceVersion: input.sourceVersion, revision: revision + 1, updatedAt: now() };
+      rows.set(key(input.userId, input.resource), draft);
+      return structuredClone(draft);
+    },
+    discard: async (userId, resource) => rows.delete(key(userId, resource)),
+    clearAfterPublish: async (userId, resource) => { rows.delete(key(userId, resource)); },
+    mine: async (userId) => [...rows.values()].filter((row) => row.userId === userId).sort((a, b) => newest(a, b) || a.resource.localeCompare(b.resource)).map(summary),
+    forResource: async (resource) => [...rows.values()].filter((row) => row.resource === resource).sort((a, b) => newest(a, b) || a.userId.localeCompare(b.userId)).map(summary),
+  };
+};

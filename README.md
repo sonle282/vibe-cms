@@ -5,8 +5,8 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.3.0 · P3.** The build checks `cms.config.ts` and the content it declares; the store (drafts in KV, draft
-> index in D1, content built into the Worker) and the format-keeping writer are in place. `/admin` is still a
+> Status: **0.4.0 · P3b / P4.** The build checks `cms.config.ts` and the content it declares; the store (drafts in D1,
+> content built into the Worker) and the format-keeping writer are in place. `/admin` is still a
 > placeholder. The API, editor and publishing come in P4–P11
 > ([docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)).
 
@@ -102,22 +102,22 @@ Example — a real build of the demo site with a price written as a number, an u
   - src/data/services.json[1] ("spa-pedicure").category: text "Hair" is not one of the options → use "Nails", "Spa"
 ```
 
-## Writer and store (P3)
+## Writer and store (P3, P3b)
 
 - **Writer** (`@sonle282/vibe-cms/writer`) — publishing never re-formats a file: unchanged content gives the same
   bytes, one changed value changes one line, added / removed / moved items or keys change only their own lines. It keeps
   the file's indent (2 / 4 spaces or tab), CRLF / LF, final newline, BOM, key order, number spelling (`1.50` stays),
   escapes, one-line arrays and blank lines. Markdown records keep front-matter order, quotes, comments and the body.
 - **Store** (`@sonle282/vibe-cms/store`) — `ContentSource` reads the content built into the Worker
-  (`virtual:vibe-cms/content`, exact bytes + sha256 versions); drafts are kept per user and per file / record in KV
-  (`draft:<user>:<resource>`, with a revision number) and listed in D1 (`cms_draft_index`, migration
-  `migrations/0001_draft_index.sql`).
+  (`virtual:vibe-cms/content`, exact bytes + sha256 versions); drafts are kept per user (internal id) and per file / record in D1 (`cms_draft_index`, migrations
+  `0001_draft_index.sql` + `0002_draft_content.sql`), with a revision checked atomically; up to 1.9 MB per draft.
+  Writes return `{ text, rewroteWholeFile }` — `true` only when the whole file had to be re-written.
 
 ## Develop this package
 
 ```bash
 npm ci
-npm run check    # typecheck + unit tests + pack contents + store on local KV/D1 + build demo + astro check + local smoke
+npm run check    # typecheck + unit tests + pack contents + store on local D1 + build demo + astro check + local smoke
 ```
 
 `fixtures/demo-site` is an invented salon used by every test — tests never read another site's data. It runs locally

@@ -9,7 +9,7 @@
  * - Body: kept byte for byte unless it changed; a new body takes the file's line ending.
  */
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import { sameValue } from "./json.js";
+import { sameValue, type WriteResult } from "./json.js";
 
 export type MarkdownRecord = { data: Record<string, unknown>; body: string };
 type Split = { bom: string; eol: string; frontMatter: string | undefined; head: string; tail: string; body: string };
@@ -56,17 +56,17 @@ const quoteStyle = (line: string) => {
 const entry = (key: string, value: unknown, eol: string, style: "QUOTE_DOUBLE" | "QUOTE_SINGLE" | "PLAIN" = "PLAIN") =>
   stringifyYaml({ [key]: value }, { lineWidth: 0, defaultStringType: style, defaultKeyType: "PLAIN" }).replace(/\n$/, "").split("\n").join(eol);
 
-/** `text` with the front matter and body changed to `next`, touching only what differs. */
-export const patchMarkdown = (text: string, next: MarkdownRecord): string => {
+/** `text` with the front matter and body changed to `next`, touching only what differs, plus the fallback flag. */
+export const patchMarkdownDetailed = (text: string, next: MarkdownRecord): WriteResult => {
   const parts = split(text);
   const body = next.body === parts.body ? parts.body : next.body.replace(/\r?\n/g, parts.eol);
   const keys = Object.keys(next.data).filter((key) => next.data[key] !== undefined);
   const data = Object.fromEntries(keys.map((key) => [key, next.data[key]]));
   const whole = () => `${parts.bom}---${parts.eol}${keys.length ? stringifyYaml(data, { lineWidth: 0 }).replace(/\n$/, "").split("\n").join(parts.eol) : ""}${parts.eol}---${parts.eol}${body}`;
-  if (parts.frontMatter === undefined) return keys.length ? whole() : `${parts.bom}${body}`;
+  if (parts.frontMatter === undefined) return { text: keys.length ? whole() : `${parts.bom}${body}`, rewroteWholeFile: false };
 
   const current = (parseYaml(parts.frontMatter) ?? {}) as Record<string, unknown>;
-  if (sameValue(current, data)) return `${parts.head}${parts.frontMatter}${parts.tail}${body}`;
+  if (sameValue(current, data)) return { text: `${parts.head}${parts.frontMatter}${parts.tail}${body}`, rewroteWholeFile: false };
   const out: string[] = [];
   const seen = new Set<string>();
   for (const block of blocks(parts.frontMatter, parts.eol)) {
@@ -77,9 +77,16 @@ export const patchMarkdown = (text: string, next: MarkdownRecord): string => {
     else out.push(entry(block.key, data[block.key], parts.eol, quoteStyle(block.lines[0])));
   }
   for (const key of keys) if (!seen.has(key)) out.push(entry(key, data[key], parts.eol));
-  const frontMatter = out.join(parts.eol);
-  let checked: unknown;
-  try { checked = parseYaml(frontMatter); } catch { checked = undefined; }
-  if (!sameValue(checked ?? {}, data)) return whole();
-  return `${parts.head}${frontMatter}${parts.tail}${body}`;
+  return finishMarkdownPatch({ data, body }, `${parts.head}${out.join(parts.eol)}${parts.tail}${body}`, whole);
 };
+
+/** Accept `candidate` only when it parses back to `next`; otherwise use `rewrite()` (whole front matter) and say so. */
+export const finishMarkdownPatch = (next: MarkdownRecord, candidate: string, rewrite: () => string): WriteResult => {
+  let back: MarkdownRecord | undefined;
+  try { back = parseMarkdown(candidate); } catch { back = undefined; }
+  const ok = back !== undefined && sameValue(back.data, JSON.parse(JSON.stringify(next.data))) && back.body.replace(/\r\n/g, "\n") === next.body.replace(/\r\n/g, "\n");
+  return ok ? { text: candidate, rewroteWholeFile: false } : { text: rewrite(), rewroteWholeFile: true };
+};
+
+/** `text` with the front matter and body changed to `next` (the text only). */
+export const patchMarkdown = (text: string, next: MarkdownRecord): string => patchMarkdownDetailed(text, next).text;

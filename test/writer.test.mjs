@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
-import { moveArrayItem, parseMarkdown, patchJson, patchMarkdown, sameValue, writeArrayItem, writeMarkdownItem } from "../dist/writer/index.js";
+import { finishJsonPatch, finishMarkdownPatch, moveArrayItem, parseMarkdown, patchJson, patchJsonDetailed, patchMarkdown, patchMarkdownDetailed, sameValue, writeArrayItem, writeFile, writeMarkdownItem } from "../dist/writer/index.js";
 import { lineDiff, showDiff } from "./helpers/diff.mjs";
 
 const dir = new URL("./fixtures/format/", import.meta.url);
@@ -43,7 +43,7 @@ for (const name of readdirSync(dir).filter((file) => file.endsWith(".md")).sort(
     const text = read(name);
     const record = parseMarkdown(text);
     assert.equal(patchMarkdown(text, { data: record.data, body: record.body }), text);
-    assert.equal(writeMarkdownItem(text, { ...structuredClone(record.data), body: record.body }), text);
+    assert.deepEqual(writeMarkdownItem(text, { ...structuredClone(record.data), body: record.body }), { text, rewroteWholeFile: false });
   });
 }
 
@@ -139,18 +139,18 @@ test("remove a key: only its line", () => { edit("indent2-lf.json", (d) => { del
 test("writeArrayItem: replace one record → one line; add → appended; delete → its lines only", () => {
   const text = read("collection.json");
   const list = data(text);
-  const replaced = writeArrayItem(text, "id", "spa-pedicure", { ...list[1], price: "$40" });
+  const replaced = writeArrayItem(text, "id", "spa-pedicure", { ...list[1], price: "$40" }).text;
   assert.deepEqual(lineDiff(text, replaced).removed.map((r) => r.text), ['    "price": "$35",']);
-  const added = writeArrayItem(text, "id", "french", { id: "french", name: "French Tips", price: "$25", extras: [] });
+  const added = writeArrayItem(text, "id", "french", { id: "french", name: "French Tips", price: "$25", extras: [] }).text;
   assert.deepEqual([lineDiff(text, added).removed.length, lineDiff(text, added).added.length], [0, 6]);
   assert.equal(data(added).at(-1).id, "french");
-  const deleted = writeArrayItem(text, "id", "nail-art", null);
+  const deleted = writeArrayItem(text, "id", "nail-art", null).text;
   assert.deepEqual([lineDiff(text, deleted).removed.length, lineDiff(text, deleted).added.length], [6, 0]);
   assert.deepEqual(data(deleted).map((item) => item.id), ["classic-manicure", "spa-pedicure", "gel-removal"]);
 });
 test("moveArrayItem: the moved record keeps its exact bytes", () => {
   const text = read("collection.json");
-  const moved = moveArrayItem(text, "id", "gel-removal", 1);
+  const moved = moveArrayItem(text, "id", "gel-removal", 1).text;
   assert.deepEqual(data(moved).map((item) => item.id), ["classic-manicure", "gel-removal", "spa-pedicure", "nail-art"]);
   const block = text.slice(text.indexOf('  {\n    "id": "gel-removal"'), text.lastIndexOf("}") + 1);
   assert.ok(moved.includes(block.trimStart()), "gel-removal's text is unchanged");
@@ -160,7 +160,7 @@ test("moveArrayItem: the moved record keeps its exact bytes", () => {
 test("one-line array inside an item: add an extra → only that line", () => {
   const text = read("collection.json");
   const list = data(text);
-  const next = writeArrayItem(text, "id", "classic-manicure", { ...list[0], extras: ["Gel polish", "Cuticle oil"] });
+  const next = writeArrayItem(text, "id", "classic-manicure", { ...list[0], extras: ["Gel polish", "Cuticle oil"] }).text;
   assert.deepEqual(lineDiff(text, next).added.map((a) => a.text), ['    "extras": ["Gel polish", "Cuticle oil"]']);
 });
 
@@ -203,7 +203,34 @@ test("Markdown CRLF: quote style, comments and CRLF kept", () => {
 test("writeMarkdownItem: body in the content object, front matter from the rest", () => {
   const text = read("md-basic.md");
   const record = parseMarkdown(text);
-  const result = writeMarkdownItem(text, { ...record.data, title: "Renamed", body: record.body });
+  const result = writeMarkdownItem(text, { ...record.data, title: "Renamed", body: record.body }).text;
   assert.deepEqual(lineDiff(text, result).added.map((a) => a.text), ["title: Renamed"]);
-  assert.equal(writeMarkdownItem(undefined, { slug: "new", title: "New", body: "Hello\n" }), "---\nslug: new\ntitle: New\n---\nHello\n");
+  assert.deepEqual(writeMarkdownItem(undefined, { slug: "new", title: "New", body: "Hello\n" }), { text: "---\nslug: new\ntitle: New\n---\nHello\n", rewroteWholeFile: false });
+});
+
+// ------------------------------------------------------------------ fallback flag (P3b)
+
+test("a normal patch reports rewroteWholeFile: false", () => {
+  const text = read("indent2-lf.json");
+  const next = data(text); next.tagline = "Changed";
+  assert.equal(patchJsonDetailed(text, next).rewroteWholeFile, false);
+  assert.equal(writeFile(text, next).rewroteWholeFile, false);
+  assert.equal(writeArrayItem(read("collection.json"), "id", "nail-art", null).rewroteWholeFile, false);
+  const md = read("md-basic.md");
+  const record = parseMarkdown(md);
+  assert.equal(patchMarkdownDetailed(md, { data: { ...record.data, title: "X" }, body: record.body }).rewroteWholeFile, false);
+});
+test("when a patch does not reproduce the content, the whole file is re-written in its style and flagged", () => {
+  const text = read("indent4-crlf-nofinal.json");
+  const next = data(text); next.title = "Right";
+  const result = finishJsonPatch(text, next, text.replace("Four spaces", "Wrong"));
+  assert.equal(result.rewroteWholeFile, true);
+  assert.ok(sameValue(data(result.text), next), "the content is still right");
+  assert.ok(result.text.includes('\r\n    "title": "Right",\r\n') && !result.text.endsWith("\n"), "in the file's own style (4 spaces, CRLF, no final newline)");
+  assert.equal(finishJsonPatch(text, next, "{ not json").rewroteWholeFile, true);
+});
+test("Markdown: a candidate that does not parse back is replaced and flagged", () => {
+  const next = { data: { title: "Right" }, body: "Body\n" };
+  assert.deepEqual(finishMarkdownPatch(next, "---\ntitle: Wrong\n---\nBody\n", () => "---\ntitle: Right\n---\nBody\n"), { text: "---\ntitle: Right\n---\nBody\n", rewroteWholeFile: true });
+  assert.equal(finishMarkdownPatch(next, "---\ntitle: Right\n---\nBody\n", () => "unused").rewroteWholeFile, false);
 });

@@ -1,19 +1,20 @@
-// P3: the store — drafts (memory KV + memory index; the same scenario runs on local KV + D1 in scripts/store-local.mjs)
+// The store — drafts (memory; the same scenario runs on local D1 in scripts/store-local.mjs)
 // and the bundled ContentSource with versions.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { canonicalJson, contentPaths, createBundledSource, createContentReader, createKvDraftStore, createMemoryDraftIndex, createMemoryKv, loadCmsConfig, resourceId, parseResourceId, textVersion, valueVersion, writeArrayItem } from "../dist/index.js";
+import { canonicalJson, contentPaths, createBundledSource, createContentReader, createMemoryDraftStore, loadCmsConfig, resourceId, parseResourceId, textVersion, valueVersion, writeArrayItem } from "../dist/index.js";
 import { runStoreScenario } from "./helpers/store-scenario.mjs";
 
 const demoRoot = fileURLToPath(new URL("../fixtures/demo-site/", import.meta.url));
 
-test("drafts: save / read / revision / conflict / two users / two items / discard / publish / index in step (memory)", async () => {
-  const checks = await runStoreScenario({ store: createKvDraftStore(createMemoryKv()), index: createMemoryDraftIndex() });
+test("drafts: save / read / revision / concurrent saves / two users / two items / discard / publish / size / ids (memory)", async () => {
+  let clock = 0;
+  const checks = await runStoreScenario({ drafts: createMemoryDraftStore(() => new Date(Date.UTC(2026, 8, 28, 12, 0, clock++)).toISOString()) });
   assert.deepEqual(checks.filter((check) => !check.ok), []);
-  assert.equal(checks.length, 20);
+  assert.equal(checks.length, 24);
 });
 
 test("resource ids round-trip", () => {
@@ -47,7 +48,7 @@ test("bundled source: the demo's files, with file and item versions", async () =
   assert.deepEqual(items.map((item) => item.resource), ["item:services:classic-manicure", "item:services:spa-pedicure", "item:services:nail-art"]);
   // Changing one item changes that item's version only.
   const text = files["src/data/services.json"];
-  const changed = writeArrayItem(text, "id", "spa-pedicure", { ...items[1].data, price: "$40" });
+  const changed = writeArrayItem(text, "id", "spa-pedicure", { ...items[1].data, price: "$40" }).text;
   const after = await createContentReader(config, createBundledSource({ ...files, "src/data/services.json": changed })).items("services");
   assert.deepEqual(after.map((item, index) => item.version === items[index].version), [true, false, true]);
   assert.equal((await reader.item("services", "nail-art")).data.name, "Nail Art");

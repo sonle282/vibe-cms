@@ -3,6 +3,19 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.4.0 — unreleased (P3b, P4)
+
+- **P3b — drafts in D1.** KV is eventually consistent, so drafts (content included) now live in D1 table
+  `cms_draft_index` (migration `0002_draft_content.sql`, column `content`); a save with `expectedRevision` is one atomic
+  statement (0 rows = `DraftConflictError`). New API: `createD1DraftStore(db)`, `createMemoryDraftStore()`,
+  `DraftStore.save / get / discard / clearAfterPublish / mine / forResource`, `MAX_DRAFT_BYTES` (1,900,000; D1 row limit
+  2,000,000) + `DraftTooLargeError`, `INTERNAL_USER_ID` (user ids are internal ids, never emails). Removed:
+  `createKvDraftStore`, `createMemoryKv`, `createD1DraftIndex`, `createMemoryDraftIndex`, `createDrafts`.
+- Writer: `writeFile`, `writeArrayItem`, `moveArrayItem`, `writeMarkdownItem` return `{ text, rewroteWholeFile }`;
+  `patchJsonDetailed`, `patchMarkdownDetailed`, `finishJsonPatch`, `finishMarkdownPatch`. `rewroteWholeFile` = the
+  format-keeping patch could not reproduce the content, so the whole file was re-written in its own style.
+- Site action: none (not released). KV `<site>-session` holds sessions only.
+
 ## 0.3.0 — unreleased (P3)
 
 - Writer (`@sonle282/vibe-cms/writer`): `patchJson`, `writeFile`, `writeArrayItem`, `moveArrayItem`, `patchMarkdown`,

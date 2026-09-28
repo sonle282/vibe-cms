@@ -1,6 +1,6 @@
-// P3 test Worker: runs the draft-store scenario on real (local) KV + D1 bindings in `wrangler dev --local`.
+// Test Worker: runs the draft-store scenario on a real (local) D1 binding in `wrangler dev --local`.
 // Used only by scripts/store-local.mjs — never deployed; the wrangler config has no real resource ids.
-import { createD1DraftIndex, createKvDraftStore } from "../../dist/store/index.js";
+import { createD1DraftStore } from "../../dist/store/index.js";
 import { runStoreScenario } from "../helpers/store-scenario.mjs";
 
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
@@ -15,7 +15,7 @@ export default {
       return json({ columns, indexes, migrations });
     }
     if (pathname === "/run") {
-      try { return json(await runStoreScenario({ store: createKvDraftStore(env.KV), index: createD1DraftIndex(env.DB) })); } catch (error) { return json({ error: String(error?.stack ?? error) }, 500); }
+      try { return json(await runStoreScenario({ drafts: createD1DraftStore(env.DB) })); } catch (error) { return json({ error: String(error?.stack ?? error) }, 500); }
     }
     return new Response("vibe-cms store test worker", { status: 404 });
   },

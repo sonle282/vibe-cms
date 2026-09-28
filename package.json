@@ -1,6 +1,6 @@
 {
   "name": "@sonle282/vibe-cms",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Vibe CMS — an Astro integration that adds a content editor (/admin) to a site, driven by one cms.config.ts.",
   "license": "UNLICENSED",
   "private": false,

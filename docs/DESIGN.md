@@ -42,7 +42,7 @@ vibe-cms/
 │  ├─ config/                   # defineCmsConfig, kiểu field, kiểm config
 │  ├─ check/                    # kiểm nội dung thật ↔ config (nền cho lệnh `vibe-cms check`)
 │  ├─ routes/                   # route Astro của gói (phát hành dạng mã nguồn, Astro của site biên dịch)
-│  ├─ server/                   # (chạy trong Worker) store (bundled + nháp KV + draft index D1), writer JSON giữ định dạng,
+│  ├─ server/                   # (chạy trong Worker) store (bundled + nháp trong D1 — nguồn sự thật, P3b), writer JSON giữ định dạng,
 │  │                            #   publish GitHub + audit, auth owner / editor, locks (chặn ở server), media R2
 │  ├─ admin/                    # giao diện: shell, danh sách, form sinh từ schema, review, People; fields/*
 │  ├─ bridge/                   # visual bridge (2 khung section / field, không render khi gõ, chỉ nhận bản live đúng version)
@@ -129,7 +129,7 @@ Mọi route dưới `/api/cms`, JSON, `cache-control: no-store`; middleware: phi
 |---|---|---|
 | `GET /api/cms/schema` | cấu hình cho admin (không có secret) | 200 |
 | `GET /api/cms/files/:key` | nguồn + nháp của người đang đăng nhập | `{ content, sourceContent, sourceVersion, hasDraft, stale }` + header `x-cms-live-version` |
-| `PUT /api/cms/files/:key` | lưu nháp (KV) + draft index (D1) | 409 nguồn đã đổi; 422 sai schema; **403 `locked_field`** nếu editor đổi ô khoá |
+| `PUT /api/cms/files/:key` | lưu nháp (D1, kiểm revision nguyên tử) | 409 nguồn đã đổi; 422 sai schema; **403 `locked_field`** nếu editor đổi ô khoá |
 | `DELETE /api/cms/files/:key` | bỏ nháp | 200 |
 | `POST /api/cms/files/:key/publish` | luồng dưới | `{ commitSha, expectedLiveVersion }`; 409 / 422 / 403 / 502 |
 | `GET·PUT·DELETE /api/cms/collections/:key/:id` + `POST …/new` + `…/:id/publish` + `…/:id/archive` | như trên cho 1 bản ghi | archive = đổi `status` (không xoá) |
@@ -176,6 +176,16 @@ lại theo khung hình, không transition vị trí; không render lại preview
 
 ## E. Cài, phân phối, nâng cấp
 
+### E.00 Lưu nháp (P3b)
+
+KV chỉ nhất quán dần (một lần ghi có thể mất tới ~60 giây mới thấy ở vùng khác) → kiểm xung đột revision trên KV không
+an toàn. **D1 là nguồn sự thật của nháp**: bảng `cms_draft_index` giữ cả nội dung (migration 0002); lưu có
+`expectedRevision` là 1 câu lệnh nguyên tử (`UPDATE … WHERE revision = ?`, 0 dòng đổi = xung đột 409; tạo mới =
+`INSERT … ON CONFLICT DO NOTHING`). Giới hạn D1: 2.000.000 byte / dòng, 100 KB / câu SQL (nội dung đi bằng tham số
+bind, không nằm trong câu SQL), 100 tham số / câu; gói giới hạn nháp ở 1.900.000 byte (`MAX_DRAFT_BYTES`) — file nội
+dung lớn nhất đã gặp ~750 KB. KV `<site>-session` chỉ còn phiên đăng nhập. `user_id` là id nội bộ (P6 cấp), không bao
+giờ là email. Writer trả `rewroteWholeFile` khi phải viết lại cả file (P5 ghi audit + báo người dùng).
+
 ### E.0 Phân phối gói (GitHub Release, không token)
 
 GitHub Packages đòi token kể cả với gói public → **không dùng**. Thay vào đó:
@@ -211,7 +221,7 @@ GitHub Packages đòi token kể cả với gói public → **không dùng**. Th
 2. **D1:** `wrangler d1 export <site>-cms --remote --output <site>-cms.sql` → `wrangler d1 execute <site>-cms --remote
    --file <site>-cms.sql` ở account mới; so số dòng từng bảng.
 3. **R2:** chép mọi object `<site>-media` (khoá R2 chỉ đọc bên nguồn, chỉ ghi bên đích); so số object + byte + checksum mẫu.
-4. **KV:** không chuyển (phiên + nháp tạm) — lưu nháp trước, đăng nhập lại sau.
+4. **KV:** không chuyển (chỉ có phiên) — đăng nhập lại sau. Nháp nằm trong D1 nên đi theo bước 2.
 5. Đặt lại secret; đổi custom domain; kiểm HTML public + 1 cặp publish; xoá tài nguyên cũ chỉ khi chủ cho phép rõ.
 
 ### E.2 Nâng cấp gói
@@ -274,7 +284,7 @@ thay đổi lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tà
 |---|---|---|---|
 | **P1** | Khung integration + nạp / kiểm `cms.config` + `/admin` tạm + `/api/cms/health` + demo-site + CI | demo build, `/admin` 200, health đúng | typecheck, unit, build, smoke `wrangler dev --local` |
 | **P2** | Kiểm config đầy đủ + kiểm nội dung thật lúc build + workflow release + `imageService` | config / nội dung sai → build đỏ đúng chỗ, gom mọi lỗi | unit test mỗi luật ≥ 1 ca sai |
-| **P3** | Store: nguồn bundled + nháp KV + draft index D1; writer JSON giữ định dạng | round-trip: không sửa = giống từng byte, 1 ô = 1 dòng | test round-trip mọi kiểu field |
+| **P3** | Store: nguồn bundled + nháp + draft index D1; writer JSON giữ định dạng (P3b: nháp chuyển hẳn sang D1) | round-trip: không sửa = giống từng byte, 1 ô = 1 dòng | test round-trip mọi kiểu field |
 | **P4** | Ô khoá theo vai trò ở server (PUT + publish) + audit `denied` | editor đổi ô khoá → 403 + audit; owner được | ≥ 8 ca (object / list / collection) |
 | **P5** | API chung files / collections + publish GitHub + audit + header version | demo publish qua GitHub giả lập | test hợp đồng §C + mock GitHub |
 | **P6** | Auth + People (owner / editor, bootstrap, session tên theo site; KV `<site>-session`) | tạo owner bằng bootstrap, owner tạo editor | test auth + People |
