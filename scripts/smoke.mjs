@@ -12,9 +12,14 @@ assert.ok(!existsSync(site + "dist/client/admin/index.html"), "/admin is not pre
 
 const port = 8700 + Math.floor(Math.random() * 200);
 const windows = process.platform === "win32";
-const child = spawn(windows ? "npx.cmd" : "npx", ["wrangler", "dev", "--config", "dist/server/wrangler.json", "--port", String(port), "--local", "--ip", "127.0.0.1"], { cwd: site, stdio: ["ignore", "pipe", "pipe"], shell: windows, env: { ...process.env, WRANGLER_SEND_METRICS: "false" } });
+const child = spawn(windows ? "npx.cmd" : "npx", ["wrangler", "dev", "--config", "dist/server/wrangler.json", "--port", String(port), "--local", "--ip", "127.0.0.1"], { cwd: site, stdio: ["ignore", "pipe", "pipe"], shell: windows, detached: !windows, env: { ...process.env, WRANGLER_SEND_METRICS: "false" } });
 let log = ""; child.stdout.on("data", (chunk) => { log += chunk; }); child.stderr.on("data", (chunk) => { log += chunk; });
-const stop = () => { if (windows) spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" }); else child.kill("SIGTERM"); };
+// Stop the whole tree (npx → wrangler → workerd): taskkill /T on Windows, the process group elsewhere (detached above).
+const stop = () => {
+  if (windows) spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+  else try { process.kill(-child.pid, "SIGKILL"); } catch { /* already gone */ }
+  child.stdout.destroy(); child.stderr.destroy();
+};
 const base = `http://127.0.0.1:${port}`;
 try {
   let up = false;
@@ -35,3 +40,4 @@ try {
   assert.match(await home.text(), /Welcome to Demo Salon/, "the prerendered home page is served");
   console.log(`Smoke passed on ${base}: /admin 200 (config OK: 1 files, 1 collections), /api/cms/health ${JSON.stringify(body)}, / and /services/ prerendered.`);
 } finally { stop(); }
+process.exit(0);
