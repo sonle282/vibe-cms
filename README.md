@@ -5,8 +5,9 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.2.0 · P2.** The build checks `cms.config.ts` and the content files it declares; `/admin` is still a
-> placeholder and `/api/cms/health` reports the config. The editor, saving and publishing come in P3–P11
+> Status: **0.3.0 · P3.** The build checks `cms.config.ts` and the content it declares; the store (drafts in KV, draft
+> index in D1, content built into the Worker) and the format-keeping writer are in place. `/admin` is still a
+> placeholder. The API, editor and publishing come in P4–P11
 > ([docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)).
 
 ## Install in a site (3 steps, no token)
@@ -18,11 +19,11 @@ that version — no `.npmrc`, no `NODE_AUTH_TOKEN`, on your machine or in Cloudf
 1. **Install**
 
    ```bash
-   npm i https://github.com/sonle282/vibe-cms/releases/download/v0.2.0/vibe-cms-0.2.0.tgz @astrojs/cloudflare
+   npm i https://github.com/sonle282/vibe-cms/releases/download/v0.3.0/vibe-cms-0.3.0.tgz @astrojs/cloudflare
    ```
 
    `package.json` then holds
-   `"@sonle282/vibe-cms": "https://github.com/sonle282/vibe-cms/releases/download/v0.2.0/vibe-cms-0.2.0.tgz"`.
+   `"@sonle282/vibe-cms": "https://github.com/sonle282/vibe-cms/releases/download/v0.3.0/vibe-cms-0.3.0.tgz"`.
    To upgrade, change the URL to the new version (read the CHANGELOG's "Site action" first) and run `npm install`.
 
 2. **Add it to `astro.config.mjs`** (public pages keep prerendering; only the CMS routes run on demand):
@@ -101,11 +102,22 @@ Example — a real build of the demo site with a price written as a number, an u
   - src/data/services.json[1] ("spa-pedicure").category: text "Hair" is not one of the options → use "Nails", "Spa"
 ```
 
+## Writer and store (P3)
+
+- **Writer** (`@sonle282/vibe-cms/writer`) — publishing never re-formats a file: unchanged content gives the same
+  bytes, one changed value changes one line, added / removed / moved items or keys change only their own lines. It keeps
+  the file's indent (2 / 4 spaces or tab), CRLF / LF, final newline, BOM, key order, number spelling (`1.50` stays),
+  escapes, one-line arrays and blank lines. Markdown records keep front-matter order, quotes, comments and the body.
+- **Store** (`@sonle282/vibe-cms/store`) — `ContentSource` reads the content built into the Worker
+  (`virtual:vibe-cms/content`, exact bytes + sha256 versions); drafts are kept per user and per file / record in KV
+  (`draft:<user>:<resource>`, with a revision number) and listed in D1 (`cms_draft_index`, migration
+  `migrations/0001_draft_index.sql`).
+
 ## Develop this package
 
 ```bash
 npm ci
-npm run check    # typecheck + unit tests + pack contents + build demo site + astro check + local smoke (wrangler dev --local)
+npm run check    # typecheck + unit tests + pack contents + store on local KV/D1 + build demo + astro check + local smoke
 ```
 
 `fixtures/demo-site` is an invented salon used by every test — tests never read another site's data. It runs locally

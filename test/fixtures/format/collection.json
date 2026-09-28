@@ -1,0 +1,26 @@
+[
+  {
+    "id": "classic-manicure",
+    "name": "Classic Manicure",
+    "price": "$20",
+    "extras": ["Gel polish"]
+  },
+  {
+    "id": "spa-pedicure",
+    "name": "Spa Pedicure",
+    "price": "$35",
+    "extras": ["Hot stones", "Paraffin"]
+  },
+  {
+    "id": "nail-art",
+    "name": "Nail Art",
+    "price": "$5+",
+    "extras": []
+  },
+  {
+    "id": "gel-removal",
+    "name": "Gel Removal",
+    "price": "$10",
+    "extras": []
+  }
+]

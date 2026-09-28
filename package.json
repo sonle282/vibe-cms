@@ -1,6 +1,6 @@
 {
   "name": "@sonle282/vibe-cms",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Vibe CMS — an Astro integration that adds a content editor (/admin) to a site, driven by one cms.config.ts.",
   "license": "UNLICENSED",
   "private": false,
@@ -18,13 +18,23 @@
       "types": "./dist/config/index.d.ts",
       "default": "./dist/config/index.js"
     },
+    "./writer": {
+      "types": "./dist/writer/index.d.ts",
+      "default": "./dist/writer/index.js"
+    },
+    "./store": {
+      "types": "./dist/store/index.d.ts",
+      "default": "./dist/store/index.js"
+    },
     "./routes/*": "./src/routes/*",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./migrations/*": "./migrations/*"
   },
   "files": [
     "dist",
     "src/routes",
     "src/virtual.d.ts",
+    "migrations",
     "docs/CHANGELOG.md",
     "README.md",
     "LICENSE"
@@ -41,9 +51,10 @@
     "test": "npm run build && node --test \"test/*.test.mjs\"",
     "demo:build": "npm run build && npm run build -w fixtures/demo-site",
     "demo:smoke": "node scripts/smoke.mjs",
-    "check": "npm run typecheck && npm test && npm run pack:check && npm run demo:build && npm run check -w fixtures/demo-site && npm run demo:smoke",
+    "check": "npm run typecheck && npm test && npm run pack:check && npm run store:local && npm run demo:build && npm run check -w fixtures/demo-site && npm run demo:smoke",
     "prepack": "npm run build",
-    "pack:check": "node scripts/pack-check.mjs"
+    "pack:check": "node scripts/pack-check.mjs",
+    "store:local": "node scripts/store-local.mjs"
   },
   "peerDependencies": {
     "astro": "^7.2.1",

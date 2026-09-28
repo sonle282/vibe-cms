@@ -1,0 +1,9 @@
+{
+  "zeta" : "last letter first",
+  "alpha" : 1,
+  "mike" : {
+    "yankee" : true,
+    "bravo" : null
+  },
+  "list" : [ "x", "y" ]
+}

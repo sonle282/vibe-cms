@@ -1,0 +1,2 @@
+# Test fixtures: keep exact bytes (CRLF, BOM, tabs, no final newline); CRLF here is intended.
+* -text whitespace=cr-at-eol

@@ -1,9 +1,9 @@
-// P1 smoke: run the built demo site locally (wrangler dev --local — no Cloudflare account, nothing remote) and check
+// Smoke: run the built demo site locally (wrangler dev --local — no Cloudflare account, nothing remote) and check
 // GET /admin → 200 with the config summary, GET /api/cms/health → the right counts, and the public pages are prerendered.
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { startWranglerDev } from "./lib/wrangler-dev.mjs";
 
 const site = fileURLToPath(new URL("../fixtures/demo-site/", import.meta.url));
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -14,22 +14,8 @@ const worker = JSON.parse(readFileSync(site + "dist/server/wrangler.json", "utf8
 assert.equal(worker.images, undefined, "the generated wrangler.json has no IMAGES binding");
 assert.equal(worker.previews?.images, undefined, "no IMAGES binding for previews either");
 
-const port = 8700 + Math.floor(Math.random() * 200);
-const windows = process.platform === "win32";
-const child = spawn(windows ? "npx.cmd" : "npx", ["wrangler", "dev", "--config", "dist/server/wrangler.json", "--port", String(port), "--local", "--ip", "127.0.0.1"], { cwd: site, stdio: ["ignore", "pipe", "pipe"], shell: windows, detached: !windows, env: { ...process.env, WRANGLER_SEND_METRICS: "false" } });
-let log = ""; child.stdout.on("data", (chunk) => { log += chunk; }); child.stderr.on("data", (chunk) => { log += chunk; });
-// Stop the whole tree (npx → wrangler → workerd): taskkill /T on Windows, the process group elsewhere (detached above).
-const stop = () => {
-  if (windows) spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
-  else try { process.kill(-child.pid, "SIGKILL"); } catch { /* already gone */ }
-  child.stdout.destroy(); child.stderr.destroy();
-};
-const base = `http://127.0.0.1:${port}`;
+const { base, stop } = await startWranglerDev({ cwd: site, config: "dist/server/wrangler.json" });
 try {
-  let up = false;
-  for (let i = 0; i < 120 && !up; i += 1) { await new Promise((resolve) => setTimeout(resolve, 500)); up = await fetch(`${base}/`).then((response) => response.ok, () => false); }
-  assert.ok(up, `wrangler dev did not start:\n${log.slice(-2000)}`);
-
   const admin = await fetch(`${base}/admin`);
   const html = await admin.text();
   assert.equal(admin.status, 200, "GET /admin → 200");
@@ -38,7 +24,7 @@ try {
   const health = await fetch(`${base}/api/cms/health`);
   const body = await health.json();
   assert.equal(health.status, 200);
-  assert.deepEqual(body, { ok: true, package: pkg.name, version: pkg.version, site: "Demo Salon", files: 1, collections: 1 });
+  assert.deepEqual(body, { ok: true, package: pkg.name, version: pkg.version, site: "Demo Salon", files: 1, collections: 1, sources: 2 });
 
   const home = await fetch(`${base}/`);
   assert.match(await home.text(), /Welcome to Demo Salon/, "the prerendered home page is served");

@@ -7,8 +7,8 @@
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
 | **P1** | Khung Astro integration (`vibeCms()`, nạp + kiểm `cms.config.ts`, `/admin` tạm, `/api/cms/health`) + `fixtures/demo-site` + test + CI | 16–24 | ✅ Xong (duyệt 2026-09-28; ec5cd02 + 44a8f57, CI 36372154008) |
-| **P2** | Kiểm config đầy đủ + kiểm nội dung lúc build + workflow release + `imageService` | 12–18 | 🔄 đang làm (chờ review) |
-| P3 | Store: nguồn bundled + nháp KV + draft index D1; writer JSON giữ định dạng | 16–24 | ⏳ |
+| **P2** | Kiểm config đầy đủ + kiểm nội dung lúc build + workflow release + `imageService` | 12–18 | ✅ Xong (duyệt 2026-09-28; 5750418 an toàn + aff3cae, CI 36376837159) |
+| **P3** | Store: nguồn bundled + nháp KV + draft index D1 (migration 0001); writer JSON / Markdown giữ định dạng | 16–24 | 🔄 đang làm (chờ review) |
 | P4 | Ô khoá theo vai trò ở server (PUT + publish) + audit `denied` | 8–12 | ⏳ |
 | P5 | API chung files / collections + publish GitHub + audit + header version (F-16) | 24–34 | ⏳ |
 | P6 | Auth + People (owner / editor, bootstrap, session tên theo site) | 8–12 | ⏳ |
@@ -36,5 +36,7 @@
   lần chạy.
 - **Phân phối:** GitHub Release `vX.Y.Z` + `vibe-cms-X.Y.Z.tgz` (workflow `release.yml` khi push tag), site cài bằng URL
   công khai — không token. Chưa tạo tag / release: bản đầu tiên khi lõi đủ dùng (reviewer báo).
+- **P3 — store local:** `npm run store:local` áp `migrations/` bằng `wrangler d1 migrations apply --local` rồi chạy Worker thử
+  (`test/store-worker`) trong `wrangler dev --local` với KV + D1 giả lập — không tài nguyên Cloudflare, dữ liệu ở thư mục tạm.
 - **Binding adapter:** `IMAGES` không dùng (`imageService: "compile"`, smoke kiểm `wrangler.json` không có `images`);
   `SESSION` (KV) để P6 khai `<site>-session`.

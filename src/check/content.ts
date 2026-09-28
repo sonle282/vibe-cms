@@ -5,9 +5,9 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { parse as parseYaml } from "yaml";
 import type { CmsCollection, CmsConfig, Field } from "../config/index.js";
 import type { CheckResult, Problem } from "../config/validate.js";
+import { parseMarkdown } from "../writer/markdown.js";
 
 type Ctx = CheckResult & { ids: Map<string, Set<string>> };
 type Tree = Map<string, Field | Tree>;
@@ -152,14 +152,11 @@ const loadCollection = (ctx: Ctx, root: string, collection: CmsCollection, index
     if (!existsSync(dir) || !statSync(dir).isDirectory()) { add(ctx.errors, rel, `folder not found (declared at ${where}.store.dir)`, "create the folder or fix the path in cms.config"); return undefined; }
     for (const name of readdirSync(dir).filter((file) => file.endsWith(".md")).sort()) {
       const path = `${rel}/${name}`;
-      const text = readFileSync(join(dir, name), "utf8").replace(/^﻿/, "").replace(/\r\n/g, "\n");
-      const match = /^---\n([\s\S]*?)\n---(?:\n|$)([\s\S]*)$/.exec(text);
-      if (!match) { add(ctx.errors, path, "has no front matter", 'start the file with ---, the fields, then --- (e.g. "---\\ntitle: Hello\\n---")'); continue; }
-      let data: unknown;
-      try { data = parseYaml(match[1]) ?? {}; } catch (error) { add(ctx.errors, path, `front matter is not valid: ${(error as Error).message.split("\n")[0]}`); continue; }
-      if (!isRecord(data)) { add(ctx.errors, path, `front matter must be "key: value" lines, got ${describe(data)}`); continue; }
-      const id = addId(data[slugField], `${path} (front matter)`, slugField);
-      records.push({ path: `${path} (front matter)`, data: { ...data, body: match[2] }, ...(id ? { id } : {}) });
+      let parsed: ReturnType<typeof parseMarkdown>;
+      try { parsed = parseMarkdown(readFileSync(join(dir, name), "utf8")); } catch (error) { add(ctx.errors, path, `front matter is not valid: ${(error as Error).message.split("\n")[0]}`); continue; }
+      if (!parsed.hasFrontMatter) { add(ctx.errors, path, "has no front matter", 'start the file with ---, the fields, then --- (e.g. "---\\ntitle: Hello\\n---")'); continue; }
+      const id = addId(parsed.data[slugField], `${path} (front matter)`, slugField);
+      records.push({ path: `${path} (front matter)`, data: { ...parsed.data, body: parsed.body }, ...(id ? { id } : {}) });
     }
   }
   ctx.ids.set(collection.key, ids);

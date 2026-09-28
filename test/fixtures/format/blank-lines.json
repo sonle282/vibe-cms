@@ -1,0 +1,16 @@
+{
+  "groups": [
+
+    {
+      "id": "g1",
+      "name": "Group one"
+    },
+
+    {
+      "id": "g2",
+      "name": "Group two"
+    }
+
+  ],
+  "footer": "blank lines between items"
+}

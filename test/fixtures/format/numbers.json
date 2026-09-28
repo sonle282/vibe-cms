@@ -1,0 +1,11 @@
+{
+  "price": 1.50,
+  "exp": 1e3,
+  "upper": 1E+2,
+  "negativeZero": -0,
+  "zeroPointZero": 0.0,
+  "tiny": -1.5e-7,
+  "huge": 12345678901234567890,
+  "count": 7,
+  "label": "numbers stay as written"
+}

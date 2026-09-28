@@ -1,0 +1,12 @@
+// P3 local-only test Worker (scripts/store-local.mjs). The ids below are placeholders for wrangler's local simulation:
+// no Cloudflare resource exists or is created, nothing is deployed (workers_dev: false, no routes).
+{
+  "name": "vibe-cms-store-test",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-07-31",
+  "workers_dev": false,
+  "kv_namespaces": [{ "binding": "KV", "id": "local-only-drafts" }],
+  "d1_databases": [
+    { "binding": "DB", "database_name": "vibe-cms-store-test", "database_id": "local-only-store-test", "migrations_dir": "../../migrations" }
+  ]
+}

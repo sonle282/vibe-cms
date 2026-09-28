@@ -1,0 +1,14 @@
+{
+  "days": [1, 2, 3, 4, 5],
+  "tight": [1,2,3],
+  "pairs": [{ "k": "a", "v": 1 }, { "k": "b", "v": 2 }],
+  "sections": [
+    { "id": "intro", "title": "Intro", "open": true },
+    { "id": "prices", "title": "Prices", "open": false },
+    { "id": "contact", "title": "Contact", "open": true }
+  ],
+  "compact": [
+    {"id":"c1","n":1},
+    {"id":"c2","n":2}
+  ]
+}

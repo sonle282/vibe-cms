@@ -1,0 +1,16 @@
+{
+    "title": "Four spaces, CRLF, no final newline",
+    "count": 3,
+    "items": [
+        "first",
+        "second",
+        "third"
+    ],
+    "meta": {
+        "draft": false,
+        "tags": [
+            "a",
+            "b"
+        ]
+    }
+}

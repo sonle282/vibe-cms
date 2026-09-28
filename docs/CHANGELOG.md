@@ -3,6 +3,21 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.3.0 — unreleased (P3)
+
+- Writer (`@sonle282/vibe-cms/writer`): `patchJson`, `writeFile`, `writeArrayItem`, `moveArrayItem`, `patchMarkdown`,
+  `writeMarkdownItem`. Unchanged content = the same bytes; one changed value = one changed line; added / removed / moved
+  items and keys change only their own lines. Keeps indent (2 / 4 spaces, tab), CRLF / LF, final newline, BOM, key
+  order, number spelling, escapes (\uXXXX-only files stay ASCII), one-line arrays / objects, blank lines between items;
+  Markdown keeps front-matter order, quote style, comments and the body.
+- Store (`@sonle282/vibe-cms/store`): `ContentSource` (content built into the Worker via `virtual:vibe-cms/content`,
+  with sha256 versions per file and per record), `DraftStore` (KV, one draft per user + resource, revision number,
+  conflict check), `DraftIndex` (D1) and `createDrafts()` keeping both in step; in-memory versions for tests.
+- D1 migration `migrations/0001_draft_index.sql` (table `cms_draft_index`), shipped in the package.
+- `/api/cms/health` also reports `sources` (content files built into the Worker).
+- Site action: none yet (the store is used from P5). When P6 / P11 set up the site: KV `<site>-session` holds drafts
+  (keys `draft:…`), D1 `<site>-cms` gets migration 0001.
+
 ## 0.2.0 — unreleased (P2)
 
 - The build checks the whole `cms.config.ts` (every field type and option, keys, paths, repo / branch, collections,

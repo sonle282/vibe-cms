@@ -1,0 +1,25 @@
+{
+  "name": "Demo Salon",
+  "tagline": "A made-up salon",
+  "address": {
+    "street": "1 Example Street",
+    "city": "Sampletown"
+  },
+  "services": [
+    {
+      "id": "manicure",
+      "name": "Manicure",
+      "price": "$20"
+    },
+    {
+      "id": "pedicure",
+      "name": "Pedicure",
+      "price": "$35"
+    },
+    {
+      "id": "nail-art",
+      "name": "Nail Art",
+      "price": "$5+"
+    }
+  ]
+}
