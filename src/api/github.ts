@@ -3,16 +3,16 @@
  * REST version creates blobs → tree → commit and then moves the branch WITHOUT force. When the branch moved in the
  * meantime the ref update is refused and commit() returns { conflict: true } — the API re-reads and retries (bounded).
  *
- * P5b — checked against the publisher running in production on Mr Spa (src/lib/cms/github-commit.ts):
+ * P5b — checked against the GitHub publisher of the CMS already running in production on the first site:
  * - same flow and endpoints: GET git/ref/heads → git/commits/:sha → POST git/blobs (base64) → git/trees (base_tree)
  *   → git/commits → PATCH git/refs/heads { force: false }; same headers (Accept vnd.github+json, API version
  *   2022-11-28, a User-Agent);
  * - "branch moved" = HTTP 422 on the ref update, exactly as there; any other refusal (409…) is an error, not a retry;
  * - blobs are base64 (works for any bytes; the utf-8 blob encoding would not keep a BOM / binary);
- * - reading differs on purpose: Mr Spa reads the contents API as JSON + base64, which only carries files up to 1 MB and
- *   decodes with the BOM dropped. Here the raw media type is used: files up to 100 MB, exact bytes (BOM kept) — the
+ * - reading differs on purpose: that publisher reads the contents API as JSON + base64, which only carries files up to
+ *   1 MB and decodes with the BOM dropped. Here the raw media type is used: files up to 100 MB, exact bytes (BOM kept) — the
  *   format-keeping writer needs the exact text;
- * - rate limits (Mr Spa does not handle them): 403 / 429 with retry-after or x-ratelimit-remaining: 0 → wait and try
+ * - rate limits (not handled there): 403 / 429 with retry-after or x-ratelimit-remaining: 0 → wait and try
  *   once more when the wait is short (≤ maxWaitSeconds), else error github_rate_limited (HTTP 503 + retryAfter).
  *
  * Token: the site's own secret (VIBE_GITHUB_TOKEN), a fine-grained token for exactly one repository with
@@ -124,7 +124,7 @@ export const createGitHubPublisher = ({ token, repo, apiUrl = "https://api.githu
       const newTree = await json<{ sha: string }>(await call("POST", "/git/trees", { base_tree: base.tree.sha, tree }), "tree");
       const commit = await json<{ sha: string }>(await call("POST", "/git/commits", { message, tree: newTree.sha, parents: [parent], author: { ...author, date } }), "commit");
       const moved = await call("PATCH", `/git/refs/heads/${encodePath(repo.branch)}`, { sha: commit.sha, force: false });
-      // Like Mr Spa's publisher: 422 = not a fast-forward (someone committed meanwhile) → the caller re-reads and retries.
+      // As in the production publisher: 422 = not a fast-forward (someone committed meanwhile) → the caller re-reads and retries.
       if (moved.status === 422) return { conflict: true };
       if (!moved.ok) fail(moved, "ref");
       return { sha: commit.sha };

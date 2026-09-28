@@ -5,7 +5,7 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.5.0 · P5.** The build checks `cms.config.ts` and the content it declares; the store (drafts in D1,
+> Status: **0.6.0 · P6.** The build checks `cms.config.ts` and the content it declares; the store (drafts in D1,
 > content built into the Worker) and the format-keeping writer are in place. `/admin` is still a
 > placeholder. The API, editor and publishing come in P4–P11
 > ([docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)).
@@ -141,11 +141,25 @@ The site needs:
      `cms.config.ts` or `wrangler.jsonc`; for local development only, `.dev.vars` (git-ignored).
   6. To rotate: create the new token, `wrangler secret put` it, then revoke the old one on GitHub.
 
+## Sign-in and People (P6)
+
+Username + password, the same way as the CMS the package grew out of: PBKDF2-SHA256 (100,000 iterations), a session
+cookie backed by KV, roles **owner** / **editor** checked on every request, sign-in and publish rate limits. The site
+needs these bindings / secrets (docs/DESIGN.md §F.1):
+
+- `CMS_DB` (D1 `<site>-cms`), `SESSION` (KV `<site>-session`),
+- rate limits `CMS_LOGIN_LIMITER` (10 / 60 s) and `CMS_PUBLISH_LIMITER` (20 / 60 s) — required in production,
+- `CMS_BOOTSTRAP_USERNAME` + `CMS_BOOTSTRAP_PASSWORD` once, for the first owner (then remove them),
+- Workers **Paid** is recommended: a sign-in costs ~16–45 ms CPU, Workers Free allows 10 ms.
+
+`/admin` shows a minimal sign-in page; owners manage people through `/api/cms/users` (the People screen comes with the
+admin UI). New and reset users get a temporary password they must change at the first sign-in.
+
 ## Develop this package
 
 ```bash
 npm ci
-npm run check    # typecheck + unit tests + pack contents + store on local D1 + API on local D1 with a fake GitHub + build demo + astro check + local smoke
+npm run check    # typecheck + unit tests + pack contents + store on local D1 + API on local D1 with a fake GitHub + sign-in on local D1 / KV / rate limits + build demo + astro check + local smoke
 ```
 
 `fixtures/demo-site` is an invented salon used by every test — tests never read another site's data. It runs locally

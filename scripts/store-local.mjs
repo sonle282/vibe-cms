@@ -13,7 +13,7 @@ const persist = mkdtempSync(join(tmpdir(), "vibe-cms-store-"));
 try {
   const applied = npx(["wrangler", "d1", "migrations", "apply", "DB", "--local", "--persist-to", persist, "--config", "wrangler.jsonc"], { cwd, input: "y\n" });
   assert.equal(applied.status, 0, `migrations apply failed:\n${applied.stdout}\n${applied.stderr}`);
-  for (const name of ["0001_draft_index.sql", "0002_draft_content.sql", "0003_audit_log.sql"]) assert.ok(applied.stdout.includes(name), `migration ${name} applied`);
+  for (const name of ["0001_draft_index.sql", "0002_draft_content.sql", "0003_audit_log.sql", "0004_users.sql", "0005_audit_log_auth.sql"]) assert.ok(applied.stdout.includes(name), `migration ${name} applied`);
   const again = npx(["wrangler", "d1", "migrations", "apply", "DB", "--local", "--persist-to", persist, "--config", "wrangler.jsonc"], { cwd, input: "y\n" });
   assert.equal(again.status, 0);
   assert.match(again.stdout, /No migrations to apply/i, "a second apply changes nothing");
@@ -21,7 +21,7 @@ try {
   const { base, stop } = await startWranglerDev({ cwd, config: "wrangler.jsonc", args: ["--persist-to", persist], ready: "/health" });
   try {
     const schema = await (await fetch(`${base}/schema`)).json();
-    assert.deepEqual(schema.migrations, ["0001_draft_index.sql", "0002_draft_content.sql", "0003_audit_log.sql"]);
+    assert.deepEqual(schema.migrations, ["0001_draft_index.sql", "0002_draft_content.sql", "0003_audit_log.sql", "0004_users.sql", "0005_audit_log_auth.sql"]);
     assert.deepEqual(schema.audit, ["id", "at", "user_id", "role", "action", "stage", "resource", "detail"]);
     assert.deepEqual(schema.columns.map((column) => column.name), ["user_id", "resource", "kind", "resource_key", "item_id", "label", "source_version", "revision", "updated_at", "content"]);
     assert.deepEqual(schema.columns.filter((column) => column.pk).map((column) => column.name), ["user_id", "resource"]);

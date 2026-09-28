@@ -3,6 +3,25 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.6.0 — unreleased (P6)
+
+- **Sign-in + People** (option A, same mechanism as the CMS already running on the first site): username + password,
+  PBKDF2-SHA256 100,000 iterations (same hash format — old users import without a password reset:
+  `userFromLegacyRow`, `insertUser`), session cookie `vibe_cms_session` (32-byte token, HttpOnly Secure SameSite=Lax)
+  with the session in KV `SESSION` under sha256(token), 30 days, `session_version` ends every session on password
+  change / reset / disable; roles owner / editor read from D1 on every request; login rate limit 10 / min per
+  username + IP and publish 20 / min per user (bindings `CMS_LOGIN_LIMITER`, `CMS_PUBLISH_LIMITER`; missing in a
+  production build → 503); first owner from `CMS_BOOTSTRAP_USERNAME` / `CMS_BOOTSTRAP_PASSWORD` once.
+- Routes: `/api/auth/login`, `/logout`, `/me`, `/password`; People `/api/cms/users` (owner only: list, add with a
+  temporary password, disable / enable, reset password, change role; never the last active owner). Temporary
+  passwords must be changed at the first sign-in (403 `password_change_required` elsewhere). Everything audited
+  (stage auth / people), never passwords, hashes or tokens. `/admin`: minimal sign-in page.
+- The CMS API uses the real identity: no session → 401 (the dev identity of P5 is unchanged).
+- Migrations `0004_users.sql` (`cms_users`, `cms_auth_state`), `0005_audit_log_auth.sql` (audit table rebuilt with
+  the wider action / stage / role lists; rows kept). `createSiteRuntime` = the production wiring (routes + tests).
+- Site action: none (not released). For P11 / P15: bind `CMS_DB`, `SESSION`, the two rate-limit bindings, set the
+  bootstrap secrets once. Workers Paid recommended (a sign-in hashes for ~16–45 ms CPU; Free allows 10 ms).
+
 ## 0.5.0 — unreleased (P5)
 
 - **CMS API** (`@sonle282/vibe-cms/api`, route `/api/cms/[...path]` injected by the integration): `GET /content`,
@@ -19,7 +38,7 @@ migration that is not automatic. Each entry says what a site has to do.
 - Pure value checker `checkRecordValues` (runs in the Worker; the build-time content check uses it).
 - **P5b:** `sourceVersion` is required when a draft is created (the version the user opened; 400
   `source_version_required` without it) and an existing draft keeps its original `sourceVersion` — a publish by
-  someone else between opening and saving is caught (409). Publisher checked against Mr Spa's production publisher:
+  someone else between opening and saving is caught (409). Publisher checked against the first site's production publisher:
   only 422 means "branch moved" (409 is an error); raw reads (files up to 100 MB, BOM kept); GitHub rate limits
   (403 / 429 + `retry-after` / `x-ratelimit-*`) wait once when short, else 503 `github_rate_limited` + `retryAfter`.
 - Site action: none (not released). For P11 / P15: set `VIBE_GITHUB_TOKEN`, bind D1 as `CMS_DB`.

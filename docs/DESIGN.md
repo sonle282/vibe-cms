@@ -289,60 +289,79 @@ GitHub Packages đòi token kể cả với gói public → **không dùng**. Th
 
 ---
 
-## F.1 Đăng nhập (P6 Bước 0 — đề xuất, chờ SonLe chọn)
+## F.1 Đăng nhập + People (P6)
 
-> Khảo sát 2026-09-28, chỉ đọc. Chưa có code. Tài liệu Cloudflare tra cùng ngày:
-> [Workers limits](https://developers.cloudflare.com/workers/platform/limits/) ·
-> [One-time PIN](https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/one-time-pin/) ·
-> [Access cho workers.dev (1 click)](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/) ·
-> [Session](https://developers.cloudflare.com/cloudflare-one/access-controls/access-settings/session-management/) ·
-> [Seat](https://developers.cloudflare.com/cloudflare-one/team-and-resources/users/seat-management/).
+**Quyết định (SonLe, 2026-09-28): phương án A — giống CMS đang chạy thật của site đầu tiên, dùng chung cho mọi dự án.
+Không dùng Cloudflare Access; chế độ "dual" / Access của CMS cũ không đưa vào lõi.** (Phương án B — Cloudflare Access +
+vai trò D1 — đã xét ở P6 Bước 0, không chọn.)
 
-### Hiện trạng: CMS đang chạy thật của site đầu tiên (tái dùng được)
+### Cơ chế (giữ nguyên như CMS cũ)
 
 | Mục | Cách làm |
 |---|---|
-| Loại | Tên đăng nhập + mật khẩu (chế độ `password`). Có sẵn code Cloudflare Access (chế độ `dual`: phiên mật khẩu trước, rồi JWT Access + danh sách email) nhưng production đang tắt |
-| Băm | PBKDF2-SHA256, **100.000 vòng** (mức tối đa Web Crypto trên Workers), salt 16 byte, chuỗi `pbkdf2-sha256-v1$…`; so sánh thời gian hằng |
-| Lưu | D1 `cms_users` (username, password_hash, role admin/editor, status, `session_version`) + `cms_auth_state` (đánh dấu bootstrap đã xong) |
-| Phiên | Token ngẫu nhiên 32 byte trong cookie `HttpOnly; Secure; SameSite=Lax`; KV lưu theo sha256(token); hạn 30 ngày (cấu hình 5 phút–30 ngày); đổi mật khẩu / khoá người dùng → tăng `session_version` = đăng xuất mọi nơi |
-| Chống dò | Rate limiting binding: 10 lần / phút / (username + IP); thông báo lỗi chung "Username or password is incorrect"; audit đăng nhập thành công / thất bại; production thiếu limiter → 503 |
-| Quên mật khẩu | Không có tự phục vụ. Admin đặt lại (mật khẩu tạm ngẫu nhiên), người dùng đổi lần đầu. Admin quên → phải can thiệp D1 / bootstrap |
-| People | Chỉ admin: xem, thêm (mật khẩu tạm), khoá / mở, đặt lại mật khẩu; không cho khoá admin cuối cùng |
-| Owner đầu tiên | Secret bootstrap (username + password) → lần đăng nhập đầu tạo admin, rồi khoá bootstrap |
-| CPU mỗi lần đăng nhập | PBKDF2 100k đo được **~16 ms CPU** (Node 22, i5-12400, 7 lần 15–16 ms); Workers dùng cùng họ mã hoá gốc nên cùng bậc. **Gói Workers Free: 10 ms CPU / request** (có dư một chút cho lần vượt hiếm; vượt đều → lỗi 1102). **Paid: mặc định 30 s, tối đa 5 phút.** Site đầu tiên đang ở gói nào: công cụ chỉ đọc hiện có không đọc được gói → SonLe xác nhận ở dashboard (Workers & Pages → Plans) |
+| Đăng nhập | Username (3–32 ký tự `a-z 0-9 . _ -`, không phân biệt hoa thường) + mật khẩu (**12–200 ký tự**) |
+| Băm | PBKDF2-SHA256, **100.000 vòng** (tối đa của Web Crypto trên Workers), salt 16 byte, `pbkdf2-sha256-v1$100000$<salt>$<digest>`, so sánh thời gian hằng; hash dưới 100.000 vòng bị từ chối |
+| Phiên | Token 32 byte ngẫu nhiên trong cookie `vibe_cms_session` (`HttpOnly; Secure; SameSite=Lax; Path=/`), KV `SESSION` (= `<site>-session`) lưu dưới `cms:auth:session:<sha256(token)>`; hạn **30 ngày** (`CMS_SESSION_TTL_SECONDS` 300 … 2.592.000) |
+| Đăng xuất mọi nơi | `session_version` tăng khi đổi mật khẩu, đặt lại mật khẩu, khoá → mọi phiên cũ trả 401 |
+| Vai trò | Đọc lại từ D1 **mỗi request** → khoá / đổi vai trò có hiệu lực ngay |
+| Chống dò | Rate limit binding `CMS_LOGIN_LIMITER` 10 / 60 s theo (username + IP); publish `CMS_PUBLISH_LIMITER` 20 / 60 s theo người dùng; **bản build production thiếu limiter → 503**; lỗi đăng nhập luôn một câu "Username or password is incorrect."; audit `login` / `login_failed` |
+| Owner đầu tiên | Secret `CMS_BOOTSTRAP_USERNAME` + `CMS_BOOTSTRAP_PASSWORD`: lần đăng nhập đầu khi chưa có ai → tạo owner, đánh dấu `bootstrap_completed` (dùng 1 lần, kể cả khi bảng users bị xoá sau đó) |
+| Owner quên mật khẩu | P11: lệnh CLI đặt mật khẩu tạm cho owner (không sửa D1 bằng tay) |
+| Danh tính dev | Giữ như P5: chỉ `import.meta.env.DEV` + localhost + `VIBE_CMS_DEV_USER` |
 
-### Hai phương án cho Vibe CMS
+### Bảng users: CMS cũ → Vibe (migration 0004, `cms_users`)
 
-**A. Tự làm (tái dùng code site đầu tiên):** bảng `cms_users` với id nội bộ `usr_…`, mật khẩu PBKDF2, phiên trong KV
-`<site>-session`, cookie `<site>_cms_session`, rate limiting binding, bootstrap owner bằng secret, People (owner thêm /
-khoá / đặt lại mật khẩu editor), đổi mật khẩu.
-
-**B. Cloudflare Access (Zero Trust) chắn `/admin` + `/api/cms`:** đăng nhập bằng email + mã một lần (OTP 6 số, hết hạn 10
-phút) — hoặc tài khoản Cloudflare. Access đặt JWT vào header `Cf-Access-Jwt-Assertion`; gói kiểm chữ ký RS256 bằng JWKS
-`https://<team>.cloudflareaccess.com/cdn-cgi/access/certs` + `aud` (tag của Access app) + `iss` + hạn (code kiểm JWT của
-site đầu tiên dùng lại được). Vai trò owner / editor lưu ở D1: email → id nội bộ `usr_…` → role. Không lưu mật khẩu.
-
-| | A. Tự làm | B. Cloudflare Access |
+| CMS cũ (`cms_users`) | Vibe (`cms_users`) | Ghi chú khi chuyển (P21) |
 |---|---|---|
-| Viết + test | **18–28 h**: bảng users + migration, login / logout / me / đổi mật khẩu, People (4 thao tác), bootstrap, limiter, cookie + CSRF, identity cho API, test (kể cả local D1 + KV + limiter) | **10–16 h**: kiểm JWT (port ~150 dòng) + JWKS cache, bảng users email → id → role, People (thêm email + role, gỡ), trang "chưa được cấp quyền", tài liệu setup, test với JWKS giả |
-| Bảo trì | 1–2 h / tháng / 3 site: quên mật khẩu, bị khoá, admin mất quyền → SonLe can thiệp D1 | ~0,5 h / tháng: thêm / bớt email trong policy; Cloudflare lo đăng nhập, chống dò, phiên |
-| An toàn | Giữ hash mật khẩu (PBKDF2 100k — thấp hơn khuyến nghị OWASP 600k vì Workers giới hạn 100k); chống dò bằng limiter tự viết; lỗi code = lỗ hổng của mình | Không có mật khẩu để lộ; đăng nhập / chống dò / phiên do Cloudflare; gói chỉ kiểm chữ ký. Rủi ro còn lại: hộp thư email của người dùng; kiểm JWT sai (có test) |
-| Chi phí | 0 đ thêm; nhưng **~16 ms CPU / lần đăng nhập > 10 ms của Workers Free** → đăng nhập có thể lỗi 1102 nếu site ở gói Free (cần Paid 5 USD / tháng / account hoặc giảm vòng băm — không nên) | Zero Trust Free: 0 đ; mỗi người đã đăng nhập chiếm 1 seat (tính chung cả account, 3 site × 2–3 người ≈ 9 seat); **số seat của gói Free: cần xác nhận trên trang giá / dashboard** (hay được ghi là 50, tài liệu tra hôm nay không nêu con số). Đăng ký Zero Trust cần nhập phương thức thanh toán dù chọn Free. Seat không tự nhả (bật hết hạn seat 1–12 tháng) |
-| Trải nghiệm chủ tiệm | Nhớ mật khẩu ≥ 12 ký tự; quên → gọi SonLe; đăng nhập 1 bước; phiên 30 ngày | Không mật khẩu: nhập email → mở mail lấy mã 6 số (mất ~30 s trên điện thoại, phải chuyển app mail); phiên tới 1 tháng (cấu hình); trang đăng nhập của Cloudflare (mang tên team, không phải thương hiệu tiệm) |
-| Chủ tiệm tự thêm nhân viên | **Có** (màn People, mật khẩu tạm) | **B1 (khuyên):** không — SonLe thêm email vào policy (1 phút; hoặc lệnh setup gọi API với token ngắn hạn), chủ tiệm chỉ chọn role trong CMS. **B2:** policy cho mọi email qua OTP, CMS tự chặn email không có trong D1 → chủ tiệm tự thêm, nhưng người lạ cũng lấy được mã và chiếm seat |
-| SonLe làm khi cài site mới | Secret bootstrap + rate limiting binding + KV; lần đầu đăng nhập tạo owner | Bật Access cho workers.dev / domain (1 click hoặc API), policy email owner + nhân viên, chép AUD + team domain vào vars; owner được tạo sẵn trong D1 bằng lệnh setup. Domain riêng phải nằm trên Cloudflare (site chưa chuyển domain dùng workers.dev, vẫn được) |
-| Chạy local / dev | Đăng nhập thật được ở local (D1 + KV giả lập) | Không có Access ở local → dùng danh tính dev (`import.meta.env.DEV` + localhost, như P5); test bằng JWT ký bằng khoá test + JWKS giả |
+| `id INTEGER` | `id TEXT` = `usr_` + 16 ký tự ngẫu nhiên; id cũ → `legacy_id` | Nháp / audit / commit dùng id nội bộ dạng chữ |
+| `username` (NOCASE, UNIQUE) | `username` (NOCASE, UNIQUE), lưu chữ thường | Giữ nguyên |
+| — | `display_name` | = username khi chuyển |
+| `password_hash` | `password_hash` — **cùng định dạng, cùng hàm kiểm** | **Không phải đặt lại mật khẩu** (có test với hash tạo đúng bằng code cũ) |
+| `role` admin / editor | `role` owner / editor | admin → owner |
+| `status` active / disabled | `status` active / disabled | Giữ nguyên |
+| — | `must_change_password` 0 / 1 | = 0 khi chuyển |
+| `session_version` | `session_version` | Giữ nguyên (phiên KV cũ không chuyển → đăng nhập lại 1 lần) |
+| `created_at`, `updated_at`, `last_login_at`, `password_changed_at` | cùng tên | Giữ nguyên |
+| `cms_auth_state` (key, value, updated_at) | `cms_auth_state` cùng cấu trúc | |
 
-### Khuyến nghị
+Hàm `userFromLegacyRow()` + `insertUser()` trong gói làm việc chuyển. ⚠ Tên bảng trùng với CMS cũ: P21 phải dùng **D1
+mới** cho gói rồi nhập users sang (không chạy migration của gói lên D1 cũ).
 
-**B1 — Cloudflare Access + vai trò trong D1**, vì: ít code phải giữ hơn (không mật khẩu, không phiên, không limiter tự
-viết), an toàn hơn, không vướng giới hạn 10 ms CPU của gói Free, và mỗi tiệm chỉ 1–2 người nên việc thêm nhân viên hiếm
-(SonLe làm trong 1 phút). A chỉ nên chọn nếu chủ tiệm bắt buộc phải tự thêm nhân viên mà không qua SonLe, hoặc không muốn
-đăng nhập bằng mã qua email. CMS site đầu tiên giữ nguyên cách hiện tại tới P21.
+### Route
 
-Cần SonLe trả lời trước khi làm P6: (1) chọn A / B1 / B2; (2) các site đang ở Workers Free hay Paid; (3) account đã có
-Zero Trust org (team domain) — dùng chung cho mọi site?; (4) số seat thực tế của gói Zero Trust đang có.
+| Method | Đường dẫn | Quyền | Trả về / mã lỗi |
+|---|---|---|---|
+| POST | `/api/auth/login` `{ username, password }` | ai cũng gọi | 200 + cookie `{ user, mustChangePassword }` · 400 `bad_json` · 401 `invalid_credentials` · 403 `origin_forbidden` · 429 `too_many_attempts` (retry-after 60) · 503 `auth_not_configured` / `login_limiter_missing` / `limiter_unavailable` |
+| POST | `/api/auth/logout` | có phiên hoặc không | 200, cookie xoá · 403 `origin_forbidden` |
+| GET | `/api/auth/me` | có phiên | 200 `{ user, mustChangePassword, expiresAt }` · 401 `unauthenticated` · 503 |
+| PUT | `/api/auth/password` `{ currentPassword, newPassword }` | có phiên | 200 + cookie mới (phiên cũ chết) · 400 `wrong_current_password` / `same_password` / `invalid_password` · 401 · 403 `origin_forbidden` |
+| GET | `/api/cms/users` | owner | 200 `{ users }` · 403 `owner_only` |
+| POST | `/api/cms/users` `{ username, displayName?, role, password? }` | owner | 201 `{ user, temporaryPassword? }` (tạo sẵn 20 ký tự nếu không gửi) · 400 `invalid_username` / `invalid_role` / `invalid_password` / `invalid_display_name` · 409 `username_taken` |
+| PATCH | `/api/cms/users/:id` `{ action: disable \| enable \| reset-password \| set-role, … }` | owner | 200 · 400 `cannot_disable_self` / `last_owner` / `invalid_role` / `unsupported_action` · 404 |
+| (mọi route `/api/cms/*`) | | có phiên | 401 `unauthenticated` · 403 `password_change_required` (mật khẩu tạm chưa đổi) · 429 `too_many_publishes` · 503 `publish_limiter_missing` |
+
+Người được tạo / được đặt lại mật khẩu (và owner từ bootstrap) phải đổi mật khẩu ở lần đăng nhập đầu. Mọi thay đổi
+People / đăng nhập ghi audit (`stage` auth / people, migration 0005) — không bao giờ ghi mật khẩu, hash hay token.
+
+### Khác CMS cũ (có chủ đích)
+
+1. Id nội bộ dạng chữ `usr_…` (P3–P5) thay id số; vai trò owner thay admin; thêm `display_name`, `must_change_password`,
+   `legacy_id`.
+2. **Bắt đổi mật khẩu tạm** ở lần đăng nhập đầu (CMS cũ không chặn ở server), áp cả owner từ bootstrap.
+3. **Đổi vai trò** trong People (CMS cũ không có); không hạ quyền owner cuối cùng.
+4. Đăng nhập với username không tồn tại vẫn tốn đúng 1 lần băm (hash mồi) → không lộ "username có tồn tại" qua thời gian;
+   audit không lưu username gõ sai.
+5. Mật khẩu tạm có thể do server tạo (20 ký tự, bỏ ký tự dễ nhầm), trả về đúng 1 lần.
+6. Cookie tên chung `vibe_cms_session` (mỗi site một domain nên không lẫn); CMS cũ có tên riêng.
+7. "Production" = bản build (`import.meta.env.DEV` false) thay cho biến `ENVIRONMENT`.
+
+### CPU mỗi lần đăng nhập
+
+PBKDF2 100k: **~16 ms** CPU trong Node 22; **~42–44 ms** trong workerd local (`wrangler dev --local`, đo bằng endpoint
+chỉ băm trừ endpoint rỗng, 3 lần chạy, máy i5-12400). Cả hai đều vượt **10 ms của Workers Free**
+([Workers limits](https://developers.cloudflare.com/workers/platform/limits/), tra 2026-09-28; Paid mặc định 30 s) →
+site dùng gói nên ở **Workers Paid**, hoặc chấp nhận rủi ro lỗi 1102 lúc đăng nhập trên Free (Free cho vượt thỉnh
+thoảng, vượt đều thì bị chặn).
 
 ---
 
@@ -370,12 +389,12 @@ thay đổi lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tà
 | **P3** | Store: nguồn bundled + nháp + draft index D1; writer JSON giữ định dạng (P3b: nháp chuyển hẳn sang D1) | round-trip: không sửa = giống từng byte, 1 ô = 1 dòng | test round-trip mọi kiểu field |
 | **P4** | Ô khoá theo vai trò ở server (PUT + publish) + audit `denied` | editor đổi ô khoá → 403 + audit; owner được | ≥ 8 ca (object / list / collection) |
 | **P5** | API chung files / collections + publish GitHub + audit + header version | demo publish qua GitHub giả lập | test hợp đồng §C + mock GitHub |
-| **P6** | Auth + People (owner / editor, bootstrap, session tên theo site; KV `<site>-session`) | tạo owner bằng bootstrap, owner tạo editor | test auth + People |
+| **P6** | Auth + People như CMS cũ (§F.1): mật khẩu PBKDF2, phiên KV, owner / editor, bootstrap, rate limit | tạo owner bằng bootstrap, owner tạo editor | test auth + People |
 | **P7** | Admin shell + danh sách + form sinh từ schema | sửa mọi field demo | test form + e2e Chrome headless |
 | **P8** | Review / change summary + Save → review → Publish + trạng thái Live | luồng đủ trên demo | e2e + test change summary |
 | **P9** | Bridge: inject vào iframe cùng origin (dự phòng loader), `data-cms-*` + selector, SECTION_MAP, khung 2 cấp, không render khi gõ | preview demo chọn / hover / focus đúng, HTML public không đổi | test bridge + đo khi gõ |
 | **P10** | Ảnh: upload R2 staging, sheet chọn ảnh, alt | đổi ảnh demo + publish | test upload pipeline |
-| **P11** | CLI `setup` (idempotent, `--account`) / `migrate` / `check` / `export` / `update` + tài liệu cài | cài demo từ đầu theo tài liệu **bằng URL release, không token**; `setup` lần 2 = không đổi gì; `update` đổi URL sang bản mới | chạy local (miniflare); xuất / nhập D1 demo khớp số dòng |
+| **P11** | CLI `setup` (idempotent, `--account`) / `migrate` / `check` / `export` / `update` / `reset-owner-password` (đặt mật khẩu tạm cho owner quên mật khẩu, không sửa D1 tay) + tài liệu cài | cài demo từ đầu theo tài liệu **bằng URL release, không token**; `setup` lần 2 = không đổi gì; `update` đổi URL sang bản mới | chạy local (miniflare); xuất / nhập D1 demo khớp số dòng |
 | P12–P15 | Site pilot 1: tách nội dung → JSON; adapter cho route gói; cài gói + config + ô khoá; setup + kiểm production | **P15: Workers Builds của site build xanh không có biến môi trường token nào** (gói cài từ URL release) + 1 cặp publish + **lưu và đọc lại 1 nháp > 100 KB trên D1 THẬT** | so HTML public; Workers Builds log |
 | P16–P18 | Site 2: như trên | như P15 | như P15 |
 | P19 | Plugin catalog + redirects-check | test plugin trên fixture catalog nhỏ | test plugin |

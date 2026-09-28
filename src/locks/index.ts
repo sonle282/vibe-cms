@@ -171,9 +171,12 @@ export const checkLocks = ({ config, role, target, before, after }: CheckLocksIn
 export type AuditEntry = {
   at: string;
   userId: string;
-  role: Role;
-  action: "started" | "succeeded" | "failed" | "denied";
-  stage: "draft" | "publish";
+  /** "anonymous" only for a failed sign-in with an unknown username. */
+  role: Role | "anonymous";
+  action: "started" | "succeeded" | "failed" | "denied"
+    | "login" | "login_failed" | "logout" | "password_change" | "bootstrap"
+    | "user_create" | "user_disable" | "user_enable" | "user_password_reset" | "user_role_change";
+  stage: "draft" | "publish" | "auth" | "people";
   resource: string;
   /** JSON-able detail. Never content values — only paths, labels, reasons, ids. */
   detail: Record<string, unknown>;

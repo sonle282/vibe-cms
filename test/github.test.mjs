@@ -1,4 +1,4 @@
-// P5b: the GitHub publisher against the fake GitHub — the cases checked against Mr Spa's production publisher
+// P5b: the GitHub publisher against the fake GitHub — the cases checked against the first site's production publisher
 // (raw reads, 422 = branch moved, 409 / 404 = errors, rate limits with retry-after / x-ratelimit-*, large files).
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -15,7 +15,7 @@ const setup = async (files = { "src/data/site.json": '{\n  "a": 1\n}\n' }) => {
 const author = { name: "Vibe CMS", email: "vibe-cms@users.noreply.github.com" };
 const rejectsWith = (promise, code, extra = {}) => assert.rejects(promise, (error) => { assert.ok(error instanceof GitPublishError); assert.equal(error.code, code); for (const [key, value] of Object.entries(extra)) assert.equal(error[key], value); assert.ok(!error.message.includes("test-token")); return true; });
 
-test("same headers as Mr Spa's publisher; contents read raw; ref update never forced", async () => {
+test("same headers as the production publisher; contents read raw; ref update never forced", async () => {
   const { github, publisher } = await setup();
   try {
     const { sha } = await publisher.head();

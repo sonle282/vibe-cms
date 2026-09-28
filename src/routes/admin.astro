@@ -1,10 +1,20 @@
 ---
-// Vibe CMS · P1 placeholder: proves the integration loaded the site's cms.config.ts and runs on demand (not prerendered).
+// Vibe CMS · /admin (P6): minimal sign-in page — sign in, change a temporary password, sign out. The editor UI comes
+// in P7 / P8. Runs on demand (never prerendered); nothing site-specific is written here, everything comes from config.
+import { env } from "cloudflare:workers";
 import config from "virtual:vibe-cms/config";
+import content from "virtual:vibe-cms/content";
+import { createSiteRuntime, type SiteEnv } from "@sonle282/vibe-cms/api";
 
 export const prerender = false;
 const files = config.files.length;
 const collections = config.collections.length;
+const { auth } = createSiteRuntime({ config, content, env: env as SiteEnv, dev: import.meta.env.DEV });
+const identity = await auth.identify(Astro.request);
+const current = identity ? await auth.session(Astro.request) : null;
+const state = identity === undefined ? "not-configured" : identity === null ? "signed-out" : identity.mustChangePassword ? "change-password" : "signed-in";
+const name = current?.user.display_name ?? identity?.userId ?? "";
+Astro.response.headers.set("cache-control", "no-store");
 ---
 <!doctype html>
 <html lang="en">
@@ -13,10 +23,68 @@ const collections = config.collections.length;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>Vibe CMS · {config.site.name}</title>
+    <style>
+      body { font: 16px/1.5 system-ui, sans-serif; margin: 48px auto; max-width: 420px; padding: 0 16px; color: #1d1d1f; }
+      h1 { font-size: 20px; font-weight: 600; } label { display: block; margin: 12px 0 4px; font-size: 14px; }
+      input { width: 100%; box-sizing: border-box; padding: 10px; font: inherit; border: 1px solid #c7c7cc; border-radius: 8px; }
+      button { margin-top: 16px; padding: 10px 16px; font: inherit; border: 0; border-radius: 8px; background: #1d1d1f; color: #fff; cursor: pointer; }
+      .muted { color: #6e6e73; font-size: 14px; } .error { color: #b00020; min-height: 1.5em; }
+    </style>
   </head>
-  <body style="font: 16px/1.5 system-ui, sans-serif; margin: 48px; color: #1d1d1f;">
-    <h1 style="font-size: 22px; font-weight: 600;">Vibe CMS — config OK: {files} files, {collections} collections</h1>
-    <p>{config.site.name} · {config.repo.owner}/{config.repo.name} → {config.repo.branch}</p>
-    <p style="color: #6e6e73;">The editor arrives in later steps (P7). This page only confirms the setup.</p>
+  <body>
+    <h1>Vibe CMS — config OK: {files} files, {collections} collections</h1>
+    <p class="muted">{config.site.name} · {config.repo.owner}/{config.repo.name} → {config.repo.branch}</p>
+
+    {state === "not-configured" && <p id="state" data-state={state}>Sign-in is not set up on this site yet (CMS_DB and SESSION bindings).</p>}
+
+    {state === "signed-out" && (
+      <form id="login" data-state={state}>
+        <h2>Sign in</h2>
+        <label for="username">Username</label><input id="username" name="username" autocomplete="username" required />
+        <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required />
+        <button type="submit">Sign in</button>
+        <p class="error" role="alert"></p>
+      </form>
+    )}
+
+    {state === "change-password" && (
+      <form id="change" data-state={state}>
+        <h2>Choose your own password</h2>
+        <p class="muted">You signed in with a temporary password. Pick a new one (at least 12 characters) to continue.</p>
+        <label for="current">Temporary password</label><input id="current" name="currentPassword" type="password" autocomplete="current-password" required />
+        <label for="new">New password</label><input id="new" name="newPassword" type="password" autocomplete="new-password" minlength="12" required />
+        <button type="submit">Save password</button>
+        <p class="error" role="alert"></p>
+      </form>
+    )}
+
+    {state === "signed-in" && (
+      <div id="state" data-state={state}>
+        <p>Signed in as <strong>{name}</strong> ({identity?.role}).</p>
+        <p class="muted">The editor arrives in later steps (P7).</p>
+        <button id="logout" type="button">Sign out</button>
+      </div>
+    )}
+
+    <script>
+      const send = async (method: string, path: string, body?: unknown) => {
+        const response = await fetch(path, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), credentials: "same-origin" });
+        const data = await response.json().catch(() => ({}));
+        return { ok: response.ok, data };
+      };
+      const wire = (id: string, run: (form: HTMLFormElement) => Promise<{ ok: boolean; data: { message?: string } }>) => {
+        const form = document.getElementById(id) as HTMLFormElement | null;
+        form?.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const result = await run(form);
+          if (result.ok) location.reload();
+          else form.querySelector(".error")!.textContent = result.data.message ?? "Something went wrong.";
+        });
+      };
+      const value = (form: HTMLFormElement, name: string) => (form.elements.namedItem(name) as HTMLInputElement).value;
+      wire("login", (form) => send("POST", "/api/auth/login", { username: value(form, "username"), password: value(form, "password") }));
+      wire("change", (form) => send("PUT", "/api/auth/password", { currentPassword: value(form, "currentPassword"), newPassword: value(form, "newPassword") }));
+      document.getElementById("logout")?.addEventListener("click", async () => { await send("POST", "/api/auth/logout"); location.reload(); });
+    </script>
   </body>
 </html>

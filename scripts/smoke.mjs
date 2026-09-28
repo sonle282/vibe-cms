@@ -36,8 +36,13 @@ try {
     if (method === "GET") assert.match(response.headers.get("x-cms-live-version") ?? "", /^sha256:[0-9a-f]{64}$/, "GET carries x-cms-live-version");
   }
 
+  // Sign-in (P6) is closed too when the site has no CMS_DB / SESSION bindings; /admin says so instead of a login form.
+  const signIn = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { origin: base, "content-type": "application/json" }, body: JSON.stringify({ username: "someone", password: "some-password-1" }) });
+  assert.deepEqual([signIn.status, (await signIn.json()).error], [503, "auth_not_configured"], "POST /api/auth/login → 503 without bindings");
+  assert.match(html, /data-state="not-configured"/, "/admin shows that sign-in is not set up");
+
   const home = await fetch(`${base}/`);
   assert.match(await home.text(), /Welcome to Demo Salon/, "the prerendered home page is served");
-  console.log(`Smoke passed on ${base}: /admin 200 (config OK: 1 files, 1 collections), /api/cms/health ${JSON.stringify(body)}, / and /services/ prerendered; /api/cms/* → 503 auth_not_configured (dev variable ignored in a production build).`);
+  console.log(`Smoke passed on ${base}: /admin 200 (config OK: 1 files, 1 collections), /api/cms/health ${JSON.stringify(body)}, / and /services/ prerendered; /api/cms/* → 503 auth_not_configured (dev variable ignored in a production build); /api/auth/login → 503 and /admin says sign-in is not set up (no bindings).`);
 } finally { stop(); }
 process.exit(0);

@@ -26,14 +26,15 @@ import { parseMarkdown } from "../writer/markdown.js";
 import { recordPath, writeArrayItem, writeFile, writeMarkdownItem } from "../writer/index.js";
 import type { WriteResult } from "../writer/json.js";
 import { GitPublishError, type CommitAuthor, type GitPublisher } from "./github.js";
+import type { Identify, Identity, RateLimiter } from "../auth/index.js";
 
+export { createSiteRuntime, type SiteEnv } from "./runtime.js";
 export { createGitHubPublisher, GitPublishError, rateLimitWait, type CommitAuthor, type CommitInput, type GitHubOptions, type GitPublisher } from "./github.js";
 
 // ---------------------------------------------------------------- identity
 
-export type Identity = { userId: string; role: Role };
-/** Identity for a request. undefined = sign-in is not set up on this site (503); null = not signed in (401). */
-export type Identify = (request: Request) => Identity | null | undefined | Promise<Identity | null | undefined>;
+/** Identity for a request (P6: from the sign-in session). undefined = sign-in is not set up (503); null = not signed in (401). */
+export type { Identify, Identity } from "../auth/index.js";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 /**
@@ -75,6 +76,12 @@ export type CmsApiDeps = {
   author?: CommitAuthor;
   /** How many times publish re-reads and retries when the branch moved under it. */
   maxAttempts?: number;
+  /** People API (P6, owner only): /users and /users/:id, after identity + Origin checks. */
+  people?: (request: Request, user: Identity, id?: string) => Promise<Response>;
+  /** Publish rate limit (20 / minute / user on the first site). */
+  publishLimiter?: RateLimiter | undefined;
+  /** true in production builds: no publish limiter → publish answers 503. */
+  requirePublishLimiter?: boolean;
   /** Test seam: the writer used at publish (default: the P3 writer). */
   write?: (collectionOrFile: { kind: "file" } | { kind: "json-array"; idField: string } | { kind: "markdown" }, text: string | undefined, id: string | undefined, content: unknown) => WriteResult;
 };
@@ -263,6 +270,11 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     const drafts = need(deps.drafts, "storage");
     const audit = need(deps.audit, "storage");
     const publisher = need(deps.publisher, "publisher");
+    if (deps.publishLimiter) {
+      let allowed: boolean;
+      try { allowed = (await deps.publishLimiter.limit({ key: `cms-publish:${user.userId}` })).success; } catch { return fail(503, "limiter_unavailable", "Publish rate limiting is unavailable."); }
+      if (!allowed) fail(429, "too_many_publishes", "Publish limit reached. Please try again in a minute.", { retryAfter: 60 });
+    } else if (deps.requirePublishLimiter) fail(503, "publish_limiter_missing", "Publish rate limiting is not configured.");
     const body = await readBody(request);
     const resources = body.resources;
     if (!Array.isArray(resources) || !resources.length || resources.length > 50 || !resources.every((entry) => typeof entry === "string") || new Set(resources).size !== resources.length) {
@@ -350,6 +362,13 @@ export const createCmsApi = (deps: CmsApiDeps) => {
 
   const routes: Array<{ pattern: RegExp; methods: Record<string, (request: Request, user: Identity, match: RegExpMatchArray) => Promise<Response>> }> = [
     { pattern: /^\/content$/, methods: { GET: (_request, user) => listContent(user) } },
+    { pattern: /^\/users$/, methods: {
+      GET: (request, user) => (deps.people ?? fail(404, "not_found", "People are not available on this site."))(request, user),
+      POST: (request, user) => (deps.people ?? fail(404, "not_found", "People are not available on this site."))(request, user),
+    } },
+    { pattern: /^\/users\/(usr_[a-z2-7]{1,64}|[A-Za-z0-9_-]{1,64})$/, methods: {
+      PATCH: (request, user, match) => (deps.people ?? fail(404, "not_found", "People are not available on this site."))(request, user, match[1]),
+    } },
     { pattern: /^\/live-version$/, methods: { GET: async () => json({ liveVersion: await getLiveVersion(), branch: config.repo.branch }) } },
     { pattern: /^\/publish$/, methods: { POST: (request, user) => publish(request, user) } },
     { pattern: /^\/files\/([a-z][a-z0-9-]*)$/, methods: {
@@ -390,6 +409,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
       if (user === undefined) fail(503, "auth_not_configured", "Sign-in is not configured on this site yet, so the CMS API is closed.");
       if (user === null) fail(401, "unauthenticated", "Sign in first.");
       assertUserId(user!.userId);
+      if (user!.mustChangePassword) fail(403, "password_change_required", "Change your temporary password first (PUT /api/auth/password).");
       if (!isGet && !sameSite(request)) fail(403, "origin_forbidden", "Requests that change content must come from this site.");
       return await withVersion(await handler(request, user!, path.match(route.pattern)!));
     } catch (error) {

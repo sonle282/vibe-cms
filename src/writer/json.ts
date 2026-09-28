@@ -1,5 +1,5 @@
 /**
- * P3: write a JSON content file the way it already looks (idea and span reader from the Mr Spa CMS writer, F-09).
+ * P3: write a JSON content file the way it already looks (idea and span reader from the writer of the CMS already running on the first site).
  *
  * - Nothing changed → the same bytes (indent, CRLF / LF, final newline, key order, number spelling, escapes, one-line
  *   arrays are never re-serialized).

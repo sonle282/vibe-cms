@@ -1,0 +1,16 @@
+// Local-only P6 test Worker (scripts/auth-local.mjs). Placeholder ids for wrangler's local simulation: no Cloudflare
+// resource exists or is created, nothing is deployed. Bootstrap / GitHub values come from --var (test values only).
+{
+  "name": "vibe-cms-auth-test",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-07-31",
+  "workers_dev": false,
+  "d1_databases": [
+    { "binding": "CMS_DB", "database_name": "vibe-cms-auth-test", "database_id": "local-only-auth-test", "migrations_dir": "../../migrations" }
+  ],
+  "kv_namespaces": [{ "binding": "SESSION", "id": "local-only-sessions" }],
+  "ratelimits": [
+    { "name": "CMS_LOGIN_LIMITER", "namespace_id": "9001", "simple": { "limit": 10, "period": 60 } },
+    { "name": "CMS_PUBLISH_LIMITER", "namespace_id": "9002", "simple": { "limit": 20, "period": 60 } }
+  ]
+}
