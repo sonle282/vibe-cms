@@ -124,7 +124,8 @@ an item whose locked fields hold a value. A refusal is a 403 `locked_field` with
 
 The integration adds `/api/cms/*` (list, read, save drafts, publish, live version — docs/DESIGN.md §C). Until sign-in
 exists (P6) every route answers **503 `auth_not_configured`**. Publishing makes **one commit** on `repo.branch` with only
-the changed files, written by the format-keeping writer; the branch is never force-updated.
+the changed files, written by the format-keeping writer; the branch is never force-updated. A new draft must send
+the `sourceVersion` of the content the user opened, so a publish by someone else in between is caught (409).
 
 The site needs:
 

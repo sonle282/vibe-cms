@@ -132,11 +132,11 @@ có `Origin` của chính site (không có hoặc lạ → 403 `origin_forbidden
 |---|---|---|
 | `GET /content` | file + collection theo cms.config: nhãn, số bản ghi, nháp của tôi | 200 |
 | `GET /files/:key` | nội dung live + `version` + nháp của tôi (`stale` nếu nguồn đã đổi) | 200 · 404 |
-| `PUT /files/:key` | lưu nháp `{ content, expectedRevision, sourceVersion? }` | 400 `expected_revision_required` / `bad_json` · 422 `invalid_content` (P2) · 403 `locked_field` (P4) · 409 `draft_conflict` · 413 |
+| `PUT /files/:key` | lưu nháp `{ content, expectedRevision, sourceVersion }` — `sourceVersion` = version của bản đã MỞ, bắt buộc khi tạo nháp mới; nháp đã có giữ `sourceVersion` gốc (P5b) | 400 `expected_revision_required` / `source_version_required` / `bad_json` · 422 `invalid_content` (P2) · 403 `locked_field` (P4) · 409 `draft_conflict` · 413 |
 | `DELETE /files/:key` | bỏ nháp của tôi | `{ deleted }` |
 | `GET /collections/:key` | danh sách bản ghi (id, nhãn, version, có nháp) + bản ghi mới chỉ có trong nháp | 200 · 404 |
 | `GET·PUT·DELETE /collections/:key/items/:id` | như trên cho 1 bản ghi; id mới = bản ghi mới (`expectedRevision: 0`) | như trên; id trong nội dung phải bằng id trên URL |
-| `POST /publish` | `{ resources: [...] }` (1–50 nháp của tôi) → **đúng 1 commit** | 200 `{ commitSha, files, expectedLiveVersion, warnings, attempts }` · 404 `no_draft` · 409 `source_changed` · 403 `locked_field` · 422 · 502 `branch_moving` / `github_*` · 503 |
+| `POST /publish` | `{ resources: [...] }` (1–50 nháp của tôi) → **đúng 1 commit** | 200 `{ commitSha, files, expectedLiveVersion, warnings, attempts }` · 404 `no_draft` · 409 `source_changed` · 403 `locked_field` · 422 · 502 `branch_moving` / `github_*` · 503 (`github_rate_limited` + `retryAfter`, …) |
 | `GET /live-version` | version của nội dung Worker đang phục vụ | `{ liveVersion, branch }` |
 | (sau) `/history`, `/assets`, `/users`, `/api/auth/*` | P6, P8, P10 | |
 
@@ -153,6 +153,10 @@ có `Origin` của chính site (không có hoặc lạ → 403 `origin_forbidden
 8. GitHub: blob → tree (base = HEAD) → commit (cha = HEAD, tác giả "Vibe CMS" + email noreply, message = nhãn + id
    người dùng nội bộ) → cập nhật ref **không force**. Nhánh đã có commit mới → đọc lại từ bước 3, tối đa 3 lần, rồi
    502 `branch_moving`.
+   Đối chiếu với publisher đang chạy thật của Mr Spa (P5b): cùng endpoint / header / base64 / `force: false`; chỉ 422
+   là "nhánh đã đổi" (409 là lỗi); đọc file bằng media type raw (≤ 100 MB, giữ BOM — Mr Spa đọc JSON base64 ≤ 1 MB);
+   GitHub giới hạn tốc độ (403 / 429 + `retry-after` / `x-ratelimit-*`) → chờ 1 lần nếu ≤ 10 giây, không thì 503
+   `github_rate_limited` + `retryAfter`.
 9. Audit **`succeeded`** (sha commit, số lần thử, cảnh báo); xoá nháp của người publish; trả `expectedLiveVersion`
    (version live sau khi site build lại). Client theo dõi `live-version` (P8).
 

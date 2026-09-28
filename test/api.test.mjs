@@ -51,7 +51,7 @@ test("end-to-end: draft → publish → fake GitHub (every check)", async () => 
   try {
     const checks = await runApiScenario(h);
     assert.deepEqual(checks.filter((check) => !check.ok), []);
-    assert.equal(checks.length, 45);
+    assert.equal(checks.length, 50);
   } finally { await h.close(); }
 });
 
@@ -90,7 +90,7 @@ test("a wrong GitHub token → 502 github_unauthorized; the token never appears 
   const h = await harness({ token: "ghp_WRONG_TOKEN_should_never_leak" });
   try {
     const site = (await h.request("GET", "/api/cms/files/site", { user: "usr_owner1:owner" })).body;
-    await h.request("PUT", "/api/cms/files/site", { user: "usr_owner1:owner", body: { content: { ...site.content, tagline: "x" }, expectedRevision: 0 } });
+    await h.request("PUT", "/api/cms/files/site", { user: "usr_owner1:owner", body: { content: { ...site.content, tagline: "x" }, expectedRevision: 0, sourceVersion: site.version } });
     const result = await h.request("POST", "/api/cms/publish", { user: "usr_owner1:owner", body: { resources: ["file:site"] } });
     assert.deepEqual([result.status, result.body.error], [502, "github_unauthorized"]);
     assert.ok(!JSON.stringify(result).includes("WRONG_TOKEN") && !JSON.stringify(h.audit.entries).includes("WRONG_TOKEN"));
@@ -104,7 +104,7 @@ test("when the writer had to re-write a whole file: the publish succeeds, warns,
   try {
     h.rebuild({ write: (_kind, _text, _id, content) => ({ text: `${JSON.stringify(content, null, 2)}\n`, rewroteWholeFile: true }) });
     const site = (await h.request("GET", "/api/cms/files/site", { user: "usr_owner1:owner" })).body;
-    await h.request("PUT", "/api/cms/files/site", { user: "usr_owner1:owner", body: { content: { ...site.content, tagline: "Rewritten" }, expectedRevision: 0 } });
+    await h.request("PUT", "/api/cms/files/site", { user: "usr_owner1:owner", body: { content: { ...site.content, tagline: "Rewritten" }, expectedRevision: 0, sourceVersion: site.version } });
     const result = await h.request("POST", "/api/cms/publish", { user: "usr_owner1:owner", body: { resources: ["file:site"] } });
     assert.equal(result.status, 200);
     assert.deepEqual(result.body.warnings, [{ resource: "file:site", code: "rewrote_whole_file" }]);

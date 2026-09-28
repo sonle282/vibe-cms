@@ -17,6 +17,11 @@ migration that is not automatic. Each entry says what a site has to do.
   with `import.meta.env.DEV` on localhost); same-site `Origin` for writes; 2 MB body limit; JSON errors without
   internals.
 - Pure value checker `checkRecordValues` (runs in the Worker; the build-time content check uses it).
+- **P5b:** `sourceVersion` is required when a draft is created (the version the user opened; 400
+  `source_version_required` without it) and an existing draft keeps its original `sourceVersion` — a publish by
+  someone else between opening and saving is caught (409). Publisher checked against Mr Spa's production publisher:
+  only 422 means "branch moved" (409 is an error); raw reads (files up to 100 MB, BOM kept); GitHub rate limits
+  (403 / 429 + `retry-after` / `x-ratelimit-*`) wait once when short, else 503 `github_rate_limited` + `retryAfter`.
 - Site action: none (not released). For P11 / P15: set `VIBE_GITHUB_TOKEN`, bind D1 as `CMS_DB`.
 
 ## 0.4.0 — unreleased (P3b, P4)

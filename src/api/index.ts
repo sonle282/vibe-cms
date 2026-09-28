@@ -5,7 +5,7 @@
  * Routes (under /api/cms; every route needs an identity):
  *   GET    /content                         files + collections from cms.config (label, count, my drafts)
  *   GET    /files/:key                      live content + version + my draft
- *   PUT    /files/:key                      save my draft   { content, expectedRevision, sourceVersion? }
+ *   PUT    /files/:key                      save my draft   { content, expectedRevision, sourceVersion (new draft) }
  *   DELETE /files/:key                      discard my draft
  *   GET    /collections/:key                records (id, label, version, my draft)
  *   GET    /collections/:key/items/:id      live record + version + my draft
@@ -27,7 +27,7 @@ import { recordPath, writeArrayItem, writeFile, writeMarkdownItem } from "../wri
 import type { WriteResult } from "../writer/json.js";
 import { GitPublishError, type CommitAuthor, type GitPublisher } from "./github.js";
 
-export { createGitHubPublisher, GitPublishError, type CommitAuthor, type CommitInput, type GitHubOptions, type GitPublisher } from "./github.js";
+export { createGitHubPublisher, GitPublishError, rateLimitWait, type CommitAuthor, type CommitInput, type GitHubOptions, type GitPublisher } from "./github.js";
 
 // ---------------------------------------------------------------- identity
 
@@ -236,7 +236,16 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     const checked = await checkValues(target, body.content);
     if (checked.errors.length) fail(422, "invalid_content", "The content does not match cms.config.", { errors: checked.errors });
     const current = await live(target);
-    const sourceVersion = typeof body.sourceVersion === "string" && body.sourceVersion ? body.sourceVersion : current.version;
+    // The version the user OPENED, not the live one at save time: a publish by someone else in between must still be
+    // caught at publish (409). A new draft must say it; an existing draft keeps the version it started from.
+    const existing = await drafts.get(user.userId, target.resource);
+    let sourceVersion: string;
+    if (existing) sourceVersion = existing.sourceVersion;
+    else {
+      if (typeof body.sourceVersion !== "string" || !body.sourceVersion) fail(400, "source_version_required", "sourceVersion is required for a new draft: send the version of the content you opened (the GET's \"version\").");
+      if (!/^(sha256:[0-9a-f]{64}|new|missing)$/.test(body.sourceVersion as string)) fail(400, "bad_request", "sourceVersion is not a content version.");
+      sourceVersion = body.sourceVersion as string;
+    }
     const label = target.kind === "file" ? target.label : recordLabel(target.collection, body.content, target.id);
     try {
       const draft = await saveDraftChecked({ config, role: user.role, drafts, audit, source: current.value, now, input: { userId: user.userId, resource: target.resource, label, content: body.content, sourceVersion, expectedRevision: expectedRevision as number } });
@@ -332,7 +341,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
       return await failWith(502, "branch_moving", `The branch kept changing during publish (${maxAttempts} tries) — try again in a moment.`);
     } catch (error) {
       if (error instanceof ApiError) throw error;
-      if (error instanceof GitPublishError) return await failWith(502, error.code, error.message);
+      if (error instanceof GitPublishError) return await failWith(error.httpStatus, error.code, error.message, error.retryAfter === undefined ? {} : { retryAfter: error.retryAfter });
       return await failWith(500, "internal_error", "Publishing failed.");
     }
   };
