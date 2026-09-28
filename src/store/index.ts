@@ -241,3 +241,5 @@ export const createMemoryDraftStore = (now: () => string = () => new Date().toIS
     forResource: async (resource) => [...rows.values()].filter((row) => row.resource === resource).sort((a, b) => newest(a, b) || a.userId.localeCompare(b.userId)).map(summary),
   };
 };
+
+export { createD1AuditLog, createMemoryAuditLog } from "./audit.js";

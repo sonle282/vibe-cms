@@ -10,7 +10,7 @@
 | **P2** | Kiểm config đầy đủ + kiểm nội dung lúc build + workflow release + `imageService` | 12–18 | ✅ Xong (duyệt 2026-09-28; 5750418 an toàn + aff3cae, CI 36376837159) |
 | **P3** | Store: nguồn bundled + nháp + draft index D1 (migration 0001); writer JSON / Markdown giữ định dạng | 16–24 | ✅ Xong (duyệt 2026-09-28; b91d59c, CI 36394874058) |
 | **P3b** | Nháp chuyển hẳn sang D1 (revision nguyên tử, migration 0002, nội dung ≤ 1,9 MB), user id nội bộ, cờ `rewroteWholeFile` của writer | 3–5 | ✅ Xong (chờ review cùng P4) |
-| P4 | Ô khoá theo vai trò ở server (PUT + publish) + audit `denied` | 8–12 | ⏳ |
+| **P4** | Ô khoá theo vai trò ở server (lưu nháp + publish) + audit `denied` (migration 0003) | 8–12 | 🔄 đang làm (chờ review) |
 | P5 | API chung files / collections + publish GitHub + audit + header version (F-16) | 24–34 | ⏳ |
 | P6 | Auth + People (owner / editor, bootstrap, session tên theo site) | 8–12 | ⏳ |
 | P7 | Admin shell + danh sách + form sinh từ schema | 40–60 | ⏳ |

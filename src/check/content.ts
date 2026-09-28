@@ -8,9 +8,10 @@ import { join } from "node:path";
 import type { CmsCollection, CmsConfig, Field } from "../config/index.js";
 import type { CheckResult, Problem } from "../config/validate.js";
 import { parseMarkdown } from "../writer/markdown.js";
+import { toTree, type FieldTree } from "../config/tree.js";
 
 type Ctx = CheckResult & { ids: Map<string, Set<string>> };
-type Tree = Map<string, Field | Tree>;
+type Tree = FieldTree;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const add = (list: Problem[], path: string, message: string, hint?: string) => list.push({ path, message, ...(hint ? { hint } : {}) });
@@ -25,21 +26,6 @@ const at = (base: string, key: string) => (/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) 
 const empty = (value: unknown) => value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
-/** Dotted keys ("about.title") become nested levels so the content can be walked like the JSON. */
-const toTree = (fields: Record<string, Field>): Tree => {
-  const tree: Tree = new Map();
-  for (const [key, field] of Object.entries(fields)) {
-    const parts = key.split(".");
-    let level = tree;
-    parts.slice(0, -1).forEach((part) => {
-      const next = level.get(part);
-      if (next instanceof Map) level = next;
-      else { const created: Tree = new Map(); level.set(part, created); level = created; }
-    });
-    level.set(parts.at(-1) as string, field);
-  }
-  return tree;
-};
 
 const checkRecord = (ctx: Ctx, record: Record<string, unknown>, tree: Tree, path: string, system: string[] = []) => {
   for (const [key, node] of tree) {

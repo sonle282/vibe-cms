@@ -113,6 +113,13 @@ Example — a real build of the demo site with a price written as a number, an u
   `0001_draft_index.sql` + `0002_draft_content.sql`), with a revision checked atomically; up to 1.9 MB per draft.
   Writes return `{ text, rewroteWholeFile }` — `true` only when the whole file had to be re-written.
 
+## Locked fields (P4)
+
+Fields with `locked: "owner"` are enforced on the server when a draft is saved **and** again at publish: an editor may
+not change them (at any depth), may add an item only with its locked fields empty, may re-order items, and may not remove
+an item whose locked fields hold a value. A refusal is a 403 `locked_field` with the field paths and labels
+("Only the owner can change Price") and one audit row — never the values. Rules in detail: docs/DESIGN.md §C.1.
+
 ## Develop this package
 
 ```bash

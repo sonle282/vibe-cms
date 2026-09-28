@@ -154,6 +154,23 @@ Mọi route dưới `/api/cms`, JSON, `cache-control: no-store`; middleware: phi
 
 ---
 
+### C.1 Ô khoá — quy tắc cho editor (P4)
+
+Reviewer đặt mặc định 2026-09-28 (SonLe im lặng = đồng ý). Owner được làm mọi thứ. Editor:
+
+| # | Quy tắc | Được | Không được |
+|---|---|---|---|
+| 1 | Giá trị ô `locked: "owner"` không đổi — ở mọi cấp (object, list, item collection, key có chấm). Object / list bị khoá thì khoá cả khối. `""`, `null`, thiếu, `[]`, `{}` coi là như nhau | sửa ô không khoá cạnh đó | sửa giá, giờ, SĐT, email, địa chỉ… |
+| 2 | Thêm item mới (bản ghi collection hoặc phần tử list) khi **mọi ô khoá trong item để trống** (chờ chủ điền) | thêm dịch vụ giá trống | thêm dịch vụ đã có giá |
+| 3 | Đổi thứ tự item: bản ghi collection so theo id (`idField` / `slugField`), không theo vị trí; phần tử list so theo `id` nếu có, không có thì theo nội dung giống hệt (dời nguyên khối), còn lại theo vị trí | kéo đổi thứ tự | tráo giá giữa 2 phần tử đứng yên (= đổi giá) |
+| 4 | Không xoá item đang có giá trị ở ô khoá | xoá item chưa có giá | xoá item đã có giá |
+
+Áp ở **2 chỗ**: lưu nháp (`saveDraftChecked`) và publish (`checkPublishLocks`, kiểm lại với vai trò lúc publish vì vai trò
+có thể đổi giữa chừng). Vi phạm → 403 `locked_field` `{ fields: [{ path, field, label, reason, message }] }` + 1 dòng
+audit `denied` (bảng `cms_audit_log`, migration 0003 — chỉ đường dẫn / nhãn / lý do, không có giá trị); nháp bị từ chối
+không được ghi. Giới hạn đã biết: phần tử list **không có `id`** vừa bị dời chỗ vừa sửa trong cùng 1 lần lưu có thể bị
+coi là đổi giá → lưu 2 lần (dời rồi sửa), hoặc thêm `id` cho phần tử.
+
 ## D. Hợp đồng visual editing
 
 **Binding:** thuộc tính trong template — `data-cms-field="site.phone"`, danh sách `data-cms-list="services"` + mỗi item

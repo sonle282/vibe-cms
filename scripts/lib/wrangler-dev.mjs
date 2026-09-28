@@ -16,7 +16,7 @@ export const startWranglerDev = async ({ cwd, config, args = [], ready = "/" }) 
   };
   const base = `http://127.0.0.1:${port}`;
   let up = false;
-  for (let i = 0; i < 120 && !up; i += 1) { await new Promise((resolve) => setTimeout(resolve, 500)); up = await fetch(`${base}${ready}`).then(() => true, () => false); }
+  for (let i = 0; i < 120 && !up && child.exitCode === null && !/✘ \[ERROR\]/.test(log); i += 1) { await new Promise((resolve) => setTimeout(resolve, 500)); up = await fetch(`${base}${ready}`).then(() => true, () => false); }
   if (!up) { stop(); throw new Error(`wrangler dev did not start:\n${log.slice(-2000)}`); }
   return { base, stop, log: () => log };
 };

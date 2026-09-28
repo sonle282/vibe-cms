@@ -26,6 +26,10 @@
       "types": "./dist/store/index.d.ts",
       "default": "./dist/store/index.js"
     },
+    "./locks": {
+      "types": "./dist/locks/index.d.ts",
+      "default": "./dist/locks/index.js"
+    },
     "./routes/*": "./src/routes/*",
     "./package.json": "./package.json",
     "./migrations/*": "./migrations/*"

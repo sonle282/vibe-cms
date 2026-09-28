@@ -14,6 +14,12 @@ migration that is not automatic. Each entry says what a site has to do.
 - Writer: `writeFile`, `writeArrayItem`, `moveArrayItem`, `writeMarkdownItem` return `{ text, rewroteWholeFile }`;
   `patchJsonDetailed`, `patchMarkdownDetailed`, `finishJsonPatch`, `finishMarkdownPatch`. `rewroteWholeFile` = the
   format-keeping patch could not reproduce the content, so the whole file was re-written in its own style.
+- **P4 — locked fields on the server** (`@sonle282/vibe-cms/locks`): `checkLocks({ config, role, target, before,
+  after })` → violations `{ path, field, label, reason, message }` ("Only the owner can change Price"); editor rules:
+  locked values never change (any depth), new items only with locked fields empty, re-order allowed (records by id),
+  no removing items that hold locked values; owner may do anything. `saveDraftChecked` (draft not written when refused)
+  and `checkPublishLocks` (re-check with the role at publish time) → `LockedFieldError` (403) + an audit `denied` row;
+  `lockedFieldResponse`. Audit log: `createD1AuditLog`, `createMemoryAuditLog`, migration `0003_audit_log.sql`.
 - Site action: none (not released). KV `<site>-session` holds sessions only.
 
 ## 0.3.0 — unreleased (P3)
