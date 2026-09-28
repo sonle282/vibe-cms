@@ -12,8 +12,8 @@
 | **P3b** | Nháp chuyển hẳn sang D1 (revision nguyên tử, migration 0002, nội dung ≤ 1,9 MB), user id nội bộ, cờ `rewroteWholeFile` của writer | 3–5 | ✅ Xong (duyệt 2026-09-28; 513c56b, CI 36396950422) |
 | **P4** | Ô khoá theo vai trò ở server (lưu nháp + publish) + audit `denied` (migration 0003) | 8–12 | ✅ Xong (duyệt 2026-09-28; 21f912e, CI 36398543782) |
 | **P5** | API chung (files / collections / nháp / publish / live-version) + publish GitHub (1 commit, không force, thử lại) + audit | 24–34 | ✅ Xong (duyệt 2026-09-28; 91cf66a, CI 36402119201) |
-| **P5b** | `sourceVersion` bắt buộc khi tạo nháp (giữ bản gốc); publisher GitHub đối chiếu Mr Spa: 422 = nhánh đổi, raw ≤ 100 MB, giới hạn tốc độ | 3–5 | ✅ Xong (chờ review cùng P6 Bước 0) |
-| P6 | Auth + People (owner / editor, bootstrap, session tên theo site) | 8–12 | ⏳ |
+| **P5b** | `sourceVersion` bắt buộc khi tạo nháp (giữ bản gốc); publisher GitHub đối chiếu Mr Spa: 422 = nhánh đổi, raw ≤ 100 MB, giới hạn tốc độ | 3–5 | ✅ Xong (22252a8, CI 36405197944; chờ review) |
+| P6 | Auth + People — **Bước 0 xong (đề xuất DESIGN §F.1: B1 Cloudflare Access + vai trò D1); chờ SonLe chọn A / B1 / B2** | A 18–28 · B 10–16 | ⏸ chờ quyết định |
 | P7 | Admin shell + danh sách + form sinh từ schema | 40–60 | ⏳ |
 | P8 | Review / change summary + Save → review → Publish + Live | 20–30 | ⏳ |
 | P9 | Bridge chung (inject vào iframe cùng origin, dự phòng loader; `data-cms-*` + selector, SECTION_MAP, U23, F-15) | 16–24 | ⏳ |

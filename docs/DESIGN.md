@@ -289,6 +289,63 @@ GitHub Packages đòi token kể cả với gói public → **không dùng**. Th
 
 ---
 
+## F.1 Đăng nhập (P6 Bước 0 — đề xuất, chờ SonLe chọn)
+
+> Khảo sát 2026-09-28, chỉ đọc. Chưa có code. Tài liệu Cloudflare tra cùng ngày:
+> [Workers limits](https://developers.cloudflare.com/workers/platform/limits/) ·
+> [One-time PIN](https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/one-time-pin/) ·
+> [Access cho workers.dev (1 click)](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/) ·
+> [Session](https://developers.cloudflare.com/cloudflare-one/access-controls/access-settings/session-management/) ·
+> [Seat](https://developers.cloudflare.com/cloudflare-one/team-and-resources/users/seat-management/).
+
+### Hiện trạng: CMS đang chạy thật của site đầu tiên (tái dùng được)
+
+| Mục | Cách làm |
+|---|---|
+| Loại | Tên đăng nhập + mật khẩu (chế độ `password`). Có sẵn code Cloudflare Access (chế độ `dual`: phiên mật khẩu trước, rồi JWT Access + danh sách email) nhưng production đang tắt |
+| Băm | PBKDF2-SHA256, **100.000 vòng** (mức tối đa Web Crypto trên Workers), salt 16 byte, chuỗi `pbkdf2-sha256-v1$…`; so sánh thời gian hằng |
+| Lưu | D1 `cms_users` (username, password_hash, role admin/editor, status, `session_version`) + `cms_auth_state` (đánh dấu bootstrap đã xong) |
+| Phiên | Token ngẫu nhiên 32 byte trong cookie `HttpOnly; Secure; SameSite=Lax`; KV lưu theo sha256(token); hạn 30 ngày (cấu hình 5 phút–30 ngày); đổi mật khẩu / khoá người dùng → tăng `session_version` = đăng xuất mọi nơi |
+| Chống dò | Rate limiting binding: 10 lần / phút / (username + IP); thông báo lỗi chung "Username or password is incorrect"; audit đăng nhập thành công / thất bại; production thiếu limiter → 503 |
+| Quên mật khẩu | Không có tự phục vụ. Admin đặt lại (mật khẩu tạm ngẫu nhiên), người dùng đổi lần đầu. Admin quên → phải can thiệp D1 / bootstrap |
+| People | Chỉ admin: xem, thêm (mật khẩu tạm), khoá / mở, đặt lại mật khẩu; không cho khoá admin cuối cùng |
+| Owner đầu tiên | Secret bootstrap (username + password) → lần đăng nhập đầu tạo admin, rồi khoá bootstrap |
+| CPU mỗi lần đăng nhập | PBKDF2 100k đo được **~16 ms CPU** (Node 22, i5-12400, 7 lần 15–16 ms); Workers dùng cùng họ mã hoá gốc nên cùng bậc. **Gói Workers Free: 10 ms CPU / request** (có dư một chút cho lần vượt hiếm; vượt đều → lỗi 1102). **Paid: mặc định 30 s, tối đa 5 phút.** Site đầu tiên đang ở gói nào: công cụ chỉ đọc hiện có không đọc được gói → SonLe xác nhận ở dashboard (Workers & Pages → Plans) |
+
+### Hai phương án cho Vibe CMS
+
+**A. Tự làm (tái dùng code site đầu tiên):** bảng `cms_users` với id nội bộ `usr_…`, mật khẩu PBKDF2, phiên trong KV
+`<site>-session`, cookie `<site>_cms_session`, rate limiting binding, bootstrap owner bằng secret, People (owner thêm /
+khoá / đặt lại mật khẩu editor), đổi mật khẩu.
+
+**B. Cloudflare Access (Zero Trust) chắn `/admin` + `/api/cms`:** đăng nhập bằng email + mã một lần (OTP 6 số, hết hạn 10
+phút) — hoặc tài khoản Cloudflare. Access đặt JWT vào header `Cf-Access-Jwt-Assertion`; gói kiểm chữ ký RS256 bằng JWKS
+`https://<team>.cloudflareaccess.com/cdn-cgi/access/certs` + `aud` (tag của Access app) + `iss` + hạn (code kiểm JWT của
+site đầu tiên dùng lại được). Vai trò owner / editor lưu ở D1: email → id nội bộ `usr_…` → role. Không lưu mật khẩu.
+
+| | A. Tự làm | B. Cloudflare Access |
+|---|---|---|
+| Viết + test | **18–28 h**: bảng users + migration, login / logout / me / đổi mật khẩu, People (4 thao tác), bootstrap, limiter, cookie + CSRF, identity cho API, test (kể cả local D1 + KV + limiter) | **10–16 h**: kiểm JWT (port ~150 dòng) + JWKS cache, bảng users email → id → role, People (thêm email + role, gỡ), trang "chưa được cấp quyền", tài liệu setup, test với JWKS giả |
+| Bảo trì | 1–2 h / tháng / 3 site: quên mật khẩu, bị khoá, admin mất quyền → SonLe can thiệp D1 | ~0,5 h / tháng: thêm / bớt email trong policy; Cloudflare lo đăng nhập, chống dò, phiên |
+| An toàn | Giữ hash mật khẩu (PBKDF2 100k — thấp hơn khuyến nghị OWASP 600k vì Workers giới hạn 100k); chống dò bằng limiter tự viết; lỗi code = lỗ hổng của mình | Không có mật khẩu để lộ; đăng nhập / chống dò / phiên do Cloudflare; gói chỉ kiểm chữ ký. Rủi ro còn lại: hộp thư email của người dùng; kiểm JWT sai (có test) |
+| Chi phí | 0 đ thêm; nhưng **~16 ms CPU / lần đăng nhập > 10 ms của Workers Free** → đăng nhập có thể lỗi 1102 nếu site ở gói Free (cần Paid 5 USD / tháng / account hoặc giảm vòng băm — không nên) | Zero Trust Free: 0 đ; mỗi người đã đăng nhập chiếm 1 seat (tính chung cả account, 3 site × 2–3 người ≈ 9 seat); **số seat của gói Free: cần xác nhận trên trang giá / dashboard** (hay được ghi là 50, tài liệu tra hôm nay không nêu con số). Đăng ký Zero Trust cần nhập phương thức thanh toán dù chọn Free. Seat không tự nhả (bật hết hạn seat 1–12 tháng) |
+| Trải nghiệm chủ tiệm | Nhớ mật khẩu ≥ 12 ký tự; quên → gọi SonLe; đăng nhập 1 bước; phiên 30 ngày | Không mật khẩu: nhập email → mở mail lấy mã 6 số (mất ~30 s trên điện thoại, phải chuyển app mail); phiên tới 1 tháng (cấu hình); trang đăng nhập của Cloudflare (mang tên team, không phải thương hiệu tiệm) |
+| Chủ tiệm tự thêm nhân viên | **Có** (màn People, mật khẩu tạm) | **B1 (khuyên):** không — SonLe thêm email vào policy (1 phút; hoặc lệnh setup gọi API với token ngắn hạn), chủ tiệm chỉ chọn role trong CMS. **B2:** policy cho mọi email qua OTP, CMS tự chặn email không có trong D1 → chủ tiệm tự thêm, nhưng người lạ cũng lấy được mã và chiếm seat |
+| SonLe làm khi cài site mới | Secret bootstrap + rate limiting binding + KV; lần đầu đăng nhập tạo owner | Bật Access cho workers.dev / domain (1 click hoặc API), policy email owner + nhân viên, chép AUD + team domain vào vars; owner được tạo sẵn trong D1 bằng lệnh setup. Domain riêng phải nằm trên Cloudflare (Innovate hiện vẫn dùng workers.dev, được) |
+| Chạy local / dev | Đăng nhập thật được ở local (D1 + KV giả lập) | Không có Access ở local → dùng danh tính dev (`import.meta.env.DEV` + localhost, như P5); test bằng JWT ký bằng khoá test + JWKS giả |
+
+### Khuyến nghị
+
+**B1 — Cloudflare Access + vai trò trong D1**, vì: ít code phải giữ hơn (không mật khẩu, không phiên, không limiter tự
+viết), an toàn hơn, không vướng giới hạn 10 ms CPU của gói Free, và mỗi tiệm chỉ 1–2 người nên việc thêm nhân viên hiếm
+(SonLe làm trong 1 phút). A chỉ nên chọn nếu chủ tiệm bắt buộc phải tự thêm nhân viên mà không qua SonLe, hoặc không muốn
+đăng nhập bằng mã qua email. CMS site đầu tiên giữ nguyên cách hiện tại tới P21.
+
+Cần SonLe trả lời trước khi làm P6: (1) chọn A / B1 / B2; (2) các site đang ở Workers Free hay Paid; (3) account đã có
+Zero Trust org (team domain) — dùng chung cho mọi site?; (4) số seat thực tế của gói Zero Trust đang có.
+
+---
+
 ## G. Rủi ro chung
 
 1. Form sinh từ schema kém hơn màn làm riêng → giữ khả năng plugin có màn riêng.
