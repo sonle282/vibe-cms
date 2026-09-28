@@ -1,0 +1,8 @@
+// Local only (wrangler dev). No account, no routes, no bindings — P1 creates no Cloudflare resources and never deploys.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "vibe-cms-demo-site",
+  "compatibility_date": "2026-07-31",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false
+}

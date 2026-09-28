@@ -1,0 +1,12 @@
+---
+import Base from "../layouts/Base.astro";
+import site from "../data/site.json";
+---
+<Base title="Home">
+  <h1>{site.hero.title}</h1>
+  <p>{site.hero.text}</p>
+  <p>{site.tagline}</p>
+  <h2>Hours</h2>
+  <ul>{site.hours.map((row) => <li>{row.label}: {"closed" in row && row.closed ? "Closed" : `${row.open} – ${row.close}`}</li>)}</ul>
+  <p>Call {site.phone}</p>
+</Base>

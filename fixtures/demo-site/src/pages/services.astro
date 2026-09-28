@@ -1,0 +1,8 @@
+---
+import Base from "../layouts/Base.astro";
+import services from "../data/services.json";
+---
+<Base title="Services">
+  <h1>Services</h1>
+  <ul>{services.map((service) => <li>{service.name} — {service.price}{service.extras.length ? ` (+ ${service.extras.join(", ")})` : ""}</li>)}</ul>
+</Base>

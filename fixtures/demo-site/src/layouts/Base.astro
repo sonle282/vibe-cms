@@ -1,0 +1,16 @@
+---
+import site from "../data/site.json";
+const { title } = Astro.props as { title: string };
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} · {site.name}</title>
+  </head>
+  <body style="font: 16px/1.5 system-ui, sans-serif; margin: 40px;">
+    <nav><a href="/">Home</a> · <a href="/services/">Services</a></nav>
+    <slot />
+  </body>
+</html>

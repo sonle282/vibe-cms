@@ -1,0 +1,14 @@
+{
+  "name": "Demo Salon",
+  "phone": "(555) 010-0000",
+  "tagline": "A made-up salon for testing Vibe CMS.",
+  "hours": [
+    { "days": [1, 2, 3, 4, 5], "label": "Monday – Friday", "open": "09:00", "close": "19:00" },
+    { "days": [6], "label": "Saturday", "open": "09:00", "close": "17:00" },
+    { "days": [0], "label": "Sunday", "closed": true }
+  ],
+  "hero": {
+    "title": "Welcome to Demo Salon",
+    "text": "Everything on this site is invented."
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "name": "@sonle282/vibe-cms",
+  "version": "0.1.0",
+  "description": "Vibe CMS — an Astro integration that adds a content editor (/admin) to a site, driven by one cms.config.ts.",
+  "license": "UNLICENSED",
+  "private": false,
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sonle282/vibe-cms.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./config": {
+      "types": "./dist/config/index.d.ts",
+      "default": "./dist/config/index.js"
+    },
+    "./routes/*": "./src/routes/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src/routes",
+    "src/virtual.d.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "workspaces": [
+    "fixtures/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test \"test/*.test.mjs\"",
+    "demo:build": "npm run build && npm run build -w fixtures/demo-site",
+    "demo:smoke": "node scripts/smoke.mjs",
+    "check": "npm run typecheck && npm test && npm run demo:build && npm run check -w fixtures/demo-site && npm run demo:smoke"
+  },
+  "peerDependencies": {
+    "astro": "^7.2.1",
+    "vite": ">=6"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "astro": "^7.2.1",
+    "typescript": "^5.9.3"
+  }
+}

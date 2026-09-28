@@ -1,0 +1,26 @@
+# Vibe CMS CI: typecheck, unit tests, build + check + local smoke of the demo site (wrangler dev --local).
+# Nothing is published or deployed; no secrets are used. Private repo: ~3–4 runner minutes per run (see docs/TRACKER.md).
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check
+        env:
+          WRANGLER_SEND_METRICS: "false"

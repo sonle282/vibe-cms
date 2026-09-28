@@ -1,0 +1,5 @@
+[
+  { "id": "classic-manicure", "name": "Classic Manicure", "price": "$20", "category": "Nails", "extras": ["Gel polish"] },
+  { "id": "spa-pedicure", "name": "Spa Pedicure", "price": "$35", "category": "Spa", "extras": ["Hot stones", "Paraffin"] },
+  { "id": "nail-art", "name": "Nail Art", "price": "$5+", "category": "Nails", "extras": [] }
+]

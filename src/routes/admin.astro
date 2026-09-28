@@ -1,0 +1,22 @@
+---
+// Vibe CMS · P1 placeholder: proves the integration loaded the site's cms.config.ts and runs on demand (not prerendered).
+import config from "virtual:vibe-cms/config";
+
+export const prerender = false;
+const files = config.files.length;
+const collections = config.collections.length;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Vibe CMS · {config.site.name}</title>
+  </head>
+  <body style="font: 16px/1.5 system-ui, sans-serif; margin: 48px; color: #1d1d1f;">
+    <h1 style="font-size: 22px; font-weight: 600;">Vibe CMS — config OK: {files} files, {collections} collections</h1>
+    <p>{config.site.name} · {config.repo.owner}/{config.repo.name} → {config.repo.branch}</p>
+    <p style="color: #6e6e73;">The editor arrives in later steps (P7). This page only confirms the setup.</p>
+  </body>
+</html>
