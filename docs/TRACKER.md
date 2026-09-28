@@ -7,7 +7,7 @@
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
 | **P1** | Khung Astro integration (`vibeCms()`, nạp + kiểm `cms.config.ts`, `/admin` tạm, `/api/cms/health`) + `fixtures/demo-site` + test + CI | 16–24 | ✅ Xong (duyệt 2026-09-28; ec5cd02 + 44a8f57, CI 36372154008) |
-| P2 | Kiểm config đầy đủ + kiểm nội dung lúc build + workflow release + `imageService` | 12–18 | ⏳ |
+| **P2** | Kiểm config đầy đủ + kiểm nội dung lúc build + workflow release + `imageService` | 12–18 | 🔄 đang làm (chờ review) |
 | P3 | Store: nguồn bundled + nháp KV + draft index D1; writer JSON giữ định dạng | 16–24 | ⏳ |
 | P4 | Ô khoá theo vai trò ở server (PUT + publish) + audit `denied` | 8–12 | ⏳ |
 | P5 | API chung files / collections + publish GitHub + audit + header version (F-16) | 24–34 | ⏳ |
@@ -31,7 +31,10 @@
 
 ## Ghi chú
 
-- **CI (repo private):** mỗi lần chạy ước tính **3–4 phút** runner Linux (npm ci ~1 phút, build gói + demo ~1 phút, smoke
-  wrangler dev ~30–60 giây). Gói GitHub Free cho repo private: 2.000 phút / tháng → ~500 lần chạy.
-- **P1 — adapter Cloudflare** tự thêm binding `SESSION` (KV) và `IMAGES` vào `wrangler.json` sinh ra (không id); chạy
-  local thì wrangler giả lập. P6 sẽ khai rõ KV `<site>-session`.
+- **CI:** repo công khai (2026-09-28) → phút GitHub Actions không tính phí. Thực tế **~1 phút / lần** (job `check` 33 giây
+  ở run 36372154008; job `secrets` quét gitleaks toàn lịch sử vài giây). Nếu repo về private: 2.000 phút / tháng ≈ 1.500+
+  lần chạy.
+- **Phân phối:** GitHub Release `vX.Y.Z` + `vibe-cms-X.Y.Z.tgz` (workflow `release.yml` khi push tag), site cài bằng URL
+  công khai — không token. Chưa tạo tag / release: bản đầu tiên khi lõi đủ dùng (reviewer báo).
+- **Binding adapter:** `IMAGES` không dùng (`imageService: "compile"`, smoke kiểm `wrangler.json` không có `images`);
+  `SESSION` (KV) để P6 khai `<site>-session`.

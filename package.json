@@ -1,6 +1,6 @@
 {
   "name": "@sonle282/vibe-cms",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Vibe CMS — an Astro integration that adds a content editor (/admin) to a site, driven by one cms.config.ts.",
   "license": "UNLICENSED",
   "private": false,
@@ -8,9 +8,6 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sonle282/vibe-cms.git"
-  },
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
   },
   "exports": {
     ".": {
@@ -28,6 +25,7 @@
     "dist",
     "src/routes",
     "src/virtual.d.ts",
+    "docs/CHANGELOG.md",
     "README.md",
     "LICENSE"
   ],
@@ -43,7 +41,9 @@
     "test": "npm run build && node --test \"test/*.test.mjs\"",
     "demo:build": "npm run build && npm run build -w fixtures/demo-site",
     "demo:smoke": "node scripts/smoke.mjs",
-    "check": "npm run typecheck && npm test && npm run demo:build && npm run check -w fixtures/demo-site && npm run demo:smoke"
+    "check": "npm run typecheck && npm test && npm run pack:check && npm run demo:build && npm run check -w fixtures/demo-site && npm run demo:smoke",
+    "prepack": "npm run build",
+    "pack:check": "node scripts/pack-check.mjs"
   },
   "peerDependencies": {
     "astro": "^7.2.1",
@@ -53,5 +53,8 @@
     "@types/node": "^22",
     "astro": "^7.2.1",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
   }
 }

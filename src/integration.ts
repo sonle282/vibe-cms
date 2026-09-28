@@ -1,14 +1,15 @@
 /**
- * Vibe CMS — the Astro integration. P1: load + check the site's cms.config.ts, expose it to the server routes as a
- * virtual module, and add /admin (placeholder) and /api/cms/health. The site's public pages keep prerendering; only the
+ * Vibe CMS — the Astro integration. Loads the site's cms.config.ts and checks it together with the content files it
+ * declares (any error stops the build; warnings are printed), exposes the config to the server routes as a virtual
+ * module, and adds /admin (placeholder) and /api/cms/health. The site's public pages keep prerendering; only the
  * injected routes run on demand (the site uses @astrojs/cloudflare).
  */
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AstroIntegration } from "astro";
 import { normalizePath, type Plugin } from "vite";
-import { countConfig } from "./config/index.js";
-import { loadCmsConfig } from "./load-config.js";
+import { countConfig, formatWarnings } from "./config/index.js";
+import { checkSite } from "./load-config.js";
 
 export type VibeCmsOptions = {
   /** Path of the site's config, relative to the project root. Default: "cms.config.ts". */
@@ -29,9 +30,9 @@ export const vibeCms = (options: VibeCmsOptions = {}): AstroIntegration => ({
   hooks: {
     "astro:config:setup": async ({ config, injectRoute, updateConfig, logger }) => {
       const file = resolve(fileURLToPath(config.root), options.configFile ?? "cms.config.ts");
-      const cms = await loadCmsConfig(file);
+      const cms = await checkSite(file, { onWarnings: (warnings, where) => logger.warn(formatWarnings(where, warnings)) });
       const { files, collections } = countConfig(cms);
-      logger.info(`config OK: ${files} files, ${collections} collections (${cms.repo.owner}/${cms.repo.name} → ${cms.repo.branch})`);
+      logger.info(`config OK: ${files} files, ${collections} collections, content checked (${cms.repo.owner}/${cms.repo.name} → ${cms.repo.branch})`);
       updateConfig({ vite: { plugins: [configModule(file)] } });
       injectRoute({ pattern: "/admin", entrypoint: "@sonle282/vibe-cms/routes/admin.astro", prerender: false });
       injectRoute({ pattern: "/api/cms/health", entrypoint: "@sonle282/vibe-cms/routes/health.ts", prerender: false });

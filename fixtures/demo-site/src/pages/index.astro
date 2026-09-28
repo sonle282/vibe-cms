@@ -8,5 +8,6 @@ import site from "../data/site.json";
   <p>{site.tagline}</p>
   <h2>Hours</h2>
   <ul>{site.hours.map((row) => <li>{row.label}: {"closed" in row && row.closed ? "Closed" : `${row.open} – ${row.close}`}</li>)}</ul>
-  <p>Call {site.phone}</p>
+  <p>Call {site.phone} · <a href={`mailto:${site.email}`}>{site.email}</a></p>
+  <p>{site.address.street}, {site.address.city}</p>
 </Base>

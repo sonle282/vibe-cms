@@ -2,27 +2,28 @@
 
 An Astro integration that adds a content editor to a site: `/admin` for the salon owner and staff, `/api/cms/*` for
 saving and publishing (commits to the site's GitHub repo). Everything is described by one file, `cms.config.ts`.
-Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). Private — see [LICENSE](LICENSE).
+Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
+open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.1.0 · P1 skeleton.** `/admin` is a placeholder and `/api/cms/health` reports the config; the editor,
-> saving and publishing come in P2–P11 ([docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)).
+> Status: **0.2.0 · P2.** The build checks `cms.config.ts` and the content files it declares; `/admin` is still a
+> placeholder and `/api/cms/health` reports the config. The editor, saving and publishing come in P3–P11
+> ([docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)).
 
-## Install in a site (3 steps)
+## Install in a site (3 steps, no token)
 
-The package lives on GitHub Packages. The site needs an `.npmrc` that points the `@sonle282` scope there and a
-read-only token (`read:packages`) in the environment — never commit the token:
-
-```ini
-# .npmrc (commit this; the token comes from the environment)
-@sonle282:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
-```
+Every version is a GitHub Release with a `vibe-cms-X.Y.Z.tgz` file. A site installs it by its public URL, pinned to
+that version — no `.npmrc`, no `NODE_AUTH_TOKEN`, on your machine or in Cloudflare Workers Builds.
+(No release is published yet: the first one comes when the core is usable.)
 
 1. **Install**
 
    ```bash
-   npm i @sonle282/vibe-cms @astrojs/cloudflare
+   npm i https://github.com/sonle282/vibe-cms/releases/download/v0.2.0/vibe-cms-0.2.0.tgz @astrojs/cloudflare
    ```
+
+   `package.json` then holds
+   `"@sonle282/vibe-cms": "https://github.com/sonle282/vibe-cms/releases/download/v0.2.0/vibe-cms-0.2.0.tgz"`.
+   To upgrade, change the URL to the new version (read the CHANGELOG's "Site action" first) and run `npm install`.
 
 2. **Add it to `astro.config.mjs`** (public pages keep prerendering; only the CMS routes run on demand):
 
@@ -33,7 +34,8 @@ read-only token (`read:packages`) in the environment — never commit the token:
 
    export default defineConfig({
      output: "static",
-     adapter: cloudflare(),
+     // imageService: images are processed at build time and served as-is — no Cloudflare IMAGES binding.
+     adapter: cloudflare({ imageService: "compile" }),
      integrations: [vibeCms()],
    });
    ```
@@ -51,30 +53,63 @@ read-only token (`read:packages`) in the environment — never commit the token:
        key: "site", label: "Salon info", path: "src/data/site.json", format: "json",
        fields: {
          phone: f.text({ label: "Phone", locked: "owner" }),   // editors see it, only the owner changes it
+         email: f.text({ label: "Email", locked: "owner" }),
          hours: f.hours({ label: "Opening hours", locked: "owner" }),
        },
      }],
      collections: [{
        key: "services", label: "Services", itemLabel: "Service",
        store: { kind: "json-array", path: "src/data/services.json", idField: "id" },
-       fields: { name: f.text({ label: "Name" }), price: f.text({ label: "Price", locked: "owner" }) },
+       fields: { name: f.text({ label: "Name", required: true }), price: f.text({ label: "Price", locked: "owner" }) },
      }],
    });
    ```
 
-Then `npm run build`: the log shows `config OK: N files, M collections`, and `/admin` + `/api/cms/health` answer in
-`wrangler dev`. A mistake in `cms.config.ts` stops the build and names the place, e.g.
-`files[0].path: required — the content file, e.g. "src/data/site.json"`.
+Then `npm run build`: the log shows `config OK: N files, M collections, content checked`, and `/admin` +
+`/api/cms/health` answer in `wrangler dev`.
 
-Field types (P1): `f.text`, `f.richText`, `f.image`, `f.select`, `f.hours`, `f.object`, `f.list` (with `ordered`),
-`f.reference`; any field may be `locked: "owner"`.
+### Cloudflare bindings the adapter adds
+
+- **`SESSION` (KV)** — Astro sessions. Leave it for now; P6 declares it as the site's own KV `<site>-session`.
+- **`IMAGES`** — only with the adapter's default `imageService`. Vibe CMS sites set `imageService: "compile"` (or
+  `"passthrough"`), so the generated `wrangler.json` has **no** `IMAGES` binding (the demo's smoke test checks this).
+
+## What the build checks
+
+All problems are listed at once, each with its place and a fix; warnings are printed but never stop the build.
+
+| Area | Rules |
+|---|---|
+| Top level | `configVersion` is 1; no unknown settings (typos); `roles` if given is exactly `["owner", "editor"]` |
+| `site` | `name` required; `url` a full `http(s)` address; `timezone` a real IANA zone |
+| `repo` | `owner` a GitHub user / organisation name; `name` a repository name (no `.git`); `branch` required and a valid git branch name (no space, `..`, `~^:?*[\`, `@{`, `.lock`, empty parts) |
+| Keys | file / collection keys: lowercase `a-z0-9-`, unique across files **and** collections; field keys: identifiers, dotted keys allowed (`"about.title"`) but not clashing with a field at the same level; section keys unique; a field in one section only (a field in no section = warning) |
+| Paths | relative, `/` separators, no `..`, not absolute, inside `src/data/` or `src/content/` (add more with `contentDirs`); one entry per path; files are `.json` — **YAML is not supported**; `preview` starts with `/` and its `{placeholders}` are fields of the entry |
+| Collections | `store.kind` is `"json-array"` (needs `path` to a `.json` file + `idField`) or `"markdown-dir"` (needs `dir` + `slugField`); the id field, if declared, is text; `order.by` is a field; `status.live` ≠ `status.draft` and both are options of a `status` select |
+| Every field | known type; `label` required; no unknown options; `required` is true / false; `locked` only `"owner"` |
+| Per type | `text.maxLength` ≥ 1; `select.options` non-empty and unique; `list.of` required (checked too), `min` ≤ `max`; `object.fields` non-empty; `reference.to` names an existing collection (`ordered` without `multiple` = warning); `hours` takes no options; object / list nesting at most **4** levels |
+| Content | every declared file / folder exists and parses (JSON; Markdown front matter); json-array files hold a list of records with unique ids; each value matches its field — text is a string (`maxLength`), select is one of the options, hours rows are `{ days: [0–6], open: "HH:MM", close: "HH:MM" }` or `{ days, closed: true }` (each day once, close after open), lists respect `min` / `max`, references point to existing ids, images are a path or `{ src, alt }`; missing **required** values are errors; properties the config does not declare are **warnings** |
+
+Example — a real build of the demo site with a price written as a number, an unknown category and an extra property
+(`astro build` exits with code 1):
+
+```text
+[WARN] Vibe CMS: 1 warning in the content (the build continues):
+  - src/data/services.json[2] ("nail-art").popular: is not in cms.config (editors will not see it) → declare a field for it, or ignore if the site sets it in code
+[ERROR] Vibe CMS: cms.config.ts does not match the content (2 problems):
+  - src/data/services.json[0] ("classic-manicure").price: expected text, got number 20 → write it in quotes: "20"
+  - src/data/services.json[1] ("spa-pedicure").category: text "Hair" is not one of the options → use "Nails", "Spa"
+```
 
 ## Develop this package
 
 ```bash
 npm ci
-npm run check    # typecheck + unit tests + build demo site + astro check + local smoke (wrangler dev --local)
+npm run check    # typecheck + unit tests + pack contents + build demo site + astro check + local smoke (wrangler dev --local)
 ```
 
 `fixtures/demo-site` is an invented salon used by every test — tests never read another site's data. It runs locally
 only: no Cloudflare account, no resources, no deploy.
+
+Release (after review only): set `version` in `package.json`, add its CHANGELOG section, push the tag `vX.Y.Z` —
+`.github/workflows/release.yml` checks everything and publishes the GitHub Release with the `.tgz`.

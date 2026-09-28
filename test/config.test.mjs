@@ -1,4 +1,4 @@
-// P1: loading and checking a site's cms.config.ts (runs against the built dist/).
+// Loading a site's cms.config.ts from disk and stopping with one clear message (runs against the built dist/).
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,10 +15,10 @@ const withConfig = async (source, run) => {
   try { const file = join(dir, "cms.config.ts"); writeFileSync(file, source); return await run(file); } finally { rmSync(dir, { recursive: true, force: true }); }
 };
 
-test("the demo site's config loads: 1 file, 1 collection, locked phone + price", async () => {
+test("the demo site's config loads: 1 file, 1 collection, locked phone / email / address / hours + price", async () => {
   const config = await loadCmsConfig(demo);
   assert.deepEqual(countConfig(config), { files: 1, collections: 1 });
-  assert.equal(config.files[0].fields.phone.locked, "owner");
+  for (const name of ["phone", "email", "address", "hours"]) assert.equal(config.files[0].fields[name].locked, "owner", name);
   assert.equal(config.collections[0].fields.price.locked, "owner");
   assert.equal(config.repo.branch, "main");
 });
@@ -29,8 +29,8 @@ export default defineCmsConfig({ configVersion: 1, site: { name: "X", url: "http
   files: [{ key: "site", label: "Salon info", format: "json", fields: { phone: f.text({ label: "Phone" }) } }], collections: [] });`, async (file) => {
     await assert.rejects(loadCmsConfig(file), (error) => {
       assert.ok(error instanceof CmsConfigError, "a CmsConfigError");
-      assert.match(error.message, /cms\.config\.ts is not valid/);
-      assert.match(error.message, /files\[0\]\.path: required — the content file, e\.g\. "src\/data\/site\.json"/);
+      assert.match(error.message, /cms\.config\.ts is not valid \(1 problem\):/);
+      assert.match(error.message, /files\[0\]\.path: required — the content file → e\.g\. "src\/data\/site\.json"/);
       return true;
     });
   });
@@ -40,7 +40,7 @@ test("other mistakes are all listed at once", async () => {
   await withConfig(`export default { configVersion: 2, site: {}, repo: { owner: "o" }, files: [{ key: "a", label: "A", path: "a.yaml", fields: { x: { type: "colour", label: "X" }, y: { type: "text" } } }],
   collections: [{ key: "c", label: "C", store: { kind: "json-array" }, fields: { n: { type: "text", label: "N", locked: "editor" } } }] };`, async (file) => {
     await assert.rejects(loadCmsConfig(file), (error) => {
-      for (const part of ["configVersion: must be 1", "site: required", "repo: required", 'files[0].path: must be a .json file', "files[0].fields.x: unknown field type", "files[0].fields.y.label: required", "collections[0].itemLabel: required", 'collections[0].store: "json-array" needs path and idField', 'collections[0].fields.n.locked: only "owner" is allowed']) assert.ok(error.message.includes(part), `mentions ${part}\n${error.message}`);
+      for (const part of ["configVersion: must be 1", "site.name: required", "site.url: must be a full http(s) address", "repo.name: required", "repo.branch: required", 'files[0].path: "a.yaml" must be inside "src/data/" or "src/content/"', 'files[0].fields.x.type: unknown field type "colour"', "files[0].fields.y.label: required", "collections[0].itemLabel: required", "collections[0].store.path: required", 'collections[0].store.idField: required for "json-array"', 'collections[0].fields.n.locked: only "owner" is allowed']) assert.ok(error.message.includes(part), `mentions ${part}\n${error.message}`);
       return true;
     });
   });

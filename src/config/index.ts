@@ -1,5 +1,5 @@
 /**
- * Vibe CMS — the site's cms.config.ts vocabulary (P1: the types; full validation is P2).
+ * Vibe CMS — the site's cms.config.ts vocabulary. The build checks it with checkCmsConfig (./validate.ts).
  *
  * A site describes its editable content once: which files hold single records (a page, the salon info) and which hold
  * lists of records (services, products), what every field is, and which fields only the owner may change.
@@ -21,6 +21,7 @@ export type TextField = Base & { type: "text"; maxLength?: number; multiline?: b
 export type RichTextField = Base & { type: "richText" };
 export type ImageField = Base & { type: "image"; alt?: boolean; mobile?: boolean };
 export type SelectField = Base & { type: "select"; options: readonly string[] };
+/** Content: [{ days: [1, 2, 3, 4, 5], label?, open: "09:00", close: "19:00" }, { days: [0], closed: true }] (0 = Sunday). */
 export type HoursField = Base & { type: "hours" };
 export type ObjectField = Base & { type: "object"; fields: Record<string, Field> };
 export type ListField = Base & { type: "list"; of: Field; ordered?: boolean; min?: number; max?: number; itemLabel?: string };
@@ -61,6 +62,8 @@ export type CmsConfig = {
   /** branch = the production branch the CMS commits to. */
   repo: { owner: string; name: string; branch: string };
   roles?: readonly ["owner", "editor"];
+  /** Extra folders that may hold content, added to the default src/data and src/content. */
+  contentDirs?: string[];
   files: CmsFile[];
   collections: CmsCollection[];
   media?: { bucketPrefix: string; maxBytes: number };
@@ -83,4 +86,5 @@ export const f = {
   reference: (options: Options<ReferenceField>): ReferenceField => ({ type: "reference", ...options }),
 };
 
-export { assertCmsConfig, CmsConfigError, countConfig } from "./validate.js";
+export { assertCmsConfig, branchProblem, checkCmsConfig, CmsConfigError, countConfig, DEFAULT_CONTENT_DIRS, formatProblem, formatWarnings, MAX_DEPTH, pathProblem } from "./validate.js";
+export type { CheckResult, Problem } from "./validate.js";

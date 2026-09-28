@@ -9,6 +9,10 @@ const site = fileURLToPath(new URL("../fixtures/demo-site/", import.meta.url));
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 for (const page of ["dist/client/index.html", "dist/client/services/index.html", "dist/server/wrangler.json"]) assert.ok(existsSync(site + page), `${page} exists (run npm run demo:build first)`);
 assert.ok(!existsSync(site + "dist/client/admin/index.html"), "/admin is not prerendered");
+// No Cloudflare IMAGES binding (imageService: "compile"); SESSION (KV) stays until P6 names it <site>-session.
+const worker = JSON.parse(readFileSync(site + "dist/server/wrangler.json", "utf8"));
+assert.equal(worker.images, undefined, "the generated wrangler.json has no IMAGES binding");
+assert.equal(worker.previews?.images, undefined, "no IMAGES binding for previews either");
 
 const port = 8700 + Math.floor(Math.random() * 200);
 const windows = process.platform === "win32";

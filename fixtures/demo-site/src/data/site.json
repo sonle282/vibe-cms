@@ -1,6 +1,8 @@
 {
   "name": "Demo Salon",
   "phone": "(555) 010-0000",
+  "email": "hello@demo.example",
+  "address": { "street": "1 Example Street", "city": "Sampletown" },
   "tagline": "A made-up salon for testing Vibe CMS.",
   "hours": [
     { "days": [1, 2, 3, 4, 5], "label": "Monday – Friday", "open": "09:00", "close": "19:00" },

@@ -6,6 +6,7 @@ import vibeCms from "@sonle282/vibe-cms";
 export default defineConfig({
   site: "https://demo.example",
   output: "static",
-  adapter: cloudflare({ configPath: "./wrangler.jsonc" }),
+  // Images: processed at build time, served as-is at run time — no Cloudflare IMAGES binding.
+  adapter: cloudflare({ configPath: "./wrangler.jsonc", imageService: "compile" }),
   integrations: [vibeCms()],
 });

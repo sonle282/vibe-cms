@@ -1,0 +1,54 @@
+# Vibe CMS release: pushing a tag vX.Y.Z (equal to package.json "version") runs every check, packs the package and
+# publishes a GitHub Release with vibe-cms-X.Y.Z.tgz + its sha256. Sites install from the public release URL — no token:
+#   "@sonle282/vibe-cms": "https://github.com/sonle282/vibe-cms/releases/download/vX.Y.Z/vibe-cms-X.Y.Z.tgz"
+# Nothing goes to npm or GitHub Packages. A tag is only pushed after the reviewer approves the release.
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${version}"; exit 1; fi
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+      - name: CHANGELOG has this version
+        run: |
+          awk -v v="${VERSION}" '$0 ~ "^## " v " " {found=1; next} /^## / {if (found) exit} found' docs/CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then echo "::error::docs/CHANGELOG.md has no '## ${VERSION} …' section"; exit 1; fi
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check
+        env:
+          WRANGLER_SEND_METRICS: "false"
+      - name: Pack
+        run: |
+          npm pack --silent
+          mv "sonle282-vibe-cms-${VERSION}.tgz" "vibe-cms-${VERSION}.tgz"
+          sha256sum "vibe-cms-${VERSION}.tgz" > "vibe-cms-${VERSION}.tgz.sha256"
+          cat "vibe-cms-${VERSION}.tgz.sha256"
+          {
+            echo
+            echo "Install (pinned, no token):"
+            echo
+            echo '```bash'
+            echo "npm i https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/vibe-cms-${VERSION}.tgz"
+            echo '```'
+          } >> release-notes.md
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" "vibe-cms-${VERSION}.tgz" "vibe-cms-${VERSION}.tgz.sha256" --verify-tag --title "${GITHUB_REF_NAME}" --notes-file release-notes.md
