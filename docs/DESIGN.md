@@ -153,8 +153,8 @@ có `Origin` của chính site (không có hoặc lạ → 403 `origin_forbidden
 8. GitHub: blob → tree (base = HEAD) → commit (cha = HEAD, tác giả "Vibe CMS" + email noreply, message = nhãn + id
    người dùng nội bộ) → cập nhật ref **không force**. Nhánh đã có commit mới → đọc lại từ bước 3, tối đa 3 lần, rồi
    502 `branch_moving`.
-   Đối chiếu với publisher đang chạy thật của Mr Spa (P5b): cùng endpoint / header / base64 / `force: false`; chỉ 422
-   là "nhánh đã đổi" (409 là lỗi); đọc file bằng media type raw (≤ 100 MB, giữ BOM — Mr Spa đọc JSON base64 ≤ 1 MB);
+   Đối chiếu với publisher đang chạy thật của site đầu tiên (P5b): cùng endpoint / header / base64 / `force: false`; chỉ 422
+   là "nhánh đã đổi" (409 là lỗi); đọc file bằng media type raw (≤ 100 MB, giữ BOM — publisher kia đọc JSON base64 ≤ 1 MB);
    GitHub giới hạn tốc độ (403 / 429 + `retry-after` / `x-ratelimit-*`) → chờ 1 lần nếu ≤ 10 giây, không thì 503
    `github_rate_limited` + `retryAfter`.
 9. Audit **`succeeded`** (sha commit, số lần thử, cảnh báo); xoá nháp của người publish; trả `expectedLiveVersion`
