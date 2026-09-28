@@ -3,14 +3,33 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2022", "DOM"],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
     "strict": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "types": ["node"],
-    "noEmit": true
+    "types": [
+      "node"
+    ],
+    "noEmit": true,
+    "paths": {
+      "@sonle282/vibe-cms/api": [
+        "./src/api/index.ts"
+      ],
+      "@sonle282/vibe-cms/store": [
+        "./src/store/index.ts"
+      ]
+    }
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "fixtures"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "fixtures"
+  ]
 }

@@ -14,7 +14,8 @@ const worker = JSON.parse(readFileSync(site + "dist/server/wrangler.json", "utf8
 assert.equal(worker.images, undefined, "the generated wrangler.json has no IMAGES binding");
 assert.equal(worker.previews?.images, undefined, "no IMAGES binding for previews either");
 
-const { base, stop } = await startWranglerDev({ cwd: site, config: "dist/server/wrangler.json" });
+// VIBE_CMS_DEV_USER is set on purpose: a production build must ignore it (the dev identity needs import.meta.env.DEV).
+const { base, stop } = await startWranglerDev({ cwd: site, config: "dist/server/wrangler.json", args: ["--var", "VIBE_CMS_DEV_USER:usr_dev:owner"] });
 try {
   const admin = await fetch(`${base}/admin`);
   const html = await admin.text();
@@ -26,8 +27,17 @@ try {
   assert.equal(health.status, 200);
   assert.deepEqual(body, { ok: true, package: pkg.name, version: pkg.version, site: "Demo Salon", files: 1, collections: 1, sources: 2 });
 
+  // The CMS API is closed until sign-in exists (P6) — even with the dev variable set, because this is a production build.
+  for (const [method, path] of [["GET", "/api/cms/content"], ["GET", "/api/cms/files/site"], ["POST", "/api/cms/publish"]]) {
+    const response = await fetch(`${base}${path}`, { method, headers: { origin: base }, ...(method === "POST" ? { body: JSON.stringify({ resources: ["file:site"] }) } : {}) });
+    const body = await response.json();
+    assert.equal(response.status, 503, `${method} ${path} → 503`);
+    assert.equal(body.error, "auth_not_configured");
+    if (method === "GET") assert.match(response.headers.get("x-cms-live-version") ?? "", /^sha256:[0-9a-f]{64}$/, "GET carries x-cms-live-version");
+  }
+
   const home = await fetch(`${base}/`);
   assert.match(await home.text(), /Welcome to Demo Salon/, "the prerendered home page is served");
-  console.log(`Smoke passed on ${base}: /admin 200 (config OK: 1 files, 1 collections), /api/cms/health ${JSON.stringify(body)}, / and /services/ prerendered.`);
+  console.log(`Smoke passed on ${base}: /admin 200 (config OK: 1 files, 1 collections), /api/cms/health ${JSON.stringify(body)}, / and /services/ prerendered; /api/cms/* → 503 auth_not_configured (dev variable ignored in a production build).`);
 } finally { stop(); }
 process.exit(0);

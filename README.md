@@ -5,7 +5,7 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.4.0 · P3b / P4.** The build checks `cms.config.ts` and the content it declares; the store (drafts in D1,
+> Status: **0.5.0 · P5.** The build checks `cms.config.ts` and the content it declares; the store (drafts in D1,
 > content built into the Worker) and the format-keeping writer are in place. `/admin` is still a
 > placeholder. The API, editor and publishing come in P4–P11
 > ([docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)).
@@ -120,11 +120,31 @@ not change them (at any depth), may add an item only with its locked fields empt
 an item whose locked fields hold a value. A refusal is a 403 `locked_field` with the field paths and labels
 ("Only the owner can change Price") and one audit row — never the values. Rules in detail: docs/DESIGN.md §C.1.
 
+## CMS API and publishing (P5)
+
+The integration adds `/api/cms/*` (list, read, save drafts, publish, live version — docs/DESIGN.md §C). Until sign-in
+exists (P6) every route answers **503 `auth_not_configured`**. Publishing makes **one commit** on `repo.branch` with only
+the changed files, written by the format-keeping writer; the branch is never force-updated.
+
+The site needs:
+
+- **D1 binding `CMS_DB`** — the site's `<site>-cms` database, with this package's `migrations/` applied.
+- **Secret `VIBE_GITHUB_TOKEN`** — a GitHub token that can write to the site's repository and nothing else:
+  1. GitHub → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate new token.
+  2. Resource owner: the account / organisation that owns the site's repository. Expiration: at most 1 year (put the
+     date in the calendar).
+  3. Repository access: **Only select repositories** → the site's repository only.
+  4. Permissions → Repository permissions → **Contents: Read and write** (Metadata: read-only is added automatically).
+     Nothing else.
+  5. In the site folder: `npx wrangler secret put VIBE_GITHUB_TOKEN` and paste it. Never put it in the repository,
+     `cms.config.ts` or `wrangler.jsonc`; for local development only, `.dev.vars` (git-ignored).
+  6. To rotate: create the new token, `wrangler secret put` it, then revoke the old one on GitHub.
+
 ## Develop this package
 
 ```bash
 npm ci
-npm run check    # typecheck + unit tests + pack contents + store on local D1 + build demo + astro check + local smoke
+npm run check    # typecheck + unit tests + pack contents + store on local D1 + API on local D1 with a fake GitHub + build demo + astro check + local smoke
 ```
 
 `fixtures/demo-site` is an invented salon used by every test — tests never read another site's data. It runs locally

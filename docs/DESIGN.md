@@ -123,36 +123,41 @@ toàn catalog khi publish, màn gộp nhiều bản ghi, kiểm `_redirects`.
 
 ## C. Hợp đồng API chung + luồng publish / audit
 
-Mọi route dưới `/api/cms`, JSON, `cache-control: no-store`; middleware: phiên hợp lệ + Origin cùng site cho mọi ghi.
+Đã làm ở P5 (`src/api`, route `/api/cms/[...path]`). Mọi route: JSON, `cache-control: no-store`, **cần danh tính**
+(chưa có đăng nhập P6 → 503 `auth_not_configured`); mọi GET có header `x-cms-live-version`; PUT / POST / DELETE phải
+có `Origin` của chính site (không có hoặc lạ → 403 `origin_forbidden`); body tối đa 2 MB (413). Lỗi luôn là
+`{ error: <mã>, message, … }`, không có token hay stack trace.
 
 | Method + route | Việc | Trả về / lỗi |
 |---|---|---|
-| `GET /api/cms/schema` | cấu hình cho admin (không có secret) | 200 |
-| `GET /api/cms/files/:key` | nguồn + nháp của người đang đăng nhập | `{ content, sourceContent, sourceVersion, hasDraft, stale }` + header `x-cms-live-version` |
-| `PUT /api/cms/files/:key` | lưu nháp (D1, kiểm revision nguyên tử) | 409 nguồn đã đổi; 422 sai schema; **403 `locked_field`** nếu editor đổi ô khoá |
-| `DELETE /api/cms/files/:key` | bỏ nháp | 200 |
-| `POST /api/cms/files/:key/publish` | luồng dưới | `{ commitSha, expectedLiveVersion }`; 409 / 422 / 403 / 502 |
-| `GET·PUT·DELETE /api/cms/collections/:key/:id` + `POST …/new` + `…/:id/publish` + `…/:id/archive` | như trên cho 1 bản ghi | archive = đổi `status` (không xoá) |
-| `GET /api/cms/live-version?resource=` | version đang live | |
-| `GET /api/cms/history?resource=` · `POST /api/cms/history/restore-draft` | lịch sử commit, khôi phục thành nháp | |
-| `POST /api/cms/assets` | upload ảnh → R2 staging | |
-| `GET·POST /api/cms/users` · `PATCH /api/cms/users/:id` | People — **chỉ owner** | 403 với editor |
-| `POST /api/auth/login` · `/logout` | phiên | |
+| `GET /content` | file + collection theo cms.config: nhãn, số bản ghi, nháp của tôi | 200 |
+| `GET /files/:key` | nội dung live + `version` + nháp của tôi (`stale` nếu nguồn đã đổi) | 200 · 404 |
+| `PUT /files/:key` | lưu nháp `{ content, expectedRevision, sourceVersion? }` | 400 `expected_revision_required` / `bad_json` · 422 `invalid_content` (P2) · 403 `locked_field` (P4) · 409 `draft_conflict` · 413 |
+| `DELETE /files/:key` | bỏ nháp của tôi | `{ deleted }` |
+| `GET /collections/:key` | danh sách bản ghi (id, nhãn, version, có nháp) + bản ghi mới chỉ có trong nháp | 200 · 404 |
+| `GET·PUT·DELETE /collections/:key/items/:id` | như trên cho 1 bản ghi; id mới = bản ghi mới (`expectedRevision: 0`) | như trên; id trong nội dung phải bằng id trên URL |
+| `POST /publish` | `{ resources: [...] }` (1–50 nháp của tôi) → **đúng 1 commit** | 200 `{ commitSha, files, expectedLiveVersion, warnings, attempts }` · 404 `no_draft` · 409 `source_changed` · 403 `locked_field` · 422 · 502 `branch_moving` / `github_*` · 503 |
+| `GET /live-version` | version của nội dung Worker đang phục vụ | `{ liveVersion, branch }` |
+| (sau) `/history`, `/assets`, `/users`, `/api/auth/*` | P6, P8, P10 | |
 
-**Luồng publish:**
-1. Kiểm phiên, Origin, rate limit → audit **`started`** (không ghi được → từ chối publish).
-2. Đọc nháp; so `sourceVersion` với nguồn trên `repo.branch` → khác = 409.
-3. Kiểm schema (kiểu, bắt buộc, min / max, reference tồn tại) + plugin `validate`.
-4. **Kiểm ô khoá**: so nháp với nguồn theo từng đường dẫn `locked`; editor đổi ô khoá → 403 `locked_field`
-   `{ fields: [...] }`, audit **`denied`** (resource + tên ô, không ghi giá trị).
-5. Writer vá JSON / frontmatter → chỉ dòng của ô đã đổi thay đổi.
-6. GitHub `PUT contents` với sha cũ; lỗi → audit `failed` + 502.
-7. Audit **`succeeded`** (resource, sourceVersion, commitSha); xoá nháp; trả `expectedLiveVersion`.
-8. Client theo dõi build + `live-version`; chỉ nhận response có `x-cms-live-version` khớp (không hiện chữ cũ sau Publish).
+**Luồng publish (P5):**
+1. Danh tính, Origin, kích thước body; đọc nháp của từng resource (thiếu → 404 `no_draft`).
+2. Audit **`started`** cho từng resource (không ghi được → 503, không publish).
+3. Đọc HEAD nhánh `repo.branch` + đúng các file liên quan (bytes chính xác).
+4. So `sourceVersion` của nháp với bản trên nhánh (file: sha256 cả file; bản ghi json-array: sha256 của bản ghi —
+   bản ghi khác đổi không chặn) → khác = 409 `source_changed`, audit `failed`, không commit.
+5. **Ô khoá** với vai trò hiện tại (P4) → 403 + audit `denied`.
+6. Kiểu theo schema (P2) → 422 + audit `failed`.
+7. Writer P3 ghi từng file (nhiều bản ghi của 1 file áp lần lượt); `rewroteWholeFile` → cảnh báo trong response +
+   audit.
+8. GitHub: blob → tree (base = HEAD) → commit (cha = HEAD, tác giả "Vibe CMS" + email noreply, message = nhãn + id
+   người dùng nội bộ) → cập nhật ref **không force**. Nhánh đã có commit mới → đọc lại từ bước 3, tối đa 3 lần, rồi
+   502 `branch_moving`.
+9. Audit **`succeeded`** (sha commit, số lần thử, cảnh báo); xoá nháp của người publish; trả `expectedLiveVersion`
+   (version live sau khi site build lại). Client theo dõi `live-version` (P8).
 
-Ô khoá áp cả ở `PUT` nháp (chặn sớm) — publish vẫn kiểm lại.
-
----
+Token GitHub: secret `VIBE_GITHUB_TOKEN` của site (fine-grained, chỉ 1 repo, Contents read/write — README). D1:
+binding `CMS_DB` (= `<site>-cms`, migrations của gói).
 
 ### C.1 Ô khoá — quy tắc cho editor (P4)
 
@@ -310,7 +315,7 @@ thay đổi lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tà
 | **P9** | Bridge: inject vào iframe cùng origin (dự phòng loader), `data-cms-*` + selector, SECTION_MAP, khung 2 cấp, không render khi gõ | preview demo chọn / hover / focus đúng, HTML public không đổi | test bridge + đo khi gõ |
 | **P10** | Ảnh: upload R2 staging, sheet chọn ảnh, alt | đổi ảnh demo + publish | test upload pipeline |
 | **P11** | CLI `setup` (idempotent, `--account`) / `migrate` / `check` / `export` / `update` + tài liệu cài | cài demo từ đầu theo tài liệu **bằng URL release, không token**; `setup` lần 2 = không đổi gì; `update` đổi URL sang bản mới | chạy local (miniflare); xuất / nhập D1 demo khớp số dòng |
-| P12–P15 | Site pilot 1: tách nội dung → JSON; adapter cho route gói; cài gói + config + ô khoá; setup + kiểm production | **P15: Workers Builds của site build xanh không có biến môi trường token nào** (gói cài từ URL release) + 1 cặp publish | so HTML public; Workers Builds log |
+| P12–P15 | Site pilot 1: tách nội dung → JSON; adapter cho route gói; cài gói + config + ô khoá; setup + kiểm production | **P15: Workers Builds của site build xanh không có biến môi trường token nào** (gói cài từ URL release) + 1 cặp publish + **lưu và đọc lại 1 nháp > 100 KB trên D1 THẬT** | so HTML public; Workers Builds log |
 | P16–P18 | Site 2: như trên | như P15 | như P15 |
 | P19 | Plugin catalog + redirects-check | test plugin trên fixture catalog nhỏ | test plugin |
 | P20–P22 | Site cũ chuyển sang gói (config đầy đủ → bật, HTML public giống từng byte → dọn CMS cũ) | CMS mới làm được mọi việc CMS cũ làm | so HTML + kiểm production |

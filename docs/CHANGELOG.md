@@ -3,6 +3,22 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.5.0 — unreleased (P5)
+
+- **CMS API** (`@sonle282/vibe-cms/api`, route `/api/cms/[...path]` injected by the integration): `GET /content`,
+  `GET·PUT·DELETE /files/:key`, `GET /collections/:key`, `GET·PUT·DELETE /collections/:key/items/:id`,
+  `POST /publish`, `GET /live-version`; `x-cms-live-version` on every GET. PUT needs `expectedRevision` (400 without),
+  checks types (P2) and locks (P4). Publish: one or more drafts → exactly one commit; source-version check (409), locks
+  again with the current role, format-keeping writer, audit started / succeeded (commit sha) / failed (code) / denied,
+  `rewrote_whole_file` warning, publisher's drafts cleared.
+- `GitPublisher` + `createGitHubPublisher` (REST: blobs → tree → commit → ref update without force; bounded retry when
+  the branch moved). Token: site secret `VIBE_GITHUB_TOKEN`. D1 binding: `CMS_DB`.
+- Safety: every route needs an identity — until P6 the API answers 503 `auth_not_configured` (a local dev identity only
+  with `import.meta.env.DEV` on localhost); same-site `Origin` for writes; 2 MB body limit; JSON errors without
+  internals.
+- Pure value checker `checkRecordValues` (runs in the Worker; the build-time content check uses it).
+- Site action: none (not released). For P11 / P15: set `VIBE_GITHUB_TOKEN`, bind D1 as `CMS_DB`.
+
 ## 0.4.0 — unreleased (P3b, P4)
 
 - **P3b — drafts in D1.** KV is eventually consistent, so drafts (content included) now live in D1 table

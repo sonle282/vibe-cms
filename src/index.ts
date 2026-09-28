@@ -5,3 +5,4 @@ export * from "./config/index.js";
 export * from "./writer/index.js";
 export * from "./store/index.js";
 export * from "./locks/index.js";
+export * from "./api/index.js";

@@ -57,6 +57,7 @@ export const vibeCms = (options: VibeCmsOptions = {}): AstroIntegration => ({
       updateConfig({ vite: { plugins: [virtualModules(file, root, contentPaths(cms, root))] } });
       injectRoute({ pattern: "/admin", entrypoint: "@sonle282/vibe-cms/routes/admin.astro", prerender: false });
       injectRoute({ pattern: "/api/cms/health", entrypoint: "@sonle282/vibe-cms/routes/health.ts", prerender: false });
+      injectRoute({ pattern: "/api/cms/[...path]", entrypoint: "@sonle282/vibe-cms/routes/api.ts", prerender: false });
     },
   },
 });

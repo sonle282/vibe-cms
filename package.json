@@ -1,6 +1,6 @@
 {
   "name": "@sonle282/vibe-cms",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Vibe CMS — an Astro integration that adds a content editor (/admin) to a site, driven by one cms.config.ts.",
   "license": "UNLICENSED",
   "private": false,
@@ -30,6 +30,10 @@
       "types": "./dist/locks/index.d.ts",
       "default": "./dist/locks/index.js"
     },
+    "./api": {
+      "types": "./dist/api/index.d.ts",
+      "default": "./dist/api/index.js"
+    },
     "./routes/*": "./src/routes/*",
     "./package.json": "./package.json",
     "./migrations/*": "./migrations/*"
@@ -55,10 +59,11 @@
     "test": "npm run build && node --test \"test/*.test.mjs\"",
     "demo:build": "npm run build && npm run build -w fixtures/demo-site",
     "demo:smoke": "node scripts/smoke.mjs",
-    "check": "npm run typecheck && npm test && npm run pack:check && npm run store:local && npm run demo:build && npm run check -w fixtures/demo-site && npm run demo:smoke",
+    "check": "npm run typecheck && npm test && npm run pack:check && npm run store:local && npm run api:local && npm run demo:build && npm run check -w fixtures/demo-site && npm run demo:smoke",
     "prepack": "npm run build",
     "pack:check": "node scripts/pack-check.mjs",
-    "store:local": "node scripts/store-local.mjs"
+    "store:local": "node scripts/store-local.mjs",
+    "api:local": "node scripts/api-local.mjs"
   },
   "peerDependencies": {
     "astro": "^7.2.1",
