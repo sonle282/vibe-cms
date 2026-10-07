@@ -5,10 +5,10 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.6.0 · P6.** The build checks `cms.config.ts` and the content it declares; the store (drafts in D1,
-> content built into the Worker) and the format-keeping writer are in place. `/admin` is still a
-> placeholder. The API, editor and publishing come in P4–P11
-> ([docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)).
+> Status: **0.6.1 · P6 reviewed.** Done: config + content checks at build, store (drafts in D1), format-keeping
+> writer, locked fields on the server, CMS API + one-commit GitHub publishing, sign-in + People. `/admin` is still a
+> minimal sign-in page; the editor comes in P7, review / publish UI in P8, preview in P9, images in P10, CLI in P11
+> ([docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
 
 ## Install in a site (3 steps, no token)
 

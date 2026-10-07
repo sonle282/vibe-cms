@@ -3,6 +3,16 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.6.1 — unreleased (P6b: review of P6)
+
+- Changing the password checks the current one at most **10 times a minute per user** (same `CMS_LOGIN_LIMITER`;
+  429 `too_many_attempts`) — a stolen session can no longer guess the password at full speed.
+- The bootstrap password is compared in constant time (`sameSecret`); temporary passwords are drawn evenly from the
+  54-character alphabet (no modulo bias).
+- `/admin`: the sign-in and change-password forms are `method="post"` — if the script has not run, the password goes
+  in a POST body, never in the URL (history, logs).
+- Site action: none (not released).
+
 ## 0.6.0 — unreleased (P6)
 
 - **Sign-in + People** (option A, same mechanism as the CMS already running on the first site): username + password,

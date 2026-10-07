@@ -304,8 +304,8 @@ vai trò D1 — đã xét ở P6 Bước 0, không chọn.)
 | Phiên | Token 32 byte ngẫu nhiên trong cookie `vibe_cms_session` (`HttpOnly; Secure; SameSite=Lax; Path=/`), KV `SESSION` (= `<site>-session`) lưu dưới `cms:auth:session:<sha256(token)>`; hạn **30 ngày** (`CMS_SESSION_TTL_SECONDS` 300 … 2.592.000) |
 | Đăng xuất mọi nơi | `session_version` tăng khi đổi mật khẩu, đặt lại mật khẩu, khoá → mọi phiên cũ trả 401 |
 | Vai trò | Đọc lại từ D1 **mỗi request** → khoá / đổi vai trò có hiệu lực ngay |
-| Chống dò | Rate limit binding `CMS_LOGIN_LIMITER` 10 / 60 s theo (username + IP); publish `CMS_PUBLISH_LIMITER` 20 / 60 s theo người dùng; **bản build production thiếu limiter → 503**; lỗi đăng nhập luôn một câu "Username or password is incorrect."; audit `login` / `login_failed` |
-| Owner đầu tiên | Secret `CMS_BOOTSTRAP_USERNAME` + `CMS_BOOTSTRAP_PASSWORD`: lần đăng nhập đầu khi chưa có ai → tạo owner, đánh dấu `bootstrap_completed` (dùng 1 lần, kể cả khi bảng users bị xoá sau đó) |
+| Chống dò | Rate limit binding `CMS_LOGIN_LIMITER` 10 / 60 s theo (username + IP), và theo người dùng khi đổi mật khẩu (kiểm mật khẩu hiện tại — P6b); publish `CMS_PUBLISH_LIMITER` 20 / 60 s theo người dùng; **bản build production thiếu limiter → 503**; lỗi đăng nhập luôn một câu "Username or password is incorrect."; audit `login` / `login_failed` |
+| Owner đầu tiên | Secret `CMS_BOOTSTRAP_USERNAME` + `CMS_BOOTSTRAP_PASSWORD` (so mật khẩu thời gian hằng): lần đăng nhập đầu khi chưa có ai → tạo owner, đánh dấu `bootstrap_completed` (dùng 1 lần, kể cả khi bảng users bị xoá sau đó) |
 | Owner quên mật khẩu | P11: lệnh CLI đặt mật khẩu tạm cho owner (không sửa D1 bằng tay) |
 | Danh tính dev | Giữ như P5: chỉ `import.meta.env.DEV` + localhost + `VIBE_CMS_DEV_USER` |
 
@@ -334,13 +334,14 @@ mới** cho gói rồi nhập users sang (không chạy migration của gói lê
 | POST | `/api/auth/login` `{ username, password }` | ai cũng gọi | 200 + cookie `{ user, mustChangePassword }` · 400 `bad_json` · 401 `invalid_credentials` · 403 `origin_forbidden` · 429 `too_many_attempts` (retry-after 60) · 503 `auth_not_configured` / `login_limiter_missing` / `limiter_unavailable` |
 | POST | `/api/auth/logout` | có phiên hoặc không | 200, cookie xoá · 403 `origin_forbidden` |
 | GET | `/api/auth/me` | có phiên | 200 `{ user, mustChangePassword, expiresAt }` · 401 `unauthenticated` · 503 |
-| PUT | `/api/auth/password` `{ currentPassword, newPassword }` | có phiên | 200 + cookie mới (phiên cũ chết) · 400 `wrong_current_password` / `same_password` / `invalid_password` · 401 · 403 `origin_forbidden` |
+| PUT | `/api/auth/password` `{ currentPassword, newPassword }` | có phiên | 200 + cookie mới (phiên cũ chết) · 400 `wrong_current_password` / `same_password` / `invalid_password` · 401 · 403 `origin_forbidden` · 429 `too_many_attempts` (10 lần / phút / người dùng) |
 | GET | `/api/cms/users` | owner | 200 `{ users }` · 403 `owner_only` |
 | POST | `/api/cms/users` `{ username, displayName?, role, password? }` | owner | 201 `{ user, temporaryPassword? }` (tạo sẵn 20 ký tự nếu không gửi) · 400 `invalid_username` / `invalid_role` / `invalid_password` / `invalid_display_name` · 409 `username_taken` |
 | PATCH | `/api/cms/users/:id` `{ action: disable \| enable \| reset-password \| set-role, … }` | owner | 200 · 400 `cannot_disable_self` / `last_owner` / `invalid_role` / `unsupported_action` · 404 |
 | (mọi route `/api/cms/*`) | | có phiên | 401 `unauthenticated` · 403 `password_change_required` (mật khẩu tạm chưa đổi) · 429 `too_many_publishes` · 503 `publish_limiter_missing` |
 
-Người được tạo / được đặt lại mật khẩu (và owner từ bootstrap) phải đổi mật khẩu ở lần đăng nhập đầu. Mọi thay đổi
+Người được tạo / được đặt lại mật khẩu (và owner từ bootstrap) phải đổi mật khẩu ở lần đăng nhập đầu. Mọi form của
+`/admin` có `method="post"` (JS chưa chạy thì mật khẩu cũng không vào URL / log); mật khẩu tạm 20 ký tự rút đều (không lệch). Mọi thay đổi
 People / đăng nhập ghi audit (`stage` auth / people, migration 0005) — không bao giờ ghi mật khẩu, hash hay token.
 
 ### Khác CMS cũ (có chủ đích)

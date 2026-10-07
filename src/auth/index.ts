@@ -12,7 +12,7 @@
 import type { AuditEntry, AuditLog, Role } from "../locks/index.js";
 import type { D1Like } from "../store/index.js";
 import {
-  decoyHash, encodeBase64Url, hashPassword, InputError, normalizeUsername, randomBytes, temporaryPassword, validateDisplayName, validatePassword,
+  decoyHash, encodeBase64Url, hashPassword, InputError, normalizeUsername, randomBytes, sameSecret, temporaryPassword, validateDisplayName, validatePassword,
   validateUsername, verifyPassword,
 } from "./password.js";
 
@@ -163,6 +163,15 @@ export const createCmsAuth = (deps: CmsAuthDeps) => {
   const input = <T>(run: () => T): T => { try { return run(); } catch (error) { if (error instanceof InputError) throw new AuthError(400, error.code, error.message); throw error; } };
   const clientKey = (request: Request, username: string) => `cms-login:${username}:${(request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown").slice(0, 100)}`;
 
+  /** Password guesses (sign-in, and the current password when changing it): 10 / minute per key, 503 without a limiter in production. */
+  const limitAttempts = async (key: string) => {
+    if (deps.loginLimiter) {
+      let allowed: boolean;
+      try { allowed = (await deps.loginLimiter.limit({ key })).success; } catch { throw new AuthError(503, "limiter_unavailable", "The sign-in service is temporarily unavailable. Please try again."); }
+      if (!allowed) throw new AuthError(429, "too_many_attempts", "Too many sign-in attempts. Please try again in a minute.", { "retry-after": "60" });
+    } else if (deps.requireLoginLimiter) throw new AuthError(503, "login_limiter_missing", "Sign-in rate limiting is not configured.");
+  };
+
   // ---- sign-in routes
   const login = async (request: Request) => {
     if (!ready()) throw new AuthError(503, "auth_not_configured", "Sign-in is not configured on this site.");
@@ -172,11 +181,7 @@ export const createCmsAuth = (deps: CmsAuthDeps) => {
     try { username = validateUsername(payload.username); } catch { /* generic failure below */ }
     const password = typeof payload.password === "string" ? payload.password : "";
     if (!username || !password) throw invalid();
-    if (deps.loginLimiter) {
-      let allowed: boolean;
-      try { allowed = (await deps.loginLimiter.limit({ key: clientKey(request, username) })).success; } catch { throw new AuthError(503, "limiter_unavailable", "The sign-in service is temporarily unavailable. Please try again."); }
-      if (!allowed) throw new AuthError(429, "too_many_attempts", "Too many sign-in attempts. Please try again in a minute.", { "retry-after": "60" });
-    } else if (deps.requireLoginLimiter) throw new AuthError(503, "login_limiter_missing", "Sign-in rate limiting is not configured.");
+    await limitAttempts(clientKey(request, username));
 
     let user = await byUsername(username);
     if (!user) user = await bootstrap(username, password);
@@ -200,7 +205,7 @@ export const createCmsAuth = (deps: CmsAuthDeps) => {
   const bootstrap = async (username: string, password: string): Promise<UserRow | null> => {
     const wantedUser = (() => { try { return validateUsername(deps.bootstrap?.username); } catch { return ""; } })();
     const wantedPassword = typeof deps.bootstrap?.password === "string" ? deps.bootstrap.password.replace(/\r?\n$/, "") : "";
-    if (!wantedUser || !wantedPassword || username !== wantedUser || password !== wantedPassword) return null;
+    if (!wantedUser || !wantedPassword || username !== wantedUser || !(await sameSecret(password, wantedPassword))) return null;
     const done = await db().prepare("SELECT value FROM cms_auth_state WHERE key = 'bootstrap_completed' LIMIT 1").first<{ value: string }>();
     const count = Number((await db().prepare("SELECT COUNT(*) AS count FROM cms_users").first<{ count: number }>())?.count ?? 0);
     if (done || count > 0) return null;
@@ -238,6 +243,8 @@ export const createCmsAuth = (deps: CmsAuthDeps) => {
     const payload = await body(request);
     const next = input(() => validatePassword(payload.newPassword));
     const old = typeof payload.currentPassword === "string" ? payload.currentPassword : "";
+    // A stolen session must not become a way to guess the password at full speed.
+    await limitAttempts(`cms-password:${current.user.id}`);
     if (!(await verifyPassword(old, current.user.password_hash))) throw new AuthError(400, "wrong_current_password", "Current password is incorrect.");
     if (old === next) throw new AuthError(400, "same_password", "Choose a new password that is different from the current one.");
     const at = iso();
