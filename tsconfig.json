@@ -5,7 +5,8 @@
     "moduleResolution": "NodeNext",
     "lib": [
       "ES2022",
-      "DOM"
+      "DOM",
+      "DOM.Iterable"
     ],
     "strict": true,
     "skipLibCheck": true,
@@ -21,6 +22,9 @@
       ],
       "@sonle282/vibe-cms/store": [
         "./src/store/index.ts"
+      ],
+      "@sonle282/vibe-cms/admin": [
+        "./src/admin/index.ts"
       ]
     }
   },

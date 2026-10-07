@@ -5,10 +5,10 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.6.1 · P6 reviewed.** Done: config + content checks at build, store (drafts in D1), format-keeping
-> writer, locked fields on the server, CMS API + one-commit GitHub publishing, sign-in + People. `/admin` is still a
-> minimal sign-in page; the editor comes in P7, review / publish UI in P8, preview in P9, images in P10, CLI in P11
-> ([docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
+> Status: **0.7.0 · P7.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
+> fields on the server, CMS API + one-commit GitHub publishing, sign-in + People, and the editor at `/admin` (lists +
+> forms generated from `cms.config`, drafts saved). Next: review / publish in the admin (P8), preview (P9), images
+> (P10), CLI (P11) ([docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
 
 ## Install in a site (3 steps, no token)
 
@@ -152,18 +152,27 @@ needs these bindings / secrets (docs/DESIGN.md §F.1):
 - `CMS_BOOTSTRAP_USERNAME` + `CMS_BOOTSTRAP_PASSWORD` once, for the first owner (then remove them),
 - Workers **Paid** is recommended: a sign-in costs ~16–45 ms CPU, Workers Free allows 10 ms.
 
-`/admin` shows a minimal sign-in page; owners manage people through `/api/cms/users` (the People screen comes with the
-admin UI). New and reset users get a temporary password they must change at the first sign-in.
+Owners manage people through `/api/cms/users` (no People screen in the admin yet). New and reset users get a temporary
+password they must change at the first sign-in.
+
+## The editor (P7)
+
+`/admin` signs people in and opens the editor: every file and collection of `cms.config.ts` in the navigation, lists
+with search, and a form generated from the fields — every field type, sections, nested lists, ordered references.
+Saving makes a **draft** (the website does not change); fields with `locked: "owner"` are shown to editors but cannot
+be changed. Publishing from the admin comes in P8. The browser code ships with the package
+(`@sonle282/vibe-cms/admin`); the site adds nothing.
 
 ## Develop this package
 
 ```bash
 npm ci
-npm run check    # typecheck + unit tests + pack contents + store on local D1 + API on local D1 with a fake GitHub + sign-in on local D1 / KV / rate limits + build demo + astro check + local smoke
+npm run check    # typecheck + unit tests (incl. the admin on a fake DOM) + pack contents + store on local D1 + API on local D1 with a fake GitHub + sign-in on local D1 / KV / rate limits + build demo + astro check + local smoke + e2e in headless Chrome
 ```
 
 `fixtures/demo-site` is an invented salon used by every test — tests never read another site's data. It runs locally
-only: no Cloudflare account, no resources, no deploy.
+only: no Cloudflare account, no resources, no deploy. The e2e step drives a Chrome / Chromium that is already installed
+(`CHROME_PATH`, or the usual install paths) — nothing is downloaded.
 
 Release (after review only): set `version` in `package.json`, add its CHANGELOG section, push the tag `vX.Y.Z` —
 `.github/workflows/release.yml` checks everything and publishes the GitHub Release with the `.tgz`.

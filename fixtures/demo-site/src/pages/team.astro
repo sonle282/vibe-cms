@@ -1,0 +1,10 @@
+---
+import Base from "../layouts/Base.astro";
+import team from "../data/team.json";
+import services from "../data/services.json";
+const name = (id: string) => services.find((service) => service.id === id)?.name ?? id;
+---
+<Base title="Team">
+  <h1>Team</h1>
+  <ul>{team.map((member) => <li>{member.name}: {member.services.map(name).join(", ")}</li>)}</ul>
+</Base>

@@ -11,6 +11,21 @@
   ],
   "hero": {
     "title": "Welcome to Demo Salon",
-    "text": "Everything on this site is invented."
+    "text": "Everything on this site is invented.",
+    "image": { "src": "/images/hero.svg", "alt": "A pastel drawing of a nail polish bottle" }
+  },
+  "highlights": ["spa-pedicure", "classic-manicure"],
+  "footerLinks": [
+    {
+      "title": "Visit",
+      "links": [
+        { "label": "Services", "href": "/services/" },
+        { "label": "Team", "href": "/team/" }
+      ]
+    }
+  ],
+  "seo": {
+    "title": "Demo Salon — invented nails and spa",
+    "description": "A made-up salon used to test Vibe CMS."
   }
 }

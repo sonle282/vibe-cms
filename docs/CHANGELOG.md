@@ -3,6 +3,27 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.7.0 — unreleased (P7)
+
+- **The editor at `/admin`**: navigation of every file and collection, an overview with draft badges, collection
+  lists (search, "Add …", Live / Draft saved / New), and a **form generated from `cms.config`** for every field type —
+  text (single / multiline, `maxLength` counter), richText (HTML box), image (address, alt, phone image; a plain path
+  stays a path), select, hours (days, closed, open / close, label, rows), object, list (add, ↑↓ when `ordered`, delete,
+  `min` / `max`, nested), reference (one / many, ordered), dotted keys, sections; records get their ID (filled from the
+  name for a new record, fixed once it exists), status and Markdown body. Keys the config does not know are kept.
+- **Locked fields for editors** are shown but disabled (any depth), with a lock and "Only the owner can change this.";
+  an editor cannot delete a list item that holds owner-only values. The server still enforces it (P4).
+- **Save draft** through the P5 API (`expectedRevision`, `sourceVersion`); the same type check as the server runs
+  first and problems show next to their fields; 409 / 403 / 422 / 401 explained in plain words; Discard draft; asks
+  before leaving with unsaved changes; Ctrl / ⌘+S. Publishing from the admin comes in P8.
+- `/admin` is never framed (`x-frame-options: DENY`, `frame-ancestors 'none'`) or cached; the change-password form
+  carries a hidden username for password managers.
+- New export `@sonle282/vibe-cms/admin` (browser code, started by the injected route; `adminBoot` / `bootJson` also from
+  `/api`). Demo site: collections `team` and `posts` (Markdown), more fields — every field type is used.
+- Tests: form + shell on a fake DOM (happy-dom, the shell talks to the real API in memory); `npm run e2e` — headless
+  Chrome (playwright-core, no browser download) on the built demo in `wrangler dev --local`. Dev dependencies only.
+- Site action: none (not released). `/admin` replaces the P6 sign-in-only page.
+
 ## 0.6.1 — unreleased (P6b: review of P6)
 
 - Changing the password checks the current one at most **10 times a minute per user** (same `CMS_LOGIN_LIMITER`;

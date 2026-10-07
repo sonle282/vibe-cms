@@ -1,20 +1,31 @@
 ---
-// Vibe CMS · /admin (P6): minimal sign-in page — sign in, change a temporary password, sign out. The editor UI comes
-// in P7 / P8. Runs on demand (never prerendered); nothing site-specific is written here, everything comes from config.
+// Vibe CMS · /admin (P6 sign-in, P7 editor). Runs on demand (never prerendered). Signed out → sign-in form; temporary
+// password → choose your own; signed in → the editor (src/admin, started by the script below) with the editable part
+// of cms.config and who is signed in. Nothing site-specific is written here, everything comes from config.
+// Every form posts (method="post"): if the script has not run, a password never lands in the URL.
 import { env } from "cloudflare:workers";
 import config from "virtual:vibe-cms/config";
 import content from "virtual:vibe-cms/content";
-import { createSiteRuntime, type SiteEnv } from "@sonle282/vibe-cms/api";
+import { adminBoot, bootJson, createSiteRuntime, type SiteEnv } from "@sonle282/vibe-cms/api";
+import "./admin.css";
 
 export const prerender = false;
-const files = config.files.length;
-const collections = config.collections.length;
 const { auth } = createSiteRuntime({ config, content, env: env as SiteEnv, dev: import.meta.env.DEV });
 const identity = await auth.identify(Astro.request);
 const current = identity ? await auth.session(Astro.request) : null;
 const state = identity === undefined ? "not-configured" : identity === null ? "signed-out" : identity.mustChangePassword ? "change-password" : "signed-in";
-const name = current?.user.display_name ?? identity?.userId ?? "";
-Astro.response.headers.set("cache-control", "no-store");
+const boot = identity && state === "signed-in"
+  ? adminBoot(config, current
+    ? { id: current.user.id, username: current.user.username, displayName: current.user.display_name, role: current.user.role }
+    : { id: identity.userId, username: identity.userId, displayName: "Local developer", role: identity.role })
+  : null;
+for (const [name, value] of Object.entries({
+  "cache-control": "no-store",
+  "x-frame-options": "DENY",
+  "content-security-policy": "frame-ancestors 'none'",
+  "referrer-policy": "same-origin",
+  "x-content-type-options": "nosniff",
+})) Astro.response.headers.set(name, value);
 ---
 <!doctype html>
 <html lang="en">
@@ -23,50 +34,49 @@ Astro.response.headers.set("cache-control", "no-store");
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
     <title>Vibe CMS · {config.site.name}</title>
-    <style>
-      body { font: 16px/1.5 system-ui, sans-serif; margin: 48px auto; max-width: 420px; padding: 0 16px; color: #1d1d1f; }
-      h1 { font-size: 20px; font-weight: 600; } label { display: block; margin: 12px 0 4px; font-size: 14px; }
-      input { width: 100%; box-sizing: border-box; padding: 10px; font: inherit; border: 1px solid #c7c7cc; border-radius: 8px; }
-      button { margin-top: 16px; padding: 10px 16px; font: inherit; border: 0; border-radius: 8px; background: #1d1d1f; color: #fff; cursor: pointer; }
-      .muted { color: #6e6e73; font-size: 14px; } .error { color: #b00020; min-height: 1.5em; }
-    </style>
   </head>
-  <body>
-    <h1>Vibe CMS — config OK: {files} files, {collections} collections</h1>
-    <p class="muted">{config.site.name} · {config.repo.owner}/{config.repo.name} → {config.repo.branch}</p>
+  <body class="vc-page" data-state={state}>
+    {state !== "signed-in" && (
+      <main class="vc-sign">
+        <p class="vc-sign-brand">{config.site.name} <span>· Vibe CMS</span></p>
 
-    {state === "not-configured" && <p id="state" data-state={state}>Sign-in is not set up on this site yet (CMS_DB and SESSION bindings).</p>}
+        {state === "not-configured" && <p id="state" data-state={state}>Sign-in is not set up on this site yet (CMS_DB and SESSION bindings).</p>}
 
-    {state === "signed-out" && (
-      <form id="login" method="post" data-state={state}>
-        <h2>Sign in</h2>
-        <label for="username">Username</label><input id="username" name="username" autocomplete="username" required />
-        <label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required />
-        <button type="submit">Sign in</button>
-        <p class="error" role="alert"></p>
-      </form>
+        {state === "signed-out" && (
+          <form id="login" method="post" data-state={state} class="vc-sign-card">
+            <h1>Sign in</h1>
+            <label for="username">Username</label><input id="username" name="username" class="vc-input" autocomplete="username" autocapitalize="none" spellcheck="false" required />
+            <label for="password">Password</label><input id="password" name="password" class="vc-input" type="password" autocomplete="current-password" required />
+            <button type="submit" class="vc-button vc-primary">Sign in</button>
+            <p class="vc-error" role="alert"></p>
+          </form>
+        )}
+
+        {state === "change-password" && (
+          <form id="change" method="post" data-state={state} class="vc-sign-card">
+            <h1>Choose your own password</h1>
+            <p class="vc-help">You signed in with a temporary password. Pick a new one (at least 12 characters) to continue.</p>
+            <input type="text" name="username" autocomplete="username" value={current?.user.username ?? ""} hidden readonly />
+            <label for="current">Temporary password</label><input id="current" name="currentPassword" class="vc-input" type="password" autocomplete="current-password" required />
+            <label for="new">New password</label><input id="new" name="newPassword" class="vc-input" type="password" autocomplete="new-password" minlength="12" required />
+            <button type="submit" class="vc-button vc-primary">Save password</button>
+            <p class="vc-error" role="alert"></p>
+          </form>
+        )}
+      </main>
     )}
 
-    {state === "change-password" && (
-      <form id="change" method="post" data-state={state}>
-        <h2>Choose your own password</h2>
-        <p class="muted">You signed in with a temporary password. Pick a new one (at least 12 characters) to continue.</p>
-        <label for="current">Temporary password</label><input id="current" name="currentPassword" type="password" autocomplete="current-password" required />
-        <label for="new">New password</label><input id="new" name="newPassword" type="password" autocomplete="new-password" minlength="12" required />
-        <button type="submit">Save password</button>
-        <p class="error" role="alert"></p>
-      </form>
-    )}
-
-    {state === "signed-in" && (
-      <div id="state" data-state={state}>
-        <p>Signed in as <strong>{name}</strong> ({identity?.role}).</p>
-        <p class="muted">The editor arrives in later steps (P7).</p>
-        <button id="logout" type="button">Sign out</button>
+    {state === "signed-in" && boot && (
+      <div id="vibe-cms-admin" class="vc-root" data-state={state}>
+        <p class="vc-loading">Loading the editor…</p>
+        <noscript><p>The editor needs JavaScript. Turn it on and reload.</p></noscript>
       </div>
+      <script type="application/json" id="vibe-cms-boot" set:html={bootJson(boot)} />
     )}
 
     <script>
+      import { startAdmin, type AdminBoot } from "@sonle282/vibe-cms/admin";
+
       const send = async (method: string, path: string, body?: unknown) => {
         const response = await fetch(path, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), credentials: "same-origin" });
         const data = await response.json().catch(() => ({}));
@@ -76,15 +86,20 @@ Astro.response.headers.set("cache-control", "no-store");
         const form = document.getElementById(id) as HTMLFormElement | null;
         form?.addEventListener("submit", async (event) => {
           event.preventDefault();
+          const button = form.querySelector("button");
+          if (button) button.disabled = true;
           const result = await run(form);
           if (result.ok) location.reload();
-          else form.querySelector(".error")!.textContent = result.data.message ?? "Something went wrong.";
+          else { form.querySelector(".vc-error")!.textContent = result.data.message ?? "Something went wrong."; if (button) button.disabled = false; }
         });
       };
       const value = (form: HTMLFormElement, name: string) => (form.elements.namedItem(name) as HTMLInputElement).value;
       wire("login", (form) => send("POST", "/api/auth/login", { username: value(form, "username"), password: value(form, "password") }));
       wire("change", (form) => send("PUT", "/api/auth/password", { currentPassword: value(form, "currentPassword"), newPassword: value(form, "newPassword") }));
-      document.getElementById("logout")?.addEventListener("click", async () => { await send("POST", "/api/auth/logout"); location.reload(); });
+
+      const root = document.getElementById("vibe-cms-admin");
+      const data = document.getElementById("vibe-cms-boot");
+      if (root && data?.textContent) startAdmin({ root, boot: JSON.parse(data.textContent) as AdminBoot });
     </script>
   </body>
 </html>

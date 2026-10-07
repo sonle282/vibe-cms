@@ -20,12 +20,13 @@ try {
   const admin = await fetch(`${base}/admin`);
   const html = await admin.text();
   assert.equal(admin.status, 200, "GET /admin → 200");
-  assert.match(html, /Vibe CMS — config OK: <!--.*?-->?1<!--.*?-->? files, <!--.*?-->?1<!--.*?-->? collections|Vibe CMS — config OK: 1 files, 1 collections/, "the admin page shows the config summary");
+  assert.match(html, /<title>Vibe CMS · Demo Salon<\/title>/, "the admin page is the site's CMS");
+  assert.equal(admin.headers.get("x-frame-options"), "DENY", "/admin cannot be framed by another site");
 
   const health = await fetch(`${base}/api/cms/health`);
   const body = await health.json();
   assert.equal(health.status, 200);
-  assert.deepEqual(body, { ok: true, package: pkg.name, version: pkg.version, site: "Demo Salon", files: 1, collections: 1, sources: 2 });
+  assert.deepEqual(body, { ok: true, package: pkg.name, version: pkg.version, site: "Demo Salon", files: 1, collections: 3, sources: 5 });
 
   // The CMS API is closed until sign-in exists (P6) — even with the dev variable set, because this is a production build.
   for (const [method, path] of [["GET", "/api/cms/content"], ["GET", "/api/cms/files/site"], ["POST", "/api/cms/publish"]]) {
@@ -43,6 +44,6 @@ try {
 
   const home = await fetch(`${base}/`);
   assert.match(await home.text(), /Welcome to Demo Salon/, "the prerendered home page is served");
-  console.log(`Smoke passed on ${base}: /admin 200 (config OK: 1 files, 1 collections), /api/cms/health ${JSON.stringify(body)}, / and /services/ prerendered; /api/cms/* → 503 auth_not_configured (dev variable ignored in a production build); /api/auth/login → 503 and /admin says sign-in is not set up (no bindings).`);
+  console.log(`Smoke passed on ${base}: /admin 200 (not framable), /api/cms/health ${JSON.stringify(body)}, / and /services/ prerendered; /api/cms/* → 503 auth_not_configured (dev variable ignored in a production build); /api/auth/login → 503 and /admin says sign-in is not set up (no bindings).`);
 } finally { stop(); }
 process.exit(0);

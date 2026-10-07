@@ -110,8 +110,11 @@ xuống dòng cuối).
 
 ### B.2 Site mẫu
 
-`fixtures/demo-site/cms.config.ts` — salon bịa: file `site` (SĐT, email, địa chỉ, giờ — khoá owner; tagline; banner) +
-collection `services` (giá khoá owner, select, list có thứ tự).
+`fixtures/demo-site/cms.config.ts` — salon bịa, dùng **mọi kiểu field** (P7 mở rộng): file `site` (SĐT, email, địa chỉ,
+giờ — khoá owner; tagline; banner có richText + ảnh + alt; `highlights` = reference nhiều, có thứ tự; `footerLinks` = list
+object chứa list; `seo.title` / `seo.description` = key có chấm; 3 section) + collection `services` (giá khoá owner,
+select, list có thứ tự, text nhiều dòng), `team` (ảnh dạng đường dẫn và dạng `{ src, alt }`, reference 1 + nhiều),
+`posts` (markdown-dir, field `status`, list, thân Markdown).
 
 ### B.3 Mô tả được gì bằng field chung
 
@@ -179,6 +182,30 @@ có thể đổi giữa chừng). Vi phạm → 403 `locked_field` `{ fields: [{
 audit `denied` (bảng `cms_audit_log`, migration 0003 — chỉ đường dẫn / nhãn / lý do, không có giá trị); nháp bị từ chối
 không được ghi. Giới hạn đã biết: phần tử list **không có `id`** vừa bị dời chỗ vừa sửa trong cùng 1 lần lưu có thể bị
 coi là đổi giá → lưu 2 lần (dời rồi sửa), hoặc thêm `id` cho phần tử.
+
+## C.2 Admin: khung, danh sách, form sinh từ schema (P7)
+
+- **Trang:** `/admin` (1 route, on-demand). Chưa đăng nhập → form đăng nhập; mật khẩu tạm → đổi mật khẩu; đã đăng nhập →
+  trình sửa chạy trong trình duyệt (`@sonle282/vibe-cms/admin`, ~40 KB JS, không framework) nhận "boot data" = phần sửa
+  được của `cms.config` (nhãn, field, section) + người đang đăng nhập — không token, không binding, không thông tin repo.
+  Header: `x-frame-options: DENY`, `frame-ancestors 'none'`, `no-store`, `referrer-policy: same-origin`.
+- **Điều hướng bằng hash:** `#/` tổng quan · `#/files/<key>` · `#/collections/<key>` (tìm kiếm, "Add …") ·
+  `#/collections/<key>/items/<id>` · `#/collections/<key>/new`. Cột trái: mọi file + collection, người dùng, Sign out.
+- **Form** sinh từ field: text (1 dòng / nhiều dòng, đếm `maxLength`), richText (ô HTML), image (địa chỉ + alt + ảnh
+  điện thoại; giữ dạng chuỗi nếu bản gốc là chuỗi và không có alt), select, hours (ngày, nghỉ, giờ mở / đóng, nhãn, thêm
+  / dời / xoá hàng), object, list (thêm / dời ↑↓ nếu `ordered` / xoá, tôn trọng `min` / `max`, lồng nhau), reference (1 =
+  ô chọn; nhiều = danh sách + dời nếu `ordered`), key có chấm, section. Bản ghi: ô ID (bản mới: tự điền từ tên, sửa
+  được; bản đã có: khoá), `status`, thân Markdown. Form sửa một bản sao: khoá không có trong config và khoá không ai đụng
+  giữ nguyên (cả thứ tự) → không sửa = giá trị y hệt.
+- **Ô khoá cho editor** (server vẫn chặn, P4): ô / object / list khoá → hiện nhưng disabled + ổ khoá + "Only the owner
+  can change this."; editor không xoá được phần tử list còn giữ giá trị khoá (§C.1 luật 4), vẫn dời được; bản ghi mới:
+  ô khoá để trống. Owner thấy ghi chú "Editors see this but only an owner can change it."
+- **Lưu nháp** (API P5): `PUT` với `expectedRevision` (0 khi chưa có nháp) + `sourceVersion` (version của bản đã mở;
+  `new` cho bản ghi mới). Trước khi gửi: kiểm kiểu bằng đúng hàm của server (`checkRecordValues`) + ID hợp lệ, chưa
+  trùng → lỗi hiện cạnh ô. Lỗi server: 422 / 403 `locked_field` hiện cạnh ô; 409 `draft_conflict` → "Reload"; 401 →
+  đăng nhập lại. Trạng thái: "No changes" / "N unsaved changes" / "Saving…" / "Draft saved · not live yet" / "Needs
+  attention". "Discard draft" (hỏi trước). Rời trang khi còn thay đổi chưa lưu → hỏi "Leave without saving?"; Ctrl / ⌘+S
+  = lưu. Publish / review / Live: P8.
 
 ## D. Hợp đồng visual editing
 
@@ -391,7 +418,7 @@ thay đổi lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tà
 | **P4** | Ô khoá theo vai trò ở server (PUT + publish) + audit `denied` | editor đổi ô khoá → 403 + audit; owner được | ≥ 8 ca (object / list / collection) |
 | **P5** | API chung files / collections + publish GitHub + audit + header version | demo publish qua GitHub giả lập | test hợp đồng §C + mock GitHub |
 | **P6** | Auth + People như CMS cũ (§F.1): mật khẩu PBKDF2, phiên KV, owner / editor, bootstrap, rate limit | tạo owner bằng bootstrap, owner tạo editor | test auth + People |
-| **P7** | Admin shell + danh sách + form sinh từ schema | sửa mọi field demo | test form + e2e Chrome headless |
+| **P7** | Admin shell + danh sách + form sinh từ schema (§C.2) | sửa mọi field demo | test form + e2e Chrome headless |
 | **P8** | Review / change summary + Save → review → Publish + trạng thái Live | luồng đủ trên demo | e2e + test change summary |
 | **P9** | Bridge: inject vào iframe cùng origin (dự phòng loader), `data-cms-*` + selector, SECTION_MAP, khung 2 cấp, không render khi gõ | preview demo chọn / hover / focus đúng, HTML public không đổi | test bridge + đo khi gõ |
 | **P10** | Ảnh: upload R2 staging, sheet chọn ảnh, alt | đổi ảnh demo + publish | test upload pipeline |

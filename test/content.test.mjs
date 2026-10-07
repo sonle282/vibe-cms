@@ -14,6 +14,7 @@ const withSite = async (edit, run) => {
   const root = mkdtempSync(join(tmpdir(), "vibe-cms-content-"));
   try {
     cpSync(join(demoRoot, "src/data"), join(root, "src/data"), { recursive: true });
+    cpSync(join(demoRoot, "src/content"), join(root, "src/content"), { recursive: true });
     const config = await loadCmsConfig(join(demoRoot, "cms.config.ts"));
     await edit?.(root, config);
     return await run(root, config);
@@ -23,6 +24,7 @@ const json = (root, rel, data) => writeFileSync(join(root, rel), typeof data ===
 const services = () => [
   { id: "classic-manicure", name: "Classic Manicure", price: "$20", category: "Nails", extras: ["Gel polish"] },
   { id: "spa-pedicure", name: "Spa Pedicure", price: "$35", category: "Spa", extras: [] },
+  { id: "nail-art", name: "Nail Art", price: "$5+", category: "Nails", extras: [] },
 ];
 const find = (list, path) => list.find((problem) => problem.path === path);
 const expectOne = (list, path, pattern) => {
@@ -77,7 +79,7 @@ test("a json-array file must hold a list, with unique ids", async () => {
   await withSite((root) => { const list = services(); list[1].id = "classic-manicure"; list.push({ name: "No id" }); json(root, "src/data/services.json", list); }, (root, config) => {
     const { errors } = checkContent(config, root);
     expectOne(errors, "src/data/services.json[1].id", /used twice/);
-    expectOne(errors, "src/data/services.json[2].id", /required — the record id/);
+    expectOne(errors, "src/data/services.json[3].id", /required — the record id/);
   });
 });
 
@@ -181,6 +183,7 @@ test("checkSite stops on content errors with every problem listed", async () => 
   const root = mkdtempSync(join(tmpdir(), "vibe-cms-site-"));
   try {
     cpSync(join(demoRoot, "src/data"), join(root, "src/data"), { recursive: true });
+    cpSync(join(demoRoot, "src/content"), join(root, "src/content"), { recursive: true });
     const configModule = fileURLToPath(new URL("../dist/config/index.js", import.meta.url)).replace(/\\/g, "/");
     writeFileSync(join(root, "cms.config.ts"), readFileSync(join(demoRoot, "cms.config.ts"), "utf8").replace("@sonle282/vibe-cms/config", configModule));
     const list = services(); list[0].price = 20; list[1].category = "Hair";

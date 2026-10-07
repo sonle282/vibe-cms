@@ -34,7 +34,7 @@ test("versions: sha256 of the text; item versions ignore key order and other ite
 test("bundled source: the demo's files, with file and item versions", async () => {
   const config = await loadCmsConfig(join(demoRoot, "cms.config.ts"));
   const paths = contentPaths(config, demoRoot);
-  assert.deepEqual(paths, ["src/data/site.json", "src/data/services.json"]);
+  assert.deepEqual(paths, ["src/data/site.json", "src/data/services.json", "src/data/team.json", "src/content/posts/spring-colours.md", "src/content/posts/welcome.md"]);
   const files = Object.fromEntries(paths.map((path) => [path, readFileSync(join(demoRoot, path), "utf8")]));
   const reader = createContentReader(config, createBundledSource(files));
 
