@@ -35,7 +35,7 @@ const base = () => ({
     store: { kind: "markdown-dir", dir: "src/content/blog", slugField: "slug" },
     fields: { title: f.text({ label: "Title" }), body: f.richText({ label: "Text" }) },
   }],
-  media: { bucketPrefix: "demo/", maxBytes: 10_000_000 },
+  media: { dir: "public/assets/uploads", maxBytes: 10_000_000 },
 });
 
 const paths = (list) => list.map((problem) => problem.path);
@@ -70,7 +70,10 @@ rule('repo.branch: no ".."', (c) => { c.repo.branch = "feature..x"; }, "repo.bra
 rule("repo.branch: no spaces", (c) => { c.repo.branch = "my branch"; }, "repo.branch", /space/);
 rule('repo.branch: no ".lock" part', (c) => { c.repo.branch = "release/x.lock"; }, "repo.branch", /\.lock/);
 rule("roles are fixed to owner + editor", (c) => { c.roles = ["owner", "admin"]; }, "roles", /must be \["owner", "editor"\]/);
-rule("media.bucketPrefix ends with /", (c) => { c.media.bucketPrefix = "demo"; }, "media.bucketPrefix", /ending with "\/"/);
+rule("media.dir is a folder inside public/", (c) => { c.media.dir = "src/uploads"; }, "media.dir", /folder inside public\//);
+rule("media.dir has no '..'", (c) => { c.media.dir = "public/../secrets"; }, "media.dir", /folder inside public\//);
+rule("media.maxBytes at most 25 MiB", (c) => { c.media.maxBytes = 100_000_000; }, "media.maxBytes", /1 to 26214400/);
+rule("media has no unknown settings", (c) => { c.media.bucketPrefix = "demo/"; }, "media.bucketPrefix", /not a media setting/);
 rule("contentDirs must stay inside the project", (c) => { c.contentDirs = ["../outside"]; }, "contentDirs[0]", /must not contain "\.\."/);
 
 // Files and paths

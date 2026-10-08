@@ -42,8 +42,12 @@ try {
   assert.deepEqual([signIn.status, (await signIn.json()).error], [503, "auth_not_configured"], "POST /api/auth/login → 503 without bindings");
   assert.match(html, /data-state="not-configured"/, "/admin shows that sign-in is not set up");
 
+  const upload = await fetch(`${base}/assets/uploads/2026/03/photo-0123abcd.webp`);
+  assert.equal(upload.status, 404, "an upload address without the R2 bucket → 404 (P10)");
+  const image = await fetch(`${base}/images/hero.svg`);
+  assert.equal(image.status, 200, "the site's own images are still served as static files");
   const home = await fetch(`${base}/`);
   assert.match(await home.text(), /Welcome to Demo Salon/, "the prerendered home page is served");
-  console.log(`Smoke passed on ${base}: /admin 200 (not framable), /api/cms/health ${JSON.stringify(body)}, / and /services/ prerendered; /api/cms/* → 503 auth_not_configured (dev variable ignored in a production build); /api/auth/login → 503 and /admin says sign-in is not set up (no bindings).`);
+  console.log(`Smoke passed on ${base}: /admin 200 (not framable), /api/cms/health ${JSON.stringify(body)}, / and /services/ prerendered; /api/cms/* → 503 auth_not_configured (dev variable ignored in a production build); /api/auth/login → 503 and /admin says sign-in is not set up (no bindings); upload addresses 404 without R2.`);
 } finally { stop(); }
 process.exit(0);

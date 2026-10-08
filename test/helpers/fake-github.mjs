@@ -25,11 +25,11 @@ export const startFakeGitHub = async ({ owner = "o", name = "r", branch = "main"
   /** Commit straight on the branch (someone else pushing). */
   const pushOther = (changes, message = "someone else") => {
     const entries = new Map(treeOf(ref));
-    for (const [path, text] of Object.entries(changes)) entries.set(path, putBlob(Buffer.from(text, "utf8")));
+    for (const [path, text] of Object.entries(changes)) entries.set(path, putBlob(Buffer.isBuffer(text) ? text : Buffer.from(text, "utf8")));
     ref = putCommit(putTree([...entries]), [ref], message, { name: "Other", email: "other@example.invalid" });
     return ref;
   };
-  ref = putCommit(putTree(Object.entries(files).map(([path, text]) => [path, putBlob(Buffer.from(text, "utf8"))])), [], "initial", { name: "Init", email: "init@example.invalid" });
+  ref = putCommit(putTree(Object.entries(files).map(([path, text]) => [path, putBlob(Buffer.isBuffer(text) ? text : Buffer.from(text, "utf8"))])), [], "initial", { name: "Init", email: "init@example.invalid" });
 
   const server = createServer(async (req, res) => {
     const chunks = []; for await (const chunk of req) chunks.push(chunk);
@@ -49,7 +49,12 @@ export const startFakeGitHub = async ({ owner = "o", name = "r", branch = "main"
       const at = url.searchParams.get("ref") ?? ref;
       if (!commits.has(at)) return send(404, { message: "No commit found" });
       const blob = treeOf(at).get(match[1]);
-      if (!blob) return send(404, { message: "Not Found" });
+      if (!blob) {
+        // A folder: list the files directly in it (like GitHub's contents API).
+        const prefix = `${match[1].replace(/\/$/, "")}/`;
+        const inside = [...treeOf(at).keys()].filter((path) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/"));
+        return inside.length ? send(200, inside.map((path) => ({ name: path.slice(prefix.length), path, type: "file", size: blobs.get(treeOf(at).get(path)).length }))) : send(404, { message: "Not Found" });
+      }
       const bytes = blobs.get(blob);
       if (/vnd\.github\.raw/.test(req.headers.accept ?? "")) return send(200, null, bytes);
       return send(200, bytes.length > 1024 * 1024 ? { sha: blob, size: bytes.length, encoding: "none", content: "" } : { sha: blob, size: bytes.length, encoding: "base64", content: bytes.toString("base64") });
@@ -84,6 +89,8 @@ export const startFakeGitHub = async ({ owner = "o", name = "r", branch = "main"
     /** Exact text of every file at a commit (default: the branch head). */
     files: (at = ref) => Object.fromEntries([...treeOf(at)].map(([path, blob]) => [path, blobs.get(blob).toString("utf8")])),
     commit: (at = ref) => ({ sha: at, ...commits.get(at) }),
+    /** Exact bytes of one file at a commit (P10: images), or undefined. */
+    bytes: (path, at = ref) => { const blob = treeOf(at).get(path); return blob ? Buffer.from(blobs.get(blob)) : undefined; },
     /** Paths whose blob differs between two commits. */
     changedPaths: (from, to = ref) => { const a = treeOf(from); const b = treeOf(to); return [...new Set([...a.keys(), ...b.keys()])].filter((path) => a.get(path) !== b.get(path)).sort(); },
     commitsSince: (from) => { const out = []; let at = ref; while (at && at !== from) { out.push(at); at = commits.get(at).parents[0]; } return out; },

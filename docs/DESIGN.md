@@ -142,7 +142,9 @@ có `Origin` của chính site (không có hoặc lạ → 403 `origin_forbidden
 | `POST /publish` | `{ resources: [...] }` (1–50 nháp của tôi) → **đúng 1 commit** | 200 `{ commitSha, files, expectedLiveVersion, warnings, attempts }` · 404 `no_draft` · 409 `source_changed` · 403 `locked_field` · 422 · 502 `branch_moving` / `github_*` · 503 (`github_rate_limited` + `retryAfter`, …) |
 | `GET /live-version` | version của nội dung Worker đang phục vụ | `{ liveVersion, branch }` |
 | `GET /drafts` | (P8) nháp của tôi: resource, nhãn, nhóm, lúc lưu, `isNew`, `stale` (nội dung đang chạy đã khác bản nháp bắt đầu) — không có nội dung | `{ drafts }` |
-| (sau) `/history`, `/assets`, `/users`, `/api/auth/*` | P6, P8, P10 | |
+| `GET /media` | (P10) ảnh đã tải lên (mới nhất trước, 200 / trang, `cursor`) + ảnh có sẵn của site (`public/`, lúc build) | `{ uploads, cursor, site, uploadsEnabled, base, maxBytes }` |
+| `POST /media` | (P10) 1 ảnh đã chuẩn bị (byte thô; `x-file-name`, `x-image-width` / `-height`) | 201 / 200 (cùng byte → dùng lại) `{ image }` · 413 `image_too_large` · 415 `unsupported_image` · 400 `empty_file` · 429 `too_many_uploads` · 503 `media_not_configured` |
+| (sau) `/history`, `/users`, `/api/auth/*` | P6, P8 | |
 
 **Luồng publish (P5):**
 1. Danh tính, Origin, kích thước body; đọc nháp của từng resource (thiếu → 404 `no_draft`).
@@ -240,6 +242,32 @@ coi là đổi giá → lưu 2 lần (dời rồi sửa), hoặc thêm `id` cho 
   của tôi** (hiện tại + mới ×2, ≥ 12 ký tự) → phiên khác bị đăng xuất, tab này vẫn đăng nhập (cookie mới). Danh tính dev
   local: không có mật khẩu để đổi.
 - Mọi form `method="post"` + có `username` ẩn cho trình quản lý mật khẩu; mật khẩu không vào URL / storage / log.
+
+## C.5 Ảnh (P10)
+
+Cùng cách của CMS cũ (cùng đường dẫn ảnh, giữ tạm ở R2, route xem trước, đưa ảnh vào commit khi publish), khác 1 điểm:
+**không dùng binding `IMAGES`** (quyết định 9) → thu nhỏ + đổi định dạng làm **trong trình duyệt**.
+
+- **Ô ảnh:** thumbnail + địa chỉ + alt (+ ảnh cho điện thoại) như P7, thêm nút **Choose image…** (mở sheet) và **Remove**
+  (xoá địa chỉ, giữ alt). Chọn xong → con trỏ nhảy vào alt nếu alt còn trống. Ô bị khoá với editor: không có nút.
+- **Sheet chọn ảnh** (dialog, Esc / bấm ngoài để đóng): vùng tải lên (kéo thả hoặc chọn file), thư viện = ảnh đã tải
+  lên (mới nhất trước, nhãn "Uploaded") + ảnh có sẵn trong `public/` của site (tối đa 3000, đọc lúc build, có SVG — ảnh
+  của chính repo), tìm theo tên / đường dẫn. Site thiếu bucket → sheet nói rõ "Uploading is not set up", vẫn chọn được
+  ảnh có sẵn.
+- **Chuẩn bị ở trình duyệt:** chỉ JPEG / PNG / WebP / AVIF (SVG, GIF bị từ chối); cạnh dài ≤ 2400 px, **WebP q0.82**
+  (trình duyệt không ghi được WebP → PNG / JPEG q0.86). Vẽ lại qua canvas nên mất luôn dữ liệu ẩn (GPS của máy ảnh).
+- **Server không tin trình duyệt:** loại ảnh + kích thước đọc từ byte đầu file (WebP / JPEG / PNG / AVIF; GIF, SVG,
+  HTML → 415); ≤ `media.maxBytes` (mặc định 10 MiB, tối đa 25 MiB); chung rate limit với publish, khoá riêng
+  `cms-media:<user>`; same-origin + đăng nhập như mọi lệnh ghi.
+- **Tên + chỗ giữ:** `/assets/uploads/YYYY/MM/<slug tên file>-<8 hex đầu sha256>.<ext>` (`media.dir`, mặc định
+  `public/assets/uploads`). R2 `CMS_MEDIA` (= `<site>-media`): `staging/<đường dẫn>` (byte + metadata: sha256, cỡ,
+  ai, lúc nào, tên gốc) và `upload-index/<sha256>` → cùng byte tải lại dùng lại đường dẫn cũ.
+- **Xem trước:** route gói `<base>/[...path]` trả bản trong R2 (đúng mẫu đường dẫn, kiểm lại byte, `nosniff`, CSP
+  `sandbox`, cache 60 s). Sau khi site deploy có file thật, file tĩnh trả trước, route không còn được gọi.
+- **Publish:** gom mọi đường dẫn upload có trong nháp được publish (ô ảnh, richText, thân Markdown); cái nào nhánh chưa
+  có (hỏi GitHub theo thư mục tháng) → thêm **byte chính xác** vào **cùng 1 commit**; không có ở R2 lẫn repo → 409
+  `media_missing` + `paths`, không commit gì. Response có `media` (file ảnh đã thêm).
+- **Chưa làm (để sau):** dọn `staging/` sau khi publish, đếm "đang dùng ở đâu", xoá ảnh khỏi thư viện.
 
 ## D. Hợp đồng visual editing
 
@@ -480,7 +508,7 @@ thay đổi lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tà
 | **P8c** | Lọc HTML của richText ở server (lưu nháp + publish): chỉ giữ thẻ / thuộc tính an toàn, link an toàn (§F.2) | HTML nguy hiểm không vào nháp / commit | test sanitizer (≥ 1 ca mỗi kiểu tấn công) |
 | **P8d** | Trình soạn thảo richText trực quan: thanh định dạng; chèn / xoá ảnh trong bài, kéo đổi cỡ giữ tỉ lệ (`width`), alt; dán chỉ giữ chữ; ảnh từ bộ chọn của P10 | sửa bài blog demo có chèn, xoá, đổi cỡ ảnh mà không gõ HTML | test DOM + e2e (kéo đổi cỡ) |
 | **P9** | Bridge: inject vào iframe cùng origin (dự phòng loader), `data-cms-*` + selector, SECTION_MAP, khung 2 cấp, không render khi gõ | preview demo chọn / hover / focus đúng, HTML public không đổi | test bridge + đo khi gõ |
-| **P10** | Ảnh: upload R2 staging, sheet chọn ảnh, alt | đổi ảnh demo + publish | test upload pipeline |
+| **P10** | Ảnh: upload R2 staging, sheet chọn ảnh, alt (§C.5) | đổi ảnh demo + publish | test upload pipeline |
 | **P11** | CLI `setup` (idempotent, `--account`) / `migrate` / `check` / `export` / `update` / `reset-owner-password` (đặt mật khẩu tạm cho owner quên mật khẩu, không sửa D1 tay) + tài liệu cài | cài demo từ đầu theo tài liệu **bằng URL release, không token**; `setup` lần 2 = không đổi gì; `update` đổi URL sang bản mới | chạy local (miniflare); xuất / nhập D1 demo khớp số dòng |
 | P12–P15 | Site pilot 1: tách nội dung → JSON; adapter cho route gói; cài gói + config + ô khoá; setup + kiểm production | **P15: Workers Builds của site build xanh không có biến môi trường token nào** (gói cài từ URL release) + 1 cặp publish + **lưu và đọc lại 1 nháp > 100 KB trên D1 THẬT** | so HTML public; Workers Builds log |
 | P16–P18 | Site 2: như trên | như P15 | như P15 |
