@@ -11,6 +11,7 @@
  *   GET    /collections/:key/items/:id      live record + version + my draft
  *   PUT    /collections/:key/items/:id      save my draft of one record (new id = new record)
  *   DELETE /collections/:key/items/:id      discard my draft
+ *   GET    /drafts                          my drafts (label, updated, stale = the live content moved on) — P8
  *   POST   /publish                         { resources: [...] } → exactly one commit
  *   GET    /live-version                    the version of the content this Worker serves
  * Every GET answers with the header x-cms-live-version (F-16).
@@ -28,7 +29,7 @@ import type { WriteResult } from "../writer/json.js";
 import { GitPublishError, type CommitAuthor, type GitPublisher } from "./github.js";
 import type { Identify, Identity, RateLimiter } from "../auth/index.js";
 
-export { createSiteRuntime, type SiteEnv } from "./runtime.js";
+export { createSiteRuntime, loopbackApiUrl, type SiteEnv } from "./runtime.js";
 export { adminBoot, bootJson, type AdminBoot } from "../admin/boot.js";
 export { createGitHubPublisher, GitPublishError, rateLimitWait, type CommitAuthor, type CommitInput, type GitHubOptions, type GitPublisher } from "./github.js";
 
@@ -265,6 +266,24 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     }
   };
 
+  /** P8: every draft of mine, newest first; stale = the content it started from is no longer what this Worker serves. */
+  const listDrafts = async (user: Identity) => {
+    const drafts = need(deps.drafts, "storage");
+    const rows = await drafts.mine(user.userId);
+    const out = [];
+    for (const row of rows) {
+      let target: Target;
+      try { target = targetOf(row.resource); } catch { continue; } // a file / collection removed from cms.config
+      const current = await live(target);
+      out.push({
+        resource: row.resource, kind: row.kind, key: row.resourceKey, id: row.itemId, label: row.label || target.label,
+        group: target.kind === "file" ? target.label : target.collection.label, updatedAt: row.updatedAt, revision: row.revision,
+        isNew: current.version === "new", stale: row.sourceVersion !== current.version,
+      });
+    }
+    return json({ drafts: out });
+  };
+
   const deleteDraft = async (user: Identity, target: Target) => json({ resource: target.resource, deleted: await need(deps.drafts, "storage").discard(user.userId, target.resource) });
 
   const publish = async (request: Request, user: Identity) => {
@@ -370,6 +389,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     { pattern: /^\/users\/(usr_[a-z2-7]{1,64}|[A-Za-z0-9_-]{1,64})$/, methods: {
       PATCH: (request, user, match) => (deps.people ?? fail(404, "not_found", "People are not available on this site."))(request, user, match[1]),
     } },
+    { pattern: /^\/drafts$/, methods: { GET: (_request, user) => listDrafts(user) } },
     { pattern: /^\/live-version$/, methods: { GET: async () => json({ liveVersion: await getLiveVersion(), branch: config.repo.branch }) } },
     { pattern: /^\/publish$/, methods: { POST: (request, user) => publish(request, user) } },
     { pattern: /^\/files\/([a-z][a-z0-9-]*)$/, methods: {

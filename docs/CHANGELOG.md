@@ -3,6 +3,22 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.8.0 — unreleased (P8)
+
+- **Review & publish in the admin.** The navigation counts my drafts. The review screen shows, for each draft, what it
+  changes against the website in the form's words ("Price (owner only): $35 → $40", "Featured services: added Nail Art",
+  "Extras: new order", "New service: Gel Removal"); tick drafts and **Publish** — one commit. The editor's "Review &
+  publish" opens it for that draft (after saving). Drafts that started before someone else published are unticked and
+  explained; refusals (someone published first, owner-only fields, invalid content, rate limit, GitHub) in plain words.
+- **Live status:** after publishing, "Publishing…" until `/live-version` serves the published content ("Live on the
+  website"), or "Still publishing — Check now" after 15 minutes; remembered across a reload (browser storage: version,
+  time, names only).
+- API: `GET /api/cms/drafts` (my drafts: label, group, saved at, new, stale — no content). `summarizeChanges`,
+  `describeChange`, `formatHours`, `editorFields` exported from `@sonle282/vibe-cms/admin`.
+- Tests only: `VIBE_GITHUB_API_URL` redirects publishing to a GitHub on the same machine (loopback http only — any other
+  value is ignored, so the token cannot be sent elsewhere). The e2e publishes to a fake GitHub on 127.0.0.1.
+- Site action: none (not released).
+
 ## 0.7.0 — unreleased (P7)
 
 - **The editor at `/admin`**: navigation of every file and collection, an overview with draft badges, collection

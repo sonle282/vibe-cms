@@ -141,6 +141,7 @@ có `Origin` của chính site (không có hoặc lạ → 403 `origin_forbidden
 | `GET·PUT·DELETE /collections/:key/items/:id` | như trên cho 1 bản ghi; id mới = bản ghi mới (`expectedRevision: 0`) | như trên; id trong nội dung phải bằng id trên URL |
 | `POST /publish` | `{ resources: [...] }` (1–50 nháp của tôi) → **đúng 1 commit** | 200 `{ commitSha, files, expectedLiveVersion, warnings, attempts }` · 404 `no_draft` · 409 `source_changed` · 403 `locked_field` · 422 · 502 `branch_moving` / `github_*` · 503 (`github_rate_limited` + `retryAfter`, …) |
 | `GET /live-version` | version của nội dung Worker đang phục vụ | `{ liveVersion, branch }` |
+| `GET /drafts` | (P8) nháp của tôi: resource, nhãn, nhóm, lúc lưu, `isNew`, `stale` (nội dung đang chạy đã khác bản nháp bắt đầu) — không có nội dung | `{ drafts }` |
 | (sau) `/history`, `/assets`, `/users`, `/api/auth/*` | P6, P8, P10 | |
 
 **Luồng publish (P5):**
@@ -205,7 +206,27 @@ coi là đổi giá → lưu 2 lần (dời rồi sửa), hoặc thêm `id` cho 
   trùng → lỗi hiện cạnh ô. Lỗi server: 422 / 403 `locked_field` hiện cạnh ô; 409 `draft_conflict` → "Reload"; 401 →
   đăng nhập lại. Trạng thái: "No changes" / "N unsaved changes" / "Saving…" / "Draft saved · not live yet" / "Needs
   attention". "Discard draft" (hỏi trước). Rời trang khi còn thay đổi chưa lưu → hỏi "Leave without saving?"; Ctrl / ⌘+S
-  = lưu. Publish / review / Live: P8.
+  = lưu. Publish / review / Live: P8 (§C.3).
+
+## C.3 Xem lại + Publish + Live (P8)
+
+- **Đếm nháp:** cột trái có "Review & publish" + số nháp của tôi (`GET /drafts`).
+- **Xem lại** (`#/publish`, hoặc `#/publish/<resource>` từ nút "Review & publish" của trình sửa — chỉ bật khi đã lưu
+  nháp và không còn thay đổi chưa lưu): mỗi nháp 1 thẻ (tên, nhóm, lúc lưu, "Open") với **tóm tắt thay đổi** so với
+  bản đang chạy, bằng nhãn của form: "Price (owner only): $35 → $40", "Featured services: added Nail Art", "Extras:
+  new order — …", "New service: Gel Removal". Tóm tắt (`summarizeChanges`, thuần) so qua đúng field của trình sửa:
+  object theo từng ô, ảnh tách địa chỉ / alt, giờ mở cửa thành dòng dễ đọc, reference bằng tên bản ghi; phần tử list
+  khớp theo `id`, rồi theo nội dung giống hệt, còn lại ghép cặp khi còn chung ≥ 1 giá trị (không thì là xoá + thêm);
+  khoá không có trong form vẫn được nêu.
+- Tick nháp muốn đưa lên (mặc định: tất cả; vào từ trình sửa: chỉ nháp đó) → **"Publish N drafts"** = `POST /publish`
+  = đúng 1 commit. Nháp `stale` (ai đó đã publish sau khi nháp bắt đầu) bị bỏ tick + giải thích: mở, bỏ nháp, sửa lại.
+  Lỗi: 409 `source_changed` (nêu tên nháp, viền đỏ thẻ), 403 `locked_field`, 422, 429, lỗi GitHub — bằng lời thường.
+  `rewroteWholeFile` → ghi chú "định dạng file không giữ được".
+- **Live:** sau publish, cột trái hiện "Publishing… started HH:MM", hỏi `GET /live-version` mỗi 10 giây tới khi bằng
+  `expectedLiveVersion` → "Live on the website: …"; quá 15 phút → "Still publishing … Check now". Việc đang chờ được
+  nhớ trong `localStorage` của trình duyệt (chỉ version + giờ + tên), tải lại trang vẫn theo dõi tiếp.
+- Test: `VIBE_GITHUB_API_URL` chỉ nhận địa chỉ của chính máy (127.0.0.1 / localhost, http) để e2e publish sang GitHub
+  giả; giá trị khác bị bỏ qua → token không thể bị gửi đi nơi khác ngoài api.github.com.
 
 ## D. Hợp đồng visual editing
 
@@ -419,7 +440,9 @@ thay đổi lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tà
 | **P5** | API chung files / collections + publish GitHub + audit + header version | demo publish qua GitHub giả lập | test hợp đồng §C + mock GitHub |
 | **P6** | Auth + People như CMS cũ (§F.1): mật khẩu PBKDF2, phiên KV, owner / editor, bootstrap, rate limit | tạo owner bằng bootstrap, owner tạo editor | test auth + People |
 | **P7** | Admin shell + danh sách + form sinh từ schema (§C.2) | sửa mọi field demo | test form + e2e Chrome headless |
-| **P8** | Review / change summary + Save → review → Publish + trạng thái Live | luồng đủ trên demo | e2e + test change summary |
+| **P8** | Review / change summary + Save → review → Publish + trạng thái Live (§C.3) | luồng đủ trên demo | e2e + test change summary |
+| **P8b** | Màn People trong admin (thêm người + mật khẩu tạm hiện 1 lần, khoá / mở, đặt lại mật khẩu, đổi vai trò; API P6) | owner tạo editor bằng giao diện | test DOM + e2e |
+| **P8c** | Lọc HTML của richText ở server (lưu nháp + publish): chỉ giữ thẻ / thuộc tính an toàn, link an toàn | HTML nguy hiểm không vào nháp / commit | test sanitizer (≥ 1 ca mỗi kiểu tấn công) |
 | **P9** | Bridge: inject vào iframe cùng origin (dự phòng loader), `data-cms-*` + selector, SECTION_MAP, khung 2 cấp, không render khi gõ | preview demo chọn / hover / focus đúng, HTML public không đổi | test bridge + đo khi gõ |
 | **P10** | Ảnh: upload R2 staging, sheet chọn ảnh, alt | đổi ảnh demo + publish | test upload pipeline |
 | **P11** | CLI `setup` (idempotent, `--account`) / `migrate` / `check` / `export` / `update` / `reset-owner-password` (đặt mật khẩu tạm cho owner quên mật khẩu, không sửa D1 tay) + tài liệu cài | cài demo từ đầu theo tài liệu **bằng URL release, không token**; `setup` lần 2 = không đổi gì; `update` đổi URL sang bản mới | chạy local (miniflare); xuất / nhập D1 demo khớp số dòng |

@@ -3,11 +3,16 @@
 // (text, maxLength, locked phone / email / address / hours, rich text, image + alt, ordered references, nested lists,
 // dotted keys), a service, a new service, team members (image, single + ordered multiple references), a Markdown
 // post (status, list, body) — saves drafts through the P5 API and the drafts are compared with the expected content.
+// P8: the owner reviews every draft (what changes, in plain words) and publishes them — one commit on a fake GitHub on
+// 127.0.0.1, whose files then hold exactly the drafts; the admin says "Publishing…".
 // Then an editor signs in: locked fields are shown but disabled, other fields save. Nothing remote; test values only.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
+import { contentPaths, loadCmsConfig } from "../dist/index.js";
+import { lineDiff } from "../test/helpers/diff.mjs";
+import { startFakeGitHub } from "../test/helpers/fake-github.mjs";
 import { findChrome, site, startDemoWithCms } from "./lib/e2e-site.mjs";
 
 const BOOT = { username: "owner", password: "bootstrap-e2e-secret" };
@@ -17,7 +22,11 @@ const data = (path) => JSON.parse(readFileSync(join(site, path), "utf8"));
 const checks = [];
 const check = (name, ok, detail) => { checks.push({ name, ok: Boolean(ok) }); if (!ok) console.error(`✘ ${name}\n${JSON.stringify(detail ?? null, null, 1).slice(0, 3000)}`); };
 
-const server = await startDemoWithCms({ CMS_BOOTSTRAP_USERNAME: BOOT.username, CMS_BOOTSTRAP_PASSWORD: BOOT.password });
+const demoConfig = await loadCmsConfig(join(site, "cms.config.ts"));
+const demoFiles = Object.fromEntries(contentPaths(demoConfig, site).map((path) => [path, readFileSync(join(site, path), "utf8")]));
+const github = await startFakeGitHub({ owner: demoConfig.repo.owner, name: demoConfig.repo.name, branch: demoConfig.repo.branch, files: demoFiles });
+// VIBE_GITHUB_API_URL is honoured only for this machine (loopback): the token never leaves 127.0.0.1 in this test.
+const server = await startDemoWithCms({ CMS_BOOTSTRAP_USERNAME: BOOT.username, CMS_BOOTSTRAP_PASSWORD: BOOT.password, VIBE_GITHUB_TOKEN: github.token, VIBE_GITHUB_API_URL: github.url });
 const browser = await chromium.launch({ executablePath: findChrome(), headless: true });
 const problems = [];
 try {
@@ -210,6 +219,35 @@ try {
   await page.locator(".vc-nav-list").getByRole("link", { name: "Team" }).click();
   await page.locator(".vc-table").waitFor();
 
+  // ---------------------------------------------------------------- P8: review every draft, publish them in one commit
+  check("navigation counts my drafts", (await page.locator(".vc-badge").textContent()) === "6");
+  await page.locator(".vc-nav-list").getByRole("link", { name: /Review & publish/ }).click();
+  await page.locator(".vc-review-card").first().waitFor();
+  const reviewText = await page.locator(".vc-review-list").innerText();
+  // E2E_SCREENSHOTS=<folder>: keep pictures of the review and published screens (local look only; CI leaves it unset).
+  const shot = async (name) => { if (process.env.E2E_SCREENSHOTS) await page.screenshot({ path: join(process.env.E2E_SCREENSHOTS, `${name}.png`), fullPage: true }); };
+  await shot("p8-review");
+  check("review: 6 drafts, all ticked", (await page.locator(".vc-review-card").count()) === 6 && (await page.locator(".vc-pick:checked").count()) === 6);
+  for (const line of ["Salon name: Demo Salon → Demo Salon & Spa", "Phone (owner only): (555) 010-0000 → (555) 010-0001", "Featured services: removed Spa Pedicure", "Price (owner only): $35 → $40", "New service: Gel Removal", "Specialty: Nail Art → Spa Pedicure", "Status: published → draft"]) {
+    check(`review says “${line}”`, reviewText.replace(/\s+/g, " ").includes(line), reviewText.slice(0, 2500));
+  }
+  const head = github.head();
+  const filesBefore = github.files();
+  await page.getByRole("button", { name: "Publish 6 drafts" }).click();
+  await page.getByRole("heading", { name: "Published" }).waitFor({ timeout: 20_000 });
+  await shot("p8-published");
+  check("publish: exactly one commit on the branch", github.commitsSince(head).length === 1, github.commitsSince(head));
+  const published = github.files();
+  check("published salon info = the draft", assertEqual(JSON.parse(published["src/data/site.json"]), siteDraft.draft.content));
+  const servicesAfter = JSON.parse(published["src/data/services.json"]);
+  check("published services: Spa Pedicure changed, Gel Removal added, the others untouched", assertEqual(servicesAfter.find((item) => item.id === "spa-pedicure"), spa.draft.content) && assertEqual(servicesAfter.find((item) => item.id === "gel-removal"), gel.draft.content) && assertEqual(servicesAfter.find((item) => item.id === "classic-manicure"), services[0]));
+  const servicesDiff = lineDiff(filesBefore["src/data/services.json"], published["src/data/services.json"]);
+  check("services.json: only the changed / added lines move", servicesDiff.removed.length <= 2 && servicesDiff.added.length <= 3, servicesDiff);
+  check("published team = the drafts", assertEqual(JSON.parse(published["src/data/team.json"]), [alex.draft.content, sam.draft.content]));
+  check("published post: front matter + body", /title: Welcome!/.test(published["src/content/posts/welcome.md"]) && published["src/content/posts/welcome.md"].endsWith("New **body** text.\n"));
+  check("commit message names the owner's internal id, no email", /usr_[a-z2-7]{16}/.test(github.commit().message) && !github.commit().message.includes("@"));
+  check("after publishing: 'Publishing…' until the site serves it; no drafts left", /Publishing… started/.test(await page.locator(".vc-live").innerText()) && await page.locator(".vc-badge").isHidden());
+
   // ---------------------------------------------------------------- owner adds an editor (People API; the People screen is not P7)
   const created = await page.evaluate(async () => (await fetch("/api/cms/users", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: "editor1", displayName: "Editor One", role: "editor" }) })).json());
   check("owner adds an editor", typeof created.temporaryPassword === "string", created);
@@ -238,10 +276,11 @@ try {
   check("no script errors, no 5xx", problems.length === 0, problems);
   const failed = checks.filter((entry) => !entry.ok);
   assert.deepEqual(failed, [], "every e2e check passes");
-  console.log(`E2E (headless Chrome, wrangler dev --local, D1 + KV + rate limits) OK: ${checks.length} checks passed — every demo field edited through /admin and saved as a draft; editor locks shown.`);
+  console.log(`E2E (headless Chrome, wrangler dev --local, D1 + KV + rate limits, fake GitHub) OK: ${checks.length} checks passed — every demo field edited through /admin, reviewed and published in one commit; editor locks shown.`);
 } finally {
   await browser.close();
   server.stop();
+  await github.close();
 }
 process.exit(0);
 

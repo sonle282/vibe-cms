@@ -42,6 +42,17 @@ const MESSAGES: Record<string, string> = {
   origin_forbidden: "The request was refused because it did not come from this site. Reload the page.",
   storage_not_configured: "Drafts can't be saved: the site's database is not set up.",
   not_found: "This content no longer exists.",
+  // P8: publishing
+  no_draft: "One of these drafts no longer exists (published or discarded elsewhere). Reload the page.",
+  too_many_publishes: "You published many times in the last minute. Wait a minute and try again.",
+  publisher_not_configured: "Publishing is not set up on this site yet (its GitHub access is missing). Ask whoever set up the site.",
+  publish_limiter_missing: "Publishing is not fully set up on this site yet. Ask whoever set up the site.",
+  branch_moving: "The website's files kept changing while publishing. Wait a moment and try again.",
+  github_rate_limited: "GitHub is busy. Wait a minute and try again.",
+  github_unreachable: "GitHub could not be reached. Try again in a moment.",
+  github_unauthorized: "The site's GitHub access has expired or was removed. Ask whoever set up the site to renew it.",
+  github_forbidden: "The site's GitHub access is not allowed to publish. Ask whoever set up the site.",
+  audit_unavailable: "Nothing was published because the activity log could not be written. Try again in a moment.",
 };
 /** Plain words for an error code; the server's own message for codes the admin does not know (it is written for people too). */
 export const humanMessage = (code: string, fallback = "") => MESSAGES[code] ?? (fallback || "Something went wrong. Please try again.");
