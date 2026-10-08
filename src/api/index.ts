@@ -18,6 +18,7 @@
  */
 import type { CmsCollection, CmsConfig, CmsFile } from "../config/index.js";
 import { checkRecordValues } from "../check/values.js";
+import { describeCleaned, RICH_TEXT_MAX_CHARS, sanitizeRecord, unsafeOnly, type CleanedField } from "../check/rich-text.js";
 import { checkPublishLocks, LockedFieldError, lockedFieldBody, saveDraftChecked, type AuditLog, type Role } from "../locks/index.js";
 import {
   assertUserId, createContentReader, DraftConflictError, DraftTooLargeError, MAX_DRAFT_BYTES, parseResourceId, resourceId, textVersion, valueVersion,
@@ -183,6 +184,14 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     return result;
   };
 
+  /** P8c: clean the rich text a user changed (vs `before`); refuse values over the size limit. */
+  const clean = (target: Target, content: unknown, before: unknown) => {
+    const fields = target.kind === "file" ? target.file.fields : target.collection.fields;
+    const result = sanitizeRecord({ fields, record: content, before, markdownBody: target.kind === "item" && target.collection.store.kind === "markdown-dir" });
+    if (result.tooLong.length) fail(422, "invalid_content", "The content does not match cms.config.", { errors: result.tooLong.map((path) => ({ path, message: `is longer than ${RICH_TEXT_MAX_CHARS} characters`, hint: "split it into smaller parts" })) });
+    return result as { record: unknown; cleaned: CleanedField[] };
+  };
+
   const need = <T>(value: T | undefined, what: string): T => value ?? fail(503, `${what}_not_configured`, `The CMS ${what} is not configured on this site.`);
 
   const readBody = async (request: Request): Promise<Record<string, unknown>> => {
@@ -256,9 +265,10 @@ export const createCmsApi = (deps: CmsApiDeps) => {
       sourceVersion = body.sourceVersion as string;
     }
     const label = target.kind === "file" ? target.label : recordLabel(target.collection, body.content, target.id);
+    const cleaned = clean(target, body.content, current.value);
     try {
-      const draft = await saveDraftChecked({ config, role: user.role, drafts, audit, source: current.value, now, input: { userId: user.userId, resource: target.resource, label, content: body.content, sourceVersion, expectedRevision: expectedRevision as number } });
-      return json({ resource: target.resource, draft: draftView(draft, current.version), warnings: checked.warnings });
+      const draft = await saveDraftChecked({ config, role: user.role, drafts, audit, source: current.value, now, input: { userId: user.userId, resource: target.resource, label, content: cleaned.record, sourceVersion, expectedRevision: expectedRevision as number } });
+      return json({ resource: target.resource, draft: draftView(draft, current.version), warnings: [...checked.warnings, ...unsafeOnly(cleaned.cleaned).map((entry) => ({ path: entry.path, message: `HTML removed for safety: ${entry.removed.join(", ")}` }))], cleaned: cleaned.cleaned });
     } catch (error) {
       if (error instanceof DraftConflictError) fail(409, "draft_conflict", error.message, { currentRevision: error.current });
       if (error instanceof DraftTooLargeError) fail(413, "draft_too_large", error.message);
@@ -329,6 +339,14 @@ export const createCmsApi = (deps: CmsApiDeps) => {
         }
         if (changed.length) return await failWith(409, "source_changed", "The content changed since you started editing — reload, check, and publish again.", { resources: changed });
 
+        // P8c: rich text a user changed is cleaned again here (drafts saved before the cleaning existed, or by any client).
+        const sanitized: Array<{ resource: string; fields: CleanedField[] }> = [];
+        for (const entry of loaded) {
+          const result = clean(entry.target, entry.draft.content, befores.get(entry.target.resource));
+          if (result.cleaned.length) entry.draft = { ...entry.draft, content: result.record };
+          if (unsafeOnly(result.cleaned).length) sanitized.push({ resource: entry.target.resource, fields: unsafeOnly(result.cleaned) });
+        }
+
         // 2. Locks, with the role the user has now.
         const denied: LockedFieldError[] = [];
         for (const { target, draft } of loaded) {
@@ -346,7 +364,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
 
         // 4. Write with the format-keeping writer (several records of one file are applied in turn).
         const next: Record<string, string | undefined> = { ...texts };
-        const warnings: Array<{ resource: string; code: "rewrote_whole_file" }> = [];
+        const warnings: Array<{ resource: string; code: "rewrote_whole_file" | "sanitized"; fields?: string[] }> = sanitized.map((entry) => ({ resource: entry.resource, code: "sanitized" as const, fields: entry.fields.map(describeCleaned) }));
         for (const { target, draft } of loaded) {
           const path = pathOf(target);
           const kind = target.kind === "file" ? { kind: "file" as const } : target.collection.store.kind === "json-array" ? { kind: "json-array" as const, idField: target.collection.store.idField } : { kind: "markdown" as const };
@@ -365,7 +383,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
           if ("conflict" in result) continue;
           commitSha = result.sha;
         }
-        await Promise.all(loaded.map(({ target }) => audit.record({ at: now(), userId: user.userId, role: user.role, action: "succeeded", stage: "publish", resource: target.resource, detail: { publishId, commitSha, attempt, ...(warnings.some((warning) => warning.resource === target.resource) ? { warning: "rewrote_whole_file" } : {}) } })));
+        await Promise.all(loaded.map(({ target }) => audit.record({ at: now(), userId: user.userId, role: user.role, action: "succeeded", stage: "publish", resource: target.resource, detail: { publishId, commitSha, attempt, ...(warnings.some((warning) => warning.resource === target.resource && warning.code === "rewrote_whole_file") ? { warning: "rewrote_whole_file" } : {}), ...(sanitized.some((entry) => entry.resource === target.resource) ? { sanitized: sanitized.find((entry) => entry.resource === target.resource)!.fields.map((field) => field.path) } : {}) } })));
         for (const { target } of loaded) await drafts.clearAfterPublish(user.userId, target.resource);
         const expectedLiveVersion = await combinedVersion({ ...(await loadLive()), ...Object.fromEntries(Object.entries(next).filter((entry): entry is [string, string] => entry[1] !== undefined)) });
         return json({ commitSha, resources: loaded.map(({ target }) => target.resource), files: Object.keys(files), expectedLiveVersion, warnings, attempts: attempt });

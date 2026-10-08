@@ -8,4 +8,4 @@ export { createForm, LOCK_HELP, OWNER_NOTE, type Form, type FormOptions, type Pr
 export { accountScreen, peopleScreen, ROLE_HELP, type PublicUser, type ScreenKit } from "./people.js";
 export { createClient, humanMessage, type ApiResult, type Client, type Fetch } from "./api.js";
 export { adminBoot, bootJson, type AdminBoot, type BootCollection, type BootFile, type BootUser } from "./boot.js";
-export { clone, countChanges, emptyValue, getAt, holdsLockedValue, ID_PATTERN, keyPath, pathText, same, setAt, slugify, type Path } from "./value.js";
+export { clone, countChanges, emptyValue, getAt, holdsLockedValue, ID_PATTERN, keyPath, parsePathText, pathText, same, setAt, slugify, type Path } from "./value.js";

@@ -32,6 +32,14 @@ export const pathText = (path: Path) => path.reduce<string>((text, step) => {
 /** A field key ("seo.title") as path steps. */
 export const keyPath = (key: string): Path => key.split(".");
 
+/** The steps of a readable path: "footerLinks[0].links[2].href" → ["footerLinks", 0, "links", 2, "href"]. */
+export const parsePathText = (text: string): Path => {
+  const out: Path = [];
+  const pattern = /\[(\d+)\]|\["((?:[^"\\]|\\.)*)"\]|\.?([^.[\]]+)/g;
+  for (const match of text.matchAll(pattern)) out.push(match[1] !== undefined ? Number(match[1]) : match[2] !== undefined ? JSON.parse(`"${match[2]}"`) as string : match[3]);
+  return out;
+};
+
 export const getAt = (root: unknown, path: Path): unknown => {
   let current = root;
   for (const step of path) {

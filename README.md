@@ -5,10 +5,10 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.9.0 · P8b.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
+> Status: **0.10.0 · P8c.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
 > fields on the server, CMS API + one-commit GitHub publishing, sign-in, and the editor at `/admin` (lists, forms
-> generated from `cms.config`, drafts, review of changes, publish, live status, People, My account). Next: rich text
-> sanitizer (P8c), preview (P9), images (P10), CLI (P11) ([docs/TRACKER.md](docs/TRACKER.md), design:
+> generated from `cms.config`, drafts, review of changes, publish, live status, People, My account), rich text cleaned
+> on the server. Next: preview (P9), images (P10), CLI (P11) ([docs/TRACKER.md](docs/TRACKER.md), design:
 > [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
 
 ## Install in a site (3 steps, no token)
@@ -163,7 +163,9 @@ at the first sign-in; anyone can change theirs later on **My account** (click yo
 with search, and a form generated from the fields — every field type, sections, nested lists, ordered references.
 Saving makes a **draft** (the website does not change); fields with `locked: "owner"` are shown to editors but cannot
 be changed. **Review & publish** lists my drafts with what each changes in plain words ("Price: $35 → $40"); publishing
-the ticked ones makes one commit, and the admin says when the website serves them ("Live"). The browser code ships with the package
+the ticked ones makes one commit, and the admin says when the website serves them ("Live"). Rich text people type is
+cleaned on the server (scripts, event handlers, frames, `javascript:` links… are removed and the editor is told);
+text already in the site's files is never changed by it (docs/DESIGN.md §F.2). The browser code ships with the package
 (`@sonle282/vibe-cms/admin`); the site adds nothing.
 
 ## Develop this package

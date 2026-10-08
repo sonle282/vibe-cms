@@ -3,6 +3,23 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.10.0 — unreleased (P8c)
+
+- **Rich text is cleaned on the server** when a draft is saved and again at publish, with the same HTML parser and
+  allow-list as the CMS the package grew out of (hast): paragraphs, h2 / h3, lists, links (http / https / mailto / tel /
+  relative), bold, italic, underline, quotes, code, figures, images (http / https / relative), class + title. Scripts,
+  styles, frames, objects, forms (with their content), event handlers, `style`, `javascript:` / `data:` links and every
+  other unknown tag or attribute are removed; unknown tags keep their text. Markdown bodies too (only re-written when
+  something unsafe was removed). Max 250,000 characters per value (422).
+- Only what a user changed is cleaned: text already in the site's files stays byte for byte. A changed value is stored
+  as the parser writes it (an unfinished tag at the end is never kept as typed).
+- The editor shows what was saved and where HTML was removed ("Saved, with some HTML removed for safety: Banner
+  (hero.text) — <script>"); publish adds a safety note; the PUT response has `cleaned`, publish `warnings` code
+  `sanitized`; the audit records the field paths. The build warns (never fails) about rich text in the site's files
+  that the CMS would clean once edited.
+- New runtime dependencies: `hast-util-from-html`, `hast-util-sanitize`, `hast-util-to-html` (MIT; the CMS routes only).
+- Site action: none (not released). Sites that render rich text with `set:html` keep doing so; what the CMS writes is safe.
+
 ## 0.9.0 — unreleased (P8b)
 
 - **People screen** (owners; menu "People"): everyone with role, status, "must choose a password" and last sign-in.

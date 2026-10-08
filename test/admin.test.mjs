@@ -443,3 +443,18 @@ test("P8 shell: nothing to publish; the editor's Review & publish needs a saved 
     assert.equal(h.window.location.hash, "#/publish/file%3Asite");
   } finally { await h.close(); }
 });
+
+test("P8c shell: unsafe HTML typed in rich text is removed on save; the form shows what was saved and says where", async () => {
+  const h = await shell();
+  await h.go("#/files/site");
+  const text = h.root.querySelector('[data-path="hero.text"] textarea');
+  type(h.window, text, '<p>Hello</p><script>alert(1)</script><a href="javascript:alert(2)">x</a>');
+  h.button("Save draft").click();
+  for (let i = 0; i < 40 && h.state() !== "Draft saved · not live yet"; i += 1) await settle();
+  assert.equal(h.state(), "Draft saved · not live yet", "nothing left unsaved: the form holds what the server kept");
+  assert.equal(text.value, "<p>Hello</p><a>x</a>");
+  const banner = h.root.querySelector(".vc-banner");
+  assert.equal(banner.hidden, false);
+  assert.match(banner.textContent, /Saved, with some HTML removed for safety: Banner \(hero\.text\) — <script>, a\[href=javascript:\]/);
+  assert.equal((await h.drafts.get("usr_owner", "file:site")).content.hero.text, "<p>Hello</p><a>x</a>");
+});

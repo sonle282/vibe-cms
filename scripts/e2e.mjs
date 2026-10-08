@@ -5,7 +5,8 @@
 // post (status, list, body) — saves drafts through the P5 API and the drafts are compared with the expected content.
 // P8: the owner reviews every draft (what changes, in plain words) and publishes them — one commit on a fake GitHub on
 // 127.0.0.1, whose files then hold exactly the drafts; the admin says "Publishing…".
-// P8b: the owner adds the editor on the People screen (temporary password shown once).
+// P8b: the owner adds the editor on the People screen (temporary password shown once). P8c: unsafe HTML typed into rich
+// text is removed on save.
 // Then the editor signs in: locked fields are shown but disabled, other fields save; they change their own password on
 // My account. Nothing remote; test values only.
 import assert from "node:assert/strict";
@@ -276,6 +277,10 @@ try {
   await input("tagline").fill("Edited by the editor.");
   await save();
   check("editor saves an unlocked field", (await api("/api/cms/files/site")).draft?.content.tagline === "Edited by the editor.");
+  // P8c: unsafe HTML typed into rich text never reaches a draft.
+  await input("hero.text").fill('<p>Hi</p><img src="x" onerror="alert(1)"><script>alert(2)</script>');
+  await save();
+  check("rich text: the script and the onerror are removed on save, and the editor is told", (await input("hero.text").inputValue()) === '<p>Hi</p><img src="x">' && /removed for safety/.test(await page.locator(".vc-banner").innerText()) && (await api("/api/cms/files/site")).draft?.content.hero.text === '<p>Hi</p><img src="x">');
   await open("#/collections/services/items/nail-art");
   check("editor: price disabled on a service", await input("price").isDisabled());
   await open("#/collections/services/new");

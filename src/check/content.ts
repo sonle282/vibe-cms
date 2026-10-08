@@ -10,6 +10,14 @@ import type { CheckResult, Problem } from "../config/validate.js";
 import { parseMarkdown } from "../writer/markdown.js";
 import { toTree } from "../config/tree.js";
 import { add, checkRecord, describe, isRecord, at, type ValueCtx } from "./values.js";
+import { sanitizeRecord, unsafeOnly } from "./rich-text.js";
+
+/** P8c: rich text the CMS would clean when someone edits it — a warning, the site's own files are never changed. */
+const unsafeHtml = (ctx: Ctx, fields: CmsCollection["fields"], record: Record<string, unknown>, path: string, markdownBody = false) => {
+  for (const entry of unsafeOnly(sanitizeRecord({ fields, record, markdownBody }).cleaned)) {
+    add(ctx.warnings, entry.path ? (path ? `${path}${entry.path.startsWith("[") ? "" : "."}${entry.path}` : entry.path) : path, `has HTML the CMS removes when this field is edited (${entry.removed.join(", ")})`, "remove it from the file, or leave it: it stays until someone edits this field in the CMS");
+  }
+};
 
 type Ctx = ValueCtx;
 
@@ -67,6 +75,7 @@ export const checkContent = (config: CmsConfig, root: string): CheckResult => {
     if (data === undefined) return;
     if (!isRecord(data)) { add(ctx.errors, file.path, `expected an object ({ … }), got ${describe(data)}`); return; }
     checkRecord(ctx, data, toTree(file.fields), file.path);
+    unsafeHtml(ctx, file.fields, data, file.path);
   });
   for (const entry of loaded) {
     if (!entry) continue;
@@ -74,6 +83,7 @@ export const checkContent = (config: CmsConfig, root: string): CheckResult => {
     const system = [collection.store.kind === "json-array" ? collection.store.idField : collection.store.slugField, ...(collection.status ? [collection.status.field] : []), ...(collection.store.kind === "markdown-dir" ? ["body"] : [])];
     for (const record of entry.records) {
       checkRecord(ctx, record.data, toTree(collection.fields), record.path, system);
+      unsafeHtml(ctx, collection.fields, record.data, record.path, collection.store.kind === "markdown-dir");
       if (collection.status && !collection.fields[collection.status.field]) {
         const status = record.data[collection.status.field];
         if (status !== undefined && status !== collection.status.live && status !== collection.status.draft) add(ctx.errors, at(record.path, collection.status.field), `${describe(status)} is neither live (${JSON.stringify(collection.status.live)}) nor draft (${JSON.stringify(collection.status.draft)})`);
