@@ -110,8 +110,11 @@ xuống dòng cuối).
 
 ### B.2 Site mẫu
 
-`fixtures/demo-site/cms.config.ts` — salon bịa: file `site` (SĐT, email, địa chỉ, giờ — khoá owner; tagline; banner) +
-collection `services` (giá khoá owner, select, list có thứ tự).
+`fixtures/demo-site/cms.config.ts` — salon bịa, dùng **mọi kiểu field** (P7 mở rộng): file `site` (SĐT, email, địa chỉ,
+giờ — khoá owner; tagline; banner có richText + ảnh + alt; `highlights` = reference nhiều, có thứ tự; `footerLinks` = list
+object chứa list; `seo.title` / `seo.description` = key có chấm; 3 section) + collection `services` (giá khoá owner,
+select, list có thứ tự, text nhiều dòng), `team` (ảnh dạng đường dẫn và dạng `{ src, alt }`, reference 1 + nhiều),
+`posts` (markdown-dir, field `status`, list, thân Markdown).
 
 ### B.3 Mô tả được gì bằng field chung
 
@@ -179,6 +182,30 @@ có thể đổi giữa chừng). Vi phạm → 403 `locked_field` `{ fields: [{
 audit `denied` (bảng `cms_audit_log`, migration 0003 — chỉ đường dẫn / nhãn / lý do, không có giá trị); nháp bị từ chối
 không được ghi. Giới hạn đã biết: phần tử list **không có `id`** vừa bị dời chỗ vừa sửa trong cùng 1 lần lưu có thể bị
 coi là đổi giá → lưu 2 lần (dời rồi sửa), hoặc thêm `id` cho phần tử.
+
+## C.2 Admin: khung, danh sách, form sinh từ schema (P7)
+
+- **Trang:** `/admin` (1 route, on-demand). Chưa đăng nhập → form đăng nhập; mật khẩu tạm → đổi mật khẩu; đã đăng nhập →
+  trình sửa chạy trong trình duyệt (`@sonle282/vibe-cms/admin`, ~40 KB JS, không framework) nhận "boot data" = phần sửa
+  được của `cms.config` (nhãn, field, section) + người đang đăng nhập — không token, không binding, không thông tin repo.
+  Header: `x-frame-options: DENY`, `frame-ancestors 'none'`, `no-store`, `referrer-policy: same-origin`.
+- **Điều hướng bằng hash:** `#/` tổng quan · `#/files/<key>` · `#/collections/<key>` (tìm kiếm, "Add …") ·
+  `#/collections/<key>/items/<id>` · `#/collections/<key>/new`. Cột trái: mọi file + collection, người dùng, Sign out.
+- **Form** sinh từ field: text (1 dòng / nhiều dòng, đếm `maxLength`), richText (ô HTML), image (địa chỉ + alt + ảnh
+  điện thoại; giữ dạng chuỗi nếu bản gốc là chuỗi và không có alt), select, hours (ngày, nghỉ, giờ mở / đóng, nhãn, thêm
+  / dời / xoá hàng), object, list (thêm / dời ↑↓ nếu `ordered` / xoá, tôn trọng `min` / `max`, lồng nhau), reference (1 =
+  ô chọn; nhiều = danh sách + dời nếu `ordered`), key có chấm, section. Bản ghi: ô ID (bản mới: tự điền từ tên, sửa
+  được; bản đã có: khoá), `status`, thân Markdown. Form sửa một bản sao: khoá không có trong config và khoá không ai đụng
+  giữ nguyên (cả thứ tự) → không sửa = giá trị y hệt.
+- **Ô khoá cho editor** (server vẫn chặn, P4): ô / object / list khoá → hiện nhưng disabled + ổ khoá + "Only the owner
+  can change this."; editor không xoá được phần tử list còn giữ giá trị khoá (§C.1 luật 4), vẫn dời được; bản ghi mới:
+  ô khoá để trống. Owner thấy ghi chú "Editors see this but only an owner can change it."
+- **Lưu nháp** (API P5): `PUT` với `expectedRevision` (0 khi chưa có nháp) + `sourceVersion` (version của bản đã mở;
+  `new` cho bản ghi mới). Trước khi gửi: kiểm kiểu bằng đúng hàm của server (`checkRecordValues`) + ID hợp lệ, chưa
+  trùng → lỗi hiện cạnh ô. Lỗi server: 422 / 403 `locked_field` hiện cạnh ô; 409 `draft_conflict` → "Reload"; 401 →
+  đăng nhập lại. Trạng thái: "No changes" / "N unsaved changes" / "Saving…" / "Draft saved · not live yet" / "Needs
+  attention". "Discard draft" (hỏi trước). Rời trang khi còn thay đổi chưa lưu → hỏi "Leave without saving?"; Ctrl / ⌘+S
+  = lưu. Publish / review / Live: P8.
 
 ## D. Hợp đồng visual editing
 
@@ -304,8 +331,8 @@ vai trò D1 — đã xét ở P6 Bước 0, không chọn.)
 | Phiên | Token 32 byte ngẫu nhiên trong cookie `vibe_cms_session` (`HttpOnly; Secure; SameSite=Lax; Path=/`), KV `SESSION` (= `<site>-session`) lưu dưới `cms:auth:session:<sha256(token)>`; hạn **30 ngày** (`CMS_SESSION_TTL_SECONDS` 300 … 2.592.000) |
 | Đăng xuất mọi nơi | `session_version` tăng khi đổi mật khẩu, đặt lại mật khẩu, khoá → mọi phiên cũ trả 401 |
 | Vai trò | Đọc lại từ D1 **mỗi request** → khoá / đổi vai trò có hiệu lực ngay |
-| Chống dò | Rate limit binding `CMS_LOGIN_LIMITER` 10 / 60 s theo (username + IP); publish `CMS_PUBLISH_LIMITER` 20 / 60 s theo người dùng; **bản build production thiếu limiter → 503**; lỗi đăng nhập luôn một câu "Username or password is incorrect."; audit `login` / `login_failed` |
-| Owner đầu tiên | Secret `CMS_BOOTSTRAP_USERNAME` + `CMS_BOOTSTRAP_PASSWORD`: lần đăng nhập đầu khi chưa có ai → tạo owner, đánh dấu `bootstrap_completed` (dùng 1 lần, kể cả khi bảng users bị xoá sau đó) |
+| Chống dò | Rate limit binding `CMS_LOGIN_LIMITER` 10 / 60 s theo (username + IP), và theo người dùng khi đổi mật khẩu (kiểm mật khẩu hiện tại — P6b); publish `CMS_PUBLISH_LIMITER` 20 / 60 s theo người dùng; **bản build production thiếu limiter → 503**; lỗi đăng nhập luôn một câu "Username or password is incorrect."; audit `login` / `login_failed` |
+| Owner đầu tiên | Secret `CMS_BOOTSTRAP_USERNAME` + `CMS_BOOTSTRAP_PASSWORD` (so mật khẩu thời gian hằng): lần đăng nhập đầu khi chưa có ai → tạo owner, đánh dấu `bootstrap_completed` (dùng 1 lần, kể cả khi bảng users bị xoá sau đó) |
 | Owner quên mật khẩu | P11: lệnh CLI đặt mật khẩu tạm cho owner (không sửa D1 bằng tay) |
 | Danh tính dev | Giữ như P5: chỉ `import.meta.env.DEV` + localhost + `VIBE_CMS_DEV_USER` |
 
@@ -334,13 +361,14 @@ mới** cho gói rồi nhập users sang (không chạy migration của gói lê
 | POST | `/api/auth/login` `{ username, password }` | ai cũng gọi | 200 + cookie `{ user, mustChangePassword }` · 400 `bad_json` · 401 `invalid_credentials` · 403 `origin_forbidden` · 429 `too_many_attempts` (retry-after 60) · 503 `auth_not_configured` / `login_limiter_missing` / `limiter_unavailable` |
 | POST | `/api/auth/logout` | có phiên hoặc không | 200, cookie xoá · 403 `origin_forbidden` |
 | GET | `/api/auth/me` | có phiên | 200 `{ user, mustChangePassword, expiresAt }` · 401 `unauthenticated` · 503 |
-| PUT | `/api/auth/password` `{ currentPassword, newPassword }` | có phiên | 200 + cookie mới (phiên cũ chết) · 400 `wrong_current_password` / `same_password` / `invalid_password` · 401 · 403 `origin_forbidden` |
+| PUT | `/api/auth/password` `{ currentPassword, newPassword }` | có phiên | 200 + cookie mới (phiên cũ chết) · 400 `wrong_current_password` / `same_password` / `invalid_password` · 401 · 403 `origin_forbidden` · 429 `too_many_attempts` (10 lần / phút / người dùng) |
 | GET | `/api/cms/users` | owner | 200 `{ users }` · 403 `owner_only` |
 | POST | `/api/cms/users` `{ username, displayName?, role, password? }` | owner | 201 `{ user, temporaryPassword? }` (tạo sẵn 20 ký tự nếu không gửi) · 400 `invalid_username` / `invalid_role` / `invalid_password` / `invalid_display_name` · 409 `username_taken` |
 | PATCH | `/api/cms/users/:id` `{ action: disable \| enable \| reset-password \| set-role, … }` | owner | 200 · 400 `cannot_disable_self` / `last_owner` / `invalid_role` / `unsupported_action` · 404 |
 | (mọi route `/api/cms/*`) | | có phiên | 401 `unauthenticated` · 403 `password_change_required` (mật khẩu tạm chưa đổi) · 429 `too_many_publishes` · 503 `publish_limiter_missing` |
 
-Người được tạo / được đặt lại mật khẩu (và owner từ bootstrap) phải đổi mật khẩu ở lần đăng nhập đầu. Mọi thay đổi
+Người được tạo / được đặt lại mật khẩu (và owner từ bootstrap) phải đổi mật khẩu ở lần đăng nhập đầu. Mọi form của
+`/admin` có `method="post"` (JS chưa chạy thì mật khẩu cũng không vào URL / log); mật khẩu tạm 20 ký tự rút đều (không lệch). Mọi thay đổi
 People / đăng nhập ghi audit (`stage` auth / people, migration 0005) — không bao giờ ghi mật khẩu, hash hay token.
 
 ### Khác CMS cũ (có chủ đích)
@@ -390,7 +418,7 @@ thay đổi lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tà
 | **P4** | Ô khoá theo vai trò ở server (PUT + publish) + audit `denied` | editor đổi ô khoá → 403 + audit; owner được | ≥ 8 ca (object / list / collection) |
 | **P5** | API chung files / collections + publish GitHub + audit + header version | demo publish qua GitHub giả lập | test hợp đồng §C + mock GitHub |
 | **P6** | Auth + People như CMS cũ (§F.1): mật khẩu PBKDF2, phiên KV, owner / editor, bootstrap, rate limit | tạo owner bằng bootstrap, owner tạo editor | test auth + People |
-| **P7** | Admin shell + danh sách + form sinh từ schema | sửa mọi field demo | test form + e2e Chrome headless |
+| **P7** | Admin shell + danh sách + form sinh từ schema (§C.2) | sửa mọi field demo | test form + e2e Chrome headless |
 | **P8** | Review / change summary + Save → review → Publish + trạng thái Live | luồng đủ trên demo | e2e + test change summary |
 | **P9** | Bridge: inject vào iframe cùng origin (dự phòng loader), `data-cms-*` + selector, SECTION_MAP, khung 2 cấp, không render khi gõ | preview demo chọn / hover / focus đúng, HTML public không đổi | test bridge + đo khi gõ |
 | **P10** | Ảnh: upload R2 staging, sheet chọn ảnh, alt | đổi ảnh demo + publish | test upload pipeline |

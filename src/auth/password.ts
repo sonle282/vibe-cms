@@ -71,8 +71,20 @@ export const verifyPassword = async (password: string, encoded: string) => {
 /** A hash of a random password: verifying against it costs the same as a real one (no "user exists" timing hint). */
 export const decoyHash = `${HASH_VERSION}$${PBKDF2_ITERATIONS}$${"A".repeat(22)}$${"A".repeat(43)}`;
 
-/** A readable temporary password (20 characters, no look-alike letters). */
+/** Constant-time equality of two strings (compares their SHA-256 digests, so the length leaks nothing either). */
+export const sameSecret = async (a: string, b: string) => {
+  const digest = async (value: string) => new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
+  const [left, right] = await Promise.all([digest(a), digest(b)]);
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) difference |= left[index] ^ right[index];
+  return difference === 0;
+};
+
+/** A readable temporary password (20 characters, no look-alike letters; unbiased: bytes ≥ 216 are drawn again). */
 export const temporaryPassword = () => {
   const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
-  return [...randomBytes(20)].map((byte) => alphabet[byte % alphabet.length]).join("");
+  const limit = 256 - (256 % alphabet.length);
+  let out = "";
+  while (out.length < 20) for (const byte of randomBytes(32)) if (byte < limit && out.length < 20) out += alphabet[byte % alphabet.length];
+  return out;
 };

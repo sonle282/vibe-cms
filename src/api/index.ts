@@ -29,6 +29,7 @@ import { GitPublishError, type CommitAuthor, type GitPublisher } from "./github.
 import type { Identify, Identity, RateLimiter } from "../auth/index.js";
 
 export { createSiteRuntime, type SiteEnv } from "./runtime.js";
+export { adminBoot, bootJson, type AdminBoot } from "../admin/boot.js";
 export { createGitHubPublisher, GitPublishError, rateLimitWait, type CommitAuthor, type CommitInput, type GitHubOptions, type GitPublisher } from "./github.js";
 
 // ---------------------------------------------------------------- identity

@@ -7,7 +7,7 @@ import { before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   contentPaths, createBundledSource, createCmsApi, createCmsAuth, createD1AuditLog, createD1DraftStore, hashPassword, insertUser, loadCmsConfig,
-  PBKDF2_ITERATIONS, userFromLegacyRow, verifyPassword,
+  PBKDF2_ITERATIONS, sameSecret, temporaryPassword, userFromLegacyRow, verifyPassword,
 } from "../dist/index.js";
 import { createSqliteD1, legacyHashPassword, memoryKv, memoryLimiter } from "./helpers/sqlite-d1.mjs";
 
@@ -140,6 +140,41 @@ test("rate limit: 10 sign-ins per minute per username + IP, then 429 with retry-
   assert.equal((await h.login("owner", "owner-password-456", { ip: "198.51.100.2" })).status, 200, "another IP is not limited");
   h.advance(61_000);
   assert.equal((await h.login("owner", "owner-password-456", { ip: "198.51.100.1" })).status, 200, "a minute later it works again");
+});
+
+test("P6b: changing the password checks the current one at most 10 times a minute per user (a stolen session cannot guess fast)", async () => {
+  const h = setup();
+  const first = await h.login(BOOT.username, BOOT.password);
+  for (let attempt = 1; attempt <= 10; attempt += 1) {
+    const wrong = await h.request("PUT", "/api/auth/password", { cookie: first.cookie, body: { currentPassword: `guess-number-${attempt}`, newPassword: "owner-password-456" }, ip: `198.51.100.${attempt}` });
+    assert.equal(wrong.body.error, "wrong_current_password");
+  }
+  const limited = await h.request("PUT", "/api/auth/password", { cookie: first.cookie, body: { currentPassword: BOOT.password, newPassword: "owner-password-456" } });
+  assert.deepEqual([limited.status, limited.body.error, limited.headers["retry-after"]], [429, "too_many_attempts", "60"], "limited per user, whatever the IP");
+  h.advance(61_000);
+  assert.equal((await h.request("PUT", "/api/auth/password", { cookie: first.cookie, body: { currentPassword: BOOT.password, newPassword: "owner-password-456" } })).status, 200);
+});
+
+test("P6b: temporary passwords use the whole alphabet evenly; secrets compare in constant time", async () => {
+  const counts = new Map();
+  for (let index = 0; index < 2000; index += 1) {
+    const password = temporaryPassword();
+    assert.match(password, /^[a-km-np-zA-HJ-NP-Z2-9]{20}$/);
+    for (const character of password) counts.set(character, (counts.get(character) ?? 0) + 1);
+  }
+  assert.equal(counts.size, 54);
+  const expected = 40_000 / 54;
+  for (const count of counts.values()) assert.ok(Math.abs(count - expected) < expected * 0.25, `${count} vs ~${expected.toFixed(0)}`);
+  assert.equal(await sameSecret("bootstrap-secret-123", "bootstrap-secret-123"), true);
+  assert.equal(await sameSecret("bootstrap-secret-123", "bootstrap-secret-124"), false);
+  assert.equal(await sameSecret("short", "a-much-longer-value"), false);
+});
+
+test("P6b: every form of the admin page posts (method=\"post\"), so a password can never land in a URL", () => {
+  const source = readFileSync(fileURLToPath(new URL("../src/routes/admin.astro", import.meta.url)), "utf8");
+  const forms = source.match(/<form\b[^>]*>/g) ?? [];
+  assert.ok(forms.length >= 1);
+  for (const form of forms) assert.match(form, /\bmethod="post"/, form);
 });
 
 test("production without a login limiter → 503 (sign-in refused)", async () => {

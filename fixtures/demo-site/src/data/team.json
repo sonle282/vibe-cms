@@ -1,0 +1,16 @@
+[
+  {
+    "id": "alex",
+    "name": "Alex Example",
+    "photo": { "src": "/images/team-alex.svg", "alt": "Alex smiling" },
+    "specialty": "nail-art",
+    "services": ["nail-art", "classic-manicure"],
+    "bio": "<p>Invented person, <strong>real</strong> attention to detail.</p>"
+  },
+  {
+    "id": "sam",
+    "name": "Sam Sample",
+    "photo": "/images/team-sam.svg",
+    "services": ["spa-pedicure"]
+  }
+]

@@ -15,9 +15,9 @@ const withConfig = async (source, run) => {
   try { const file = join(dir, "cms.config.ts"); writeFileSync(file, source); return await run(file); } finally { rmSync(dir, { recursive: true, force: true }); }
 };
 
-test("the demo site's config loads: 1 file, 1 collection, locked phone / email / address / hours + price", async () => {
+test("the demo site's config loads: 1 file, 3 collections, locked phone / email / address / hours + price", async () => {
   const config = await loadCmsConfig(demo);
-  assert.deepEqual(countConfig(config), { files: 1, collections: 1 });
+  assert.deepEqual(countConfig(config), { files: 1, collections: 3 });
   for (const name of ["phone", "email", "address", "hours"]) assert.equal(config.files[0].fields[name].locked, "owner", name);
   assert.equal(config.collections[0].fields.price.locked, "owner");
   assert.equal(config.repo.branch, "main");
