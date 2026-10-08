@@ -23,6 +23,7 @@ export const createClient = (fetchImpl: Fetch) => {
     return { ok: false, status: response.status, error, message: humanMessage(error, typeof data.message === "string" ? data.message : ""), data };
   };
   return {
+    request: <T>(method: string, path: string, body?: unknown) => call<T>(method, path, body),
     get: <T>(path: string) => call<T>("GET", path),
     put: <T>(path: string, body: unknown) => call<T>("PUT", path, body),
     post: <T>(path: string, body: unknown) => call<T>("POST", path, body),

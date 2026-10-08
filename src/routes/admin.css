@@ -214,3 +214,29 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
 .vc-change-what { color: var(--vc-fg-muted); overflow-wrap: anywhere; }
 .vc-change-del { color: var(--vc-danger); text-decoration: line-through; background: var(--vc-danger-bg); padding: 0 4px; border-radius: 4px; }
 .vc-change-ins { color: var(--vc-success); text-decoration: none; background: var(--vc-success-bg); padding: 0 4px; border-radius: 4px; }
+
+/* ---------- P8b: people, my account */
+a.vc-user-name { color: var(--vc-fg); text-decoration: none; } a.vc-user-name:hover { text-decoration: underline; }
+.vc-danger { color: var(--vc-danger); }
+.vc-danger:hover:not(:disabled) { background: var(--vc-danger-bg); }
+.vc-pill-off { background: #f2f2f7; color: #636366; }
+.vc-secret { display: grid; gap: 8px; padding: 16px; margin: 0 0 16px; border-radius: var(--vc-radius-14); background: var(--vc-accent-bg); box-shadow: 0 0 0 1px rgba(0, 113, 227, .25); }
+.vc-secret-title { margin: 0; font-weight: 600; }
+.vc-secret-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vc-secret-value { font: 600 18px/1.4 var(--vc-mono); letter-spacing: .04em; padding: 6px 10px; background: var(--vc-surface); border-radius: var(--vc-radius-10); user-select: all; }
+.vc-secret .vc-button.vc-quiet { justify-self: start; padding: 0; }
+.vc-people-add { display: grid; gap: 12px; }
+.vc-people-fields { display: grid; grid-template-columns: 1fr 1fr 160px; gap: 12px; align-items: start; }
+.vc-people-add .vc-button { justify-self: start; }
+.vc-people { margin-top: 16px; }
+.vc-people .vc-role { min-height: 34px; width: auto; }
+.vc-people-actions { white-space: nowrap; text-align: right; }
+.vc-people-actions .vc-button + .vc-button { margin-left: 6px; }
+.vc-person-name { font-weight: 500; }
+.vc-account { max-width: 420px; display: grid; gap: 12px; }
+.vc-account .vc-button { justify-self: start; }
+.vc-account-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 20px; }
+.vc-account-facts dt { color: var(--vc-fg-muted); } .vc-account-facts dd { margin: 0; }
+@media (max-width: 760px) { .vc-people-fields { grid-template-columns: 1fr; } .vc-people-actions { white-space: normal; } }
+.vc-people th { white-space: nowrap; }
+.vc-people .vc-unpublished { display: block; margin-top: 4px; }
