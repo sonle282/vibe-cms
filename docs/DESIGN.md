@@ -350,6 +350,28 @@ GitHub Packages đòi token kể cả với gói public → **không dùng**. Th
 
 ---
 
+## F.2 Lọc HTML của richText (P8c)
+
+- **Ở đâu:** server, khi lưu nháp (`PUT`) và lại lần nữa khi publish (nháp lưu trước P8c / client khác); cảnh báo lúc
+  build (`checkContent`) cho HTML có sẵn trong file mà CMS sẽ lọc khi có người sửa ô đó — build không dừng.
+- **Bằng gì:** `hast-util-from-html` + `hast-util-sanitize` + `hast-util-to-html` (parser HTML thật, không cần DOM,
+  chạy trong Worker) — **cùng thư viện và cùng danh sách** với CMS đang chạy của site đầu tiên (P21 chuyển sang không
+  đổi kết quả). Giữ: a, blockquote, br, code, div, em, figcaption, figure, h2, h3, hr, img, li, ol, p, pre, strong, u,
+  ul; thuộc tính `class`, `title`, a: `href` `rel` `target`, img: `alt` `height` `loading` `src` `width`; link chỉ
+  http / https / mailto / tel / đường dẫn tương đối, ảnh http / https / tương đối. Bỏ cả nội dung: script, style,
+  noscript, iframe, object, embed, form. Thẻ lạ: bỏ thẻ, giữ chữ. Mọi thuộc tính khác (onclick, style, srcdoc, id…)
+  và link `javascript:` / `vbscript:` / `data:` bị bỏ. Tối đa 250.000 ký tự / ô (422).
+- **Chỉ lọc cái người dùng gõ:** giá trị đã có y hệt trong file của site (bản nháp bắt đầu từ đó) không bị đụng → đổi
+  ô khác không làm file đổi theo. Giá trị người dùng đổi luôn được lưu ở dạng parser viết lại (không giữ nguyên văn "vì
+  trông sạch": thẻ chưa đóng ở cuối như `<img src=x onerror=…` bị parser bỏ nhưng sẽ thành thẻ thật khi nằm cạnh HTML
+  của trang). Thân Markdown chỉ bị viết lại khi thật sự có thứ nguy hiểm bị bỏ (dạng chuẩn thoát `<` `&`, làm hỏng ví
+  dụ code).
+- **Người dùng thấy gì:** lưu xong, form hiện đúng bản đã lọc + "Saved, with some HTML removed for safety: Banner
+  (hero.text) — <script>, a[href=javascript:]"; publish lọc thêm thì màn Published ghi "Safety note"; audit ghi đường
+  dẫn ô bị lọc (không ghi nội dung).
+- Chưa làm: link `javascript:` viết bằng cú pháp Markdown `[x](javascript:…)` trong thân bài — phụ thuộc cách site
+  render Markdown; ghi ở mục rủi ro.
+
 ## F.1 Đăng nhập + People (P6)
 
 **Quyết định (SonLe, 2026-09-28): phương án A — giống CMS đang chạy thật của site đầu tiên, dùng chung cho mọi dự án.
@@ -455,7 +477,7 @@ thay đổi lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tà
 | **P7** | Admin shell + danh sách + form sinh từ schema (§C.2) | sửa mọi field demo | test form + e2e Chrome headless |
 | **P8** | Review / change summary + Save → review → Publish + trạng thái Live (§C.3) | luồng đủ trên demo | e2e + test change summary |
 | **P8b** | Màn People trong admin (thêm người + mật khẩu tạm hiện 1 lần, khoá / mở, đặt lại mật khẩu, đổi vai trò; API P6) + My account (tự đổi mật khẩu) (§C.4) | owner tạo editor bằng giao diện | test DOM + e2e |
-| **P8c** | Lọc HTML của richText ở server (lưu nháp + publish): chỉ giữ thẻ / thuộc tính an toàn, link an toàn | HTML nguy hiểm không vào nháp / commit | test sanitizer (≥ 1 ca mỗi kiểu tấn công) |
+| **P8c** | Lọc HTML của richText ở server (lưu nháp + publish): chỉ giữ thẻ / thuộc tính an toàn, link an toàn (§F.2) | HTML nguy hiểm không vào nháp / commit | test sanitizer (≥ 1 ca mỗi kiểu tấn công) |
 | **P9** | Bridge: inject vào iframe cùng origin (dự phòng loader), `data-cms-*` + selector, SECTION_MAP, khung 2 cấp, không render khi gõ | preview demo chọn / hover / focus đúng, HTML public không đổi | test bridge + đo khi gõ |
 | **P10** | Ảnh: upload R2 staging, sheet chọn ảnh, alt | đổi ảnh demo + publish | test upload pipeline |
 | **P11** | CLI `setup` (idempotent, `--account`) / `migrate` / `check` / `export` / `update` / `reset-owner-password` (đặt mật khẩu tạm cho owner quên mật khẩu, không sửa D1 tay) + tài liệu cài | cài demo từ đầu theo tài liệu **bằng URL release, không token**; `setup` lần 2 = không đổi gì; `update` đổi URL sang bản mới | chạy local (miniflare); xuất / nhập D1 demo khớp số dòng |

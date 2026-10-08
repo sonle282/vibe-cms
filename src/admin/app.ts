@@ -20,7 +20,7 @@ import { clear, h } from "./dom.js";
 import { summarizeChanges, type Change, type ReferenceLabels } from "./changes.js";
 import { createForm, type Form, type ReferenceTarget } from "./form.js";
 import { accountScreen, peopleScreen, type ScreenKit } from "./people.js";
-import { clone, countChanges, ID_PATTERN, slugify } from "./value.js";
+import { clone, countChanges, getAt, ID_PATTERN, parsePathText, slugify } from "./value.js";
 
 export type AdminOptions = {
   root: HTMLElement;
@@ -54,7 +54,7 @@ export const editorFields = (target: { kind: "file"; file: BootFile } | { kind: 
 };
 
 type DraftRow = { resource: string; kind: "file" | "item"; key: string; id: string | null; label: string; group: string; updatedAt: string; revision: number; isNew: boolean; stale: boolean };
-type PublishResult = { commitSha: string | null; resources: string[]; files: string[]; expectedLiveVersion: string; warnings: Array<{ resource: string; code: string }>; attempts: number };
+type PublishResult = { commitSha: string | null; resources: string[]; files: string[]; expectedLiveVersion: string; warnings: Array<{ resource: string; code: string; fields?: string[] }>; attempts: number };
 type PendingPublish = { expected: string; at: number; userId: string; labels: string[] };
 const PENDING_KEY = "vibe-cms:publishing";
 
@@ -385,14 +385,22 @@ export const startAdmin = (options: AdminOptions) => {
       const url = input.url ?? `/api/cms/collections/${encodeURIComponent(collection!.key)}/items/${encodeURIComponent(id!)}`;
       saving = true;
       refresh();
-      const result = await api.put<{ draft: { revision: number } }>(url, { content: value, expectedRevision: revision, sourceVersion: version });
+      const result = await api.put<{ draft: { revision: number; content: unknown }; cleaned?: Array<{ path: string; removed: string[] }> }>(url, { content: value, expectedRevision: revision, sourceVersion: version });
       saving = false;
       if (result.ok) {
         revision = result.data.draft.revision;
         hasDraft = true;
-        saved = value;
+        // P8c: the server removed unsafe HTML from what was typed — show exactly what was saved, and say where.
+        const cleaned = result.data.cleaned ?? [];
+        for (const entry of cleaned) { const path = parsePathText(entry.path); form.setValue(path, getAt(result.data.draft.content, path)); }
+        saved = cleaned.length ? form.value() : value;
         refresh();
-        say("Draft saved. The website has not changed.");
+        const unsafe = cleaned.filter((entry) => entry.removed.length > 0);
+        if (unsafe.length) {
+          const where = (path: string) => { const label = (path.split(/[.[]/)[0] && fields[path.split(/[.[]/)[0]]?.label) || path; return path.includes(".") || path.includes("[") ? `${label} (${path})` : label; };
+          showBanner(`Saved, with some HTML removed for safety: ${unsafe.map((entry) => `${where(entry.path)} — ${entry.removed.join(", ")}`).join("; ")}. Scripts, event handlers (onclick…), styles, frames and javascript: links are never kept.`);
+          say("Draft saved; some HTML was removed for safety.");
+        } else say("Draft saved. The website has not changed.");
         void refreshDrafts();
         if (isNew && collection) { dirtyGuard = false; win.location.hash = `#/collections/${collection.key}/items/${encodeURIComponent(id!)}`; dirtyGuard = true; }
         return;
@@ -544,6 +552,7 @@ export const startAdmin = (options: AdminOptions) => {
       setState("saved", published.commitSha ? "Published · going live" : "Nothing to change");
       clear(actions);
       const warnings = published.warnings.filter((warning) => warning.code === "rewrote_whole_file");
+      const sanitizedNotes = published.warnings.filter((warning) => warning.code === "sanitized");
       show({ title: "Published", crumbs: crumbsFor }, [
         heading(published.commitSha ? "Published" : "Nothing changed on the website"),
         h(doc, "p", { class: "vc-lead" }, published.commitSha
@@ -551,6 +560,7 @@ export const startAdmin = (options: AdminOptions) => {
           : "These drafts were the same as the website, so nothing was sent. The drafts are cleared."),
         published.commitSha ? h(doc, "p", { class: "vc-note" }, `Change ${published.commitSha.slice(0, 7)} on ${boot.site.name}'s ${published.files.length === 1 ? "file" : "files"}: ${published.files.join(", ")}.`) : h(doc, "span", { hidden: true }),
         warnings.length ? h(doc, "div", { class: "vc-banner" }, h(doc, "p", {}, `Formatting note: ${warnings.map((warning) => labelOf(warning.resource)).join(", ")} — the whole file was rewritten because its original formatting could not be kept. The content is right; the change on GitHub just looks bigger.`)) : h(doc, "span", { hidden: true }),
+        sanitizedNotes.length ? h(doc, "div", { class: "vc-banner" }, h(doc, "p", {}, `Safety note: unsafe HTML was removed before publishing — ${sanitizedNotes.map((warning) => `${labelOf(warning.resource)}: ${(warning.fields ?? []).join("; ")}`).join(" · ")}.`)) : h(doc, "span", { hidden: true }),
         link("#/", "Back to the overview", { class: "vc-button" }),
       ]);
       main.querySelector<HTMLElement>("h1")?.focus();
