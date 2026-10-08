@@ -2,7 +2,7 @@
 
 > Nguồn: [DESIGN.md](DESIGN.md) §I. Quy tắc: 1 task = 1 commit; mỗi task REPORT → DỪNG chờ review. Test của gói **không đọc
 > dữ liệu site khách**. Task có sửa repo site: đầu task `git status` sạch + pull nhánh production của site; có thay đổi
-> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-08 (P8).
+> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-08 (P8b).
 
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
@@ -15,8 +15,8 @@
 | **P5b** | `sourceVersion` bắt buộc khi tạo nháp (giữ bản gốc); publisher GitHub đối chiếu Mr Spa: 422 = nhánh đổi, raw ≤ 100 MB, giới hạn tốc độ | 3–5 | ✅ Xong (duyệt 2026-09-28; 22252a8, CI 36405197944) |
 | **P6** | Auth + People — phương án A (giống CMS cũ, SonLe chốt 2026-09-28): mật khẩu PBKDF2 100k, phiên KV 30 ngày, owner / editor, bootstrap, rate limit, People, bắt đổi mật khẩu tạm | 18–28 | ✅ Xong (review 2026-10-07: P6 review → P6b sửa 4 điểm; c550b79, CI 36408128831 + P6b 24f1e3b, CI 37642092177) |
 | **P7** | Admin shell + danh sách + form sinh từ schema (mọi kiểu field), lưu nháp qua API P5, ô khoá cho editor; demo dùng đủ mọi kiểu field; test DOM giả + e2e Chrome headless | 40–60 | ✅ Xong (merge 2026-10-08; 21ea0a8, CI 37643742576) |
-| **P8** | Review / change summary + Save → review → Publish + Live (`GET /drafts`, tóm tắt thay đổi, publish nhiều nháp = 1 commit, theo dõi live-version) | 20–30 | 🔎 Chờ review (2026-10-08) |
-| P8b | Màn People trong admin (SonLe chốt 2026-10-08: tách khỏi P8) | 6–10 | ⏳ |
+| **P8** | Review / change summary + Save → review → Publish + Live (`GET /drafts`, tóm tắt thay đổi, publish nhiều nháp = 1 commit, theo dõi live-version) | 20–30 | ✅ Xong (merge 2026-10-08; 3359d15, CI 37713179876) |
+| **P8b** | Màn People trong admin (SonLe chốt 2026-10-08: tách khỏi P8): thêm người + mật khẩu tạm 1 lần, vai trò, khoá / mở, đặt lại mật khẩu; + My account (tự đổi mật khẩu) | 6–10 | 🔎 Chờ review (2026-10-08) |
 | P8c | Lọc HTML richText ở server (SonLe chốt 2026-10-08: tách khỏi P8) | 4–8 | ⏳ |
 | P9 | Bridge chung (inject vào iframe cùng origin, dự phòng loader; `data-cms-*` + selector, SECTION_MAP, U23, F-15) | 16–24 | ⏳ |
 | P10 | Ảnh (upload R2 staging, sheet chọn ảnh, alt) | 16–24 | ⏳ |

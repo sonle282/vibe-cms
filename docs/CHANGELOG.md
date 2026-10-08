@@ -3,6 +3,24 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.9.0 — unreleased (P8b)
+
+- **People screen** (owners; menu "People"): everyone with role, status, "must choose a password" and last sign-in.
+  Add a person → their **temporary password is shown once** (Copy; hidden on "Done" or when the page is left; never
+  stored). Change role, disable / enable, reset a password (shows a new temporary password once) — each asks first and
+  says what happens (signed out at once, drafts kept). No buttons on yourself; the server's refusals (owner only, last
+  active owner) are shown on the list. Editors do not see People.
+- **My account** (click your name): name, username, role, last sign-in; **change my password** (current + new twice,
+  12+ characters) — other sessions end, this one stays signed in. Before P8b a password could only be changed when a
+  temporary one forced it.
+- Every form posts and carries a hidden username for password managers. `peopleScreen`, `accountScreen`, `ROLE_HELP`
+  exported from `@sonle282/vibe-cms/admin`; the admin client gained `request(method, …)`.
+- Tests: test/people.test.mjs on happy-dom against the real sign-in + People code (node:sqlite, real session cookies):
+  the shown temporary password really signs in, role / disable / enable / reset take effect at once, refusals shown,
+  editors kept out, my password change. e2e: the owner adds the editor on the People screen; the editor changes their
+  password on My account (50 checks).
+- Site action: none (not released).
+
 ## 0.8.0 — unreleased (P8)
 
 - **Review & publish in the admin.** The navigation counts my drafts. The review screen shows, for each draft, what it

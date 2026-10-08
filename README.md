@@ -5,10 +5,10 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.8.0 · P8.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
-> fields on the server, CMS API + one-commit GitHub publishing, sign-in + People, and the editor at `/admin` (lists,
-> forms generated from `cms.config`, drafts, review of changes, publish, live status). Next: People screen (P8b), rich
-> text sanitizer (P8c), preview (P9), images (P10), CLI (P11) ([docs/TRACKER.md](docs/TRACKER.md), design:
+> Status: **0.9.0 · P8b.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
+> fields on the server, CMS API + one-commit GitHub publishing, sign-in, and the editor at `/admin` (lists, forms
+> generated from `cms.config`, drafts, review of changes, publish, live status, People, My account). Next: rich text
+> sanitizer (P8c), preview (P9), images (P10), CLI (P11) ([docs/TRACKER.md](docs/TRACKER.md), design:
 > [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
 
 ## Install in a site (3 steps, no token)
@@ -153,8 +153,9 @@ needs these bindings / secrets (docs/DESIGN.md §F.1):
 - `CMS_BOOTSTRAP_USERNAME` + `CMS_BOOTSTRAP_PASSWORD` once, for the first owner (then remove them),
 - Workers **Paid** is recommended: a sign-in costs ~16–45 ms CPU, Workers Free allows 10 ms.
 
-Owners manage people through `/api/cms/users` (no People screen in the admin yet). New and reset users get a temporary
-password they must change at the first sign-in.
+Owners manage people on the admin's **People** screen (API: `/api/cms/users`): add someone (their temporary password
+is shown once), change roles, disable / enable, reset a password. New and reset users must choose their own password
+at the first sign-in; anyone can change theirs later on **My account** (click your name).
 
 ## The editor (P7, P8)
 

@@ -6,6 +6,7 @@
  *   #/collections/<key>                  the records of a collection (search, add)
  *   #/collections/<key>/items/<id>       edit a record
  *   #/collections/<key>/new              a new record
+ *   #/people · #/account                 P8b: people (owners only) · my account (change my password)
  *   #/publish  ·  #/publish/<resource>   P8: review my drafts (what each changes, in plain words) and publish them in
  *                                        one commit; then watch /live-version until the website serves them ("Live")
  * Preview (P9) and images (P10) build on this. Nothing is saved without "Save draft"; leaving with unsaved changes asks
@@ -18,6 +19,7 @@ import type { AdminBoot, BootCollection, BootFile } from "./boot.js";
 import { clear, h } from "./dom.js";
 import { summarizeChanges, type Change, type ReferenceLabels } from "./changes.js";
 import { createForm, type Form, type ReferenceTarget } from "./form.js";
+import { accountScreen, peopleScreen, type ScreenKit } from "./people.js";
 import { clone, countChanges, ID_PATTERN, slugify } from "./value.js";
 
 export type AdminOptions = {
@@ -88,6 +90,8 @@ export const startAdmin = (options: AdminOptions) => {
   const draftBadge = h(doc, "span", { class: "vc-badge", hidden: true });
   const publishLink = h(doc, "a", { href: "#/publish", "data-route": "#/publish", class: "vc-nav-publish" }, "Review & publish ", draftBadge);
   navItems.push(publishLink);
+  // P8b: People, for owners only (the server refuses editors anyway).
+  if (user.role === "owner") navItems.push(link("#/people", "People", { "data-route": "#/people" }));
   const refreshDrafts = async () => {
     const result = await api.get<{ drafts: DraftRow[] }>("/api/cms/drafts");
     const count = result.ok ? result.data.drafts.length : 0;
@@ -108,7 +112,7 @@ export const startAdmin = (options: AdminOptions) => {
     h(doc, "div", { class: "vc-brand" }, h(doc, "span", { class: "vc-brand-name" }, boot.site.name), h(doc, "span", { class: "vc-brand-sub" }, "Vibe CMS")),
     h(doc, "ul", { class: "vc-nav-list" }, navItems.map((item) => h(doc, "li", {}, item))),
     liveBox,
-    h(doc, "div", { class: "vc-user" }, h(doc, "span", { class: "vc-user-name" }, user.displayName), h(doc, "span", { class: "vc-user-role" }, user.role === "owner" ? "Owner" : "Editor"), signOut));
+    h(doc, "div", { class: "vc-user" }, h(doc, "a", { class: "vc-user-name", href: "#/account", title: "My account" }, user.displayName), h(doc, "span", { class: "vc-user-role" }, user.role === "owner" ? "Owner" : "Editor"), signOut));
   const crumbs = h(doc, "nav", { class: "vc-crumbs", "aria-label": "Breadcrumb" });
   const saveState = h(doc, "span", { class: "vc-save-state", role: "status", "aria-live": "polite" });
   const actions = h(doc, "div", { class: "vc-actions" });
@@ -171,6 +175,8 @@ export const startAdmin = (options: AdminOptions) => {
       else if (parts[0] === "collections" && parts.length === 3 && parts[2] === "new") await editItem(parts[1], undefined, stillHere);
       else if (parts[0] === "collections" && parts.length === 4 && parts[2] === "items") await editItem(parts[1], parts[3], stillHere);
       else if (parts[0] === "publish" && parts.length <= 2) await review(parts[1] || undefined, stillHere);
+      else if (parts[0] === "people" && parts.length === 1) await peopleScreen(kit, stillHere);
+      else if (parts[0] === "account" && parts.length === 1) await accountScreen(kit, stillHere);
       else show({ title: "Not found", crumbs: [["Overview", "#/"], ["Not found"]] }, message("Not found", "There is nothing at this address in the CMS.", link("#/", "Go to the overview")));
     } catch {
       if (stillHere()) show({ title: "Error", crumbs: [["Overview", "#/"], ["Error"]] }, message("Something went wrong", "The page could not be shown. Reload to try again."));
@@ -181,6 +187,14 @@ export const startAdmin = (options: AdminOptions) => {
   const failed = (result: ApiFail, crumbsFor: Array<[string, string?]>) => {
     if (result.status === 401 || result.error === "password_change_required") { dirtyGuard = false; win.location.assign("/admin"); }
     show({ title: "Error", crumbs: crumbsFor }, message(result.status === 404 ? "Not found" : "Can't open this", result.message));
+  };
+
+  // Screens in other modules (P8b) get the shell's pieces.
+  const kit: ScreenKit = {
+    doc, api, user, heading, message, say, ask, actions,
+    show: (screen, content) => show(screen, content),
+    failed: (result, crumbsFor) => failed(result, crumbsFor),
+    copy: async (text) => { try { await win.navigator.clipboard.writeText(text); return true; } catch { return false; } },
   };
 
   // ---------------------------------------------------------------- overview

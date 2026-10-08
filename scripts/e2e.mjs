@@ -5,7 +5,9 @@
 // post (status, list, body) — saves drafts through the P5 API and the drafts are compared with the expected content.
 // P8: the owner reviews every draft (what changes, in plain words) and publishes them — one commit on a fake GitHub on
 // 127.0.0.1, whose files then hold exactly the drafts; the admin says "Publishing…".
-// Then an editor signs in: locked fields are shown but disabled, other fields save. Nothing remote; test values only.
+// P8b: the owner adds the editor on the People screen (temporary password shown once).
+// Then the editor signs in: locked fields are shown but disabled, other fields save; they change their own password on
+// My account. Nothing remote; test values only.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -248,9 +250,18 @@ try {
   check("commit message names the owner's internal id, no email", /usr_[a-z2-7]{16}/.test(github.commit().message) && !github.commit().message.includes("@"));
   check("after publishing: 'Publishing…' until the site serves it; no drafts left", /Publishing… started/.test(await page.locator(".vc-live").innerText()) && await page.locator(".vc-badge").isHidden());
 
-  // ---------------------------------------------------------------- owner adds an editor (People API; the People screen is not P7)
-  const created = await page.evaluate(async () => (await fetch("/api/cms/users", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: "editor1", displayName: "Editor One", role: "editor" }) })).json());
-  check("owner adds an editor", typeof created.temporaryPassword === "string", created);
+  // ---------------------------------------------------------------- P8b: the owner adds an editor on the People screen
+  await page.locator(".vc-nav-list").getByRole("link", { name: "People" }).click();
+  await page.locator("form.vc-people-add").waitFor();
+  await page.getByLabel("Username", { exact: true }).fill("editor1");
+  await page.getByLabel("Name (optional)").fill("Editor One");
+  await page.getByLabel("Role", { exact: true }).selectOption("editor");
+  await page.getByRole("button", { name: "Add person" }).click();
+  await page.locator(".vc-secret-value").waitFor();
+  const created = { temporaryPassword: (await page.locator(".vc-secret-value").textContent()) ?? "" };
+  await shot("p8b-people");
+  check("People: the new editor's temporary password is shown once", /^[A-Za-z2-9]{20}$/.test(created.temporaryPassword) && /Must choose a password/.test(await page.locator('tr[data-user="editor1"]').innerText()));
+  check("People: the add form posts", (await page.locator("form.vc-people-add").getAttribute("method")) === "post");
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.locator("form#login").waitFor();
 
@@ -272,6 +283,16 @@ try {
   check("editor: a new service's price stays empty and disabled", await input("price").isDisabled() && (await input("price").inputValue()) === "");
   await save();
   check("editor adds a service with the price left for the owner (rule 2)", (await api("/api/cms/collections/services/items/editor-special")).draft?.content.name === "Editor Special");
+  check("editor: no People in the navigation", !(await page.locator(".vc-nav-list").innerText()).includes("People"));
+  // P8b: My account — the editor changes their own password and stays signed in.
+  await page.locator(".vc-user-name").click();
+  await page.locator("form.vc-account").waitFor();
+  await page.getByLabel("Current password").fill(EDITOR_PASSWORD);
+  await page.getByLabel("New password", { exact: true }).fill("editor-e2e-password-3");
+  await page.getByLabel("New password again").fill("editor-e2e-password-3");
+  await page.getByRole("button", { name: "Change password" }).click();
+  await page.getByText("Password changed.").waitFor();
+  check("My account: the password change keeps this session", (await api("/api/auth/me")).user?.username === "editor1");
 
   check("no script errors, no 5xx", problems.length === 0, problems);
   const failed = checks.filter((entry) => !entry.ok);

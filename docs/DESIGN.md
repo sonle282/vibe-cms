@@ -228,6 +228,19 @@ coi là đổi giá → lưu 2 lần (dời rồi sửa), hoặc thêm `id` cho 
 - Test: `VIBE_GITHUB_API_URL` chỉ nhận địa chỉ của chính máy (127.0.0.1 / localhost, http) để e2e publish sang GitHub
   giả; giá trị khác bị bỏ qua → token không thể bị gửi đi nơi khác ngoài api.github.com.
 
+## C.4 People + My account (P8b)
+
+- **People** (`#/people`, chỉ owner thấy trong menu; editor mở thẳng địa chỉ → "Only an owner can manage people"):
+  bảng người dùng (tên, username, vai trò, trạng thái, "Must choose a password", lần đăng nhập cuối). Thêm người
+  (username, tên, vai trò) → **mật khẩu tạm hiện đúng 1 lần** trong khung riêng (nút Copy, "Done — hide it"; rời
+  trang là mất, không lưu ở đâu). Đổi vai trò (hỏi trước), Disable (hỏi trước: đăng xuất ngay, nháp giữ nguyên) /
+  Enable, Reset password (hỏi trước, hiện mật khẩu tạm mới 1 lần). Không có nút trên chính mình (không tự khoá / tự hạ
+  quyền; dùng My account). Server vẫn quyết (owner only, không hạ / khoá owner hoạt động cuối) — lỗi hiện trên bảng.
+- **My account** (`#/account`, bấm tên mình ở cột trái): tên, username, vai trò, lần đăng nhập cuối; **đổi mật khẩu
+  của tôi** (hiện tại + mới ×2, ≥ 12 ký tự) → phiên khác bị đăng xuất, tab này vẫn đăng nhập (cookie mới). Danh tính dev
+  local: không có mật khẩu để đổi.
+- Mọi form `method="post"` + có `username` ẩn cho trình quản lý mật khẩu; mật khẩu không vào URL / storage / log.
+
 ## D. Hợp đồng visual editing
 
 **Binding:** thuộc tính trong template — `data-cms-field="site.phone"`, danh sách `data-cms-list="services"` + mỗi item
@@ -441,7 +454,7 @@ thay đổi lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tà
 | **P6** | Auth + People như CMS cũ (§F.1): mật khẩu PBKDF2, phiên KV, owner / editor, bootstrap, rate limit | tạo owner bằng bootstrap, owner tạo editor | test auth + People |
 | **P7** | Admin shell + danh sách + form sinh từ schema (§C.2) | sửa mọi field demo | test form + e2e Chrome headless |
 | **P8** | Review / change summary + Save → review → Publish + trạng thái Live (§C.3) | luồng đủ trên demo | e2e + test change summary |
-| **P8b** | Màn People trong admin (thêm người + mật khẩu tạm hiện 1 lần, khoá / mở, đặt lại mật khẩu, đổi vai trò; API P6) | owner tạo editor bằng giao diện | test DOM + e2e |
+| **P8b** | Màn People trong admin (thêm người + mật khẩu tạm hiện 1 lần, khoá / mở, đặt lại mật khẩu, đổi vai trò; API P6) + My account (tự đổi mật khẩu) (§C.4) | owner tạo editor bằng giao diện | test DOM + e2e |
 | **P8c** | Lọc HTML của richText ở server (lưu nháp + publish): chỉ giữ thẻ / thuộc tính an toàn, link an toàn | HTML nguy hiểm không vào nháp / commit | test sanitizer (≥ 1 ca mỗi kiểu tấn công) |
 | **P9** | Bridge: inject vào iframe cùng origin (dự phòng loader), `data-cms-*` + selector, SECTION_MAP, khung 2 cấp, không render khi gõ | preview demo chọn / hover / focus đúng, HTML public không đổi | test bridge + đo khi gõ |
 | **P10** | Ảnh: upload R2 staging, sheet chọn ảnh, alt | đổi ảnh demo + publish | test upload pipeline |
