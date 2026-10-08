@@ -7,7 +7,9 @@ import { join } from "node:path";
 import { before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { Window } from "happy-dom";
-import { contentPaths, createBundledSource, createCmsApi, createMemoryAuditLog, createMemoryDraftStore, f, loadCmsConfig } from "../dist/index.js";
+import { contentPaths, createBundledSource, createCmsApi, createGitHubPublisher, createMemoryAuditLog, createMemoryDraftStore, f, loadCmsConfig } from "../dist/index.js";
+import { lineDiff } from "./helpers/diff.mjs";
+import { startFakeGitHub } from "./helpers/fake-github.mjs";
 import { adminBoot, bootJson, countChanges, createForm, holdsLockedValue, LOCK_HELP, pathText, same, setAt, slugify, startAdmin } from "../dist/admin/index.js";
 
 const demoRoot = fileURLToPath(new URL("../fixtures/demo-site/", import.meta.url));
@@ -316,4 +318,128 @@ test("shell: leaving with unsaved changes asks; saying no keeps the page and the
   answer = true;
   await h.go("#/collections/team");
   assert.ok(h.root.querySelector(".vc-table"));
+});
+
+// ------------------------------------------------------------------ P8: review + publish + live, against the real API and a fake GitHub
+
+const publishShell = async ({ storage = new Map(), maxWaitMs = 5_000 } = {}) => {
+  const { window, document } = dom();
+  const github = await startFakeGitHub({ owner: config.repo.owner, name: config.repo.name, branch: config.repo.branch, files });
+  const drafts = createMemoryDraftStore();
+  const audit = createMemoryAuditLog();
+  const publisher = createGitHubPublisher({ token: github.token, repo: config.repo, apiUrl: github.url });
+  let live = { ...files };
+  const user = { userId: "usr_owner", role: "owner" };
+  const build = () => createCmsApi({ config, source: createBundledSource(live), drafts, audit, publisher, identify: () => user });
+  let api = build();
+  const fetch = async (url, init = {}) => api.handle(new Request(new URL(url, "http://localhost"), { ...init, headers: { ...(init.headers ?? {}), origin: "http://localhost" } }));
+  const call = async (method, url, body) => (await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).json();
+  const root = document.createElement("div");
+  document.body.append(root);
+  const store = { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) };
+  const app = startAdmin({ root, boot: adminBoot(config, { id: user.userId, username: "owner", displayName: "Owner", role: "owner" }), fetch, window, confirm: () => true, pollMs: 5, maxWaitMs, storage: store });
+  await app.ready;
+  const go = async (hash) => { window.location.hash = hash; await settle(); await app.idle(); };
+  const until = async (test, what) => { for (let i = 0; i < 400; i += 1) { if (test()) return; await new Promise((resolve) => setTimeout(resolve, 5)); } assert.fail(`timed out waiting for ${what}`); };
+  return {
+    window, root, github, drafts, call, go, until, storage,
+    live: () => root.querySelector(".vc-live"),
+    badge: () => root.querySelector(".vc-badge"),
+    redeploy: () => { live = { ...github.files() }; api = build(); },
+    close: () => github.close(),
+  };
+};
+const saveDraft = async (h, url, change) => {
+  const current = await h.call("GET", url);
+  return h.call("PUT", url, { content: change(current.content), expectedRevision: 0, sourceVersion: current.version });
+};
+
+test("P8 shell: review shows what each draft changes; publishing the ticked one makes one commit; Live once the site serves it", async () => {
+  const h = await publishShell();
+  try {
+    await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Fresh tagline" }));
+    await saveDraft(h, "/api/cms/collections/services/items/spa-pedicure", (content) => ({ ...content, price: "$40" }));
+    await h.go("#/publish/file%3Asite");
+    assert.equal(h.badge().textContent, "2");
+    const cards = [...h.root.querySelectorAll(".vc-review-card")];
+    assert.equal(cards.length, 2);
+    const siteCard = cards.find((card) => card.dataset.resource === "file:site");
+    const spaCard = cards.find((card) => card.dataset.resource === "item:services:spa-pedicure");
+    assert.match(siteCard.querySelector(".vc-changes").textContent, /Tagline: A made-up salon for testing Vibe CMS\. → Fresh tagline/);
+    assert.match(spaCard.textContent, /Price \(owner only\): \$35 → \$40/);
+    assert.equal(siteCard.querySelector(".vc-pick").checked, true, "the draft I came from is ticked");
+    assert.equal(spaCard.querySelector(".vc-pick").checked, false, "the others are not");
+    const button = h.root.querySelector('[data-action="publish-now"]');
+    assert.equal(button.textContent, "Publish 1 draft");
+
+    const head = h.github.head();
+    const before = h.github.files()["src/data/site.json"];
+    button.click();
+    await h.until(() => h.root.querySelector("h1")?.textContent === "Published", "the published screen");
+    assert.equal(h.github.commitsSince(head).length, 1, "exactly one commit");
+    const diff = lineDiff(before, h.github.files()["src/data/site.json"]);
+    assert.deepEqual([diff.removed.length, diff.added.length], [1, 1], "one line changed");
+    assert.equal(h.github.files()["src/data/services.json"], files["src/data/services.json"], "the unticked draft was not published");
+    assert.equal(h.live().dataset.state, "publishing");
+    assert.match(h.live().textContent, /Publishing… started/);
+    assert.ok(h.storage.get("vibe-cms:publishing"), "remembered across a reload");
+    await h.until(() => h.badge().textContent === "1", "the draft count");
+
+    // Still the old content: no Live yet. The site rebuilds → Live.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(h.live().dataset.state, "publishing");
+    h.redeploy();
+    await h.until(() => h.live().dataset.state === "live", "Live");
+    assert.match(h.live().textContent, /Live on the website: Salon info/);
+    assert.equal(h.storage.get("vibe-cms:publishing"), undefined);
+  } finally { await h.close(); }
+});
+
+test("P8 shell: someone published first → not published, the draft is named; a stale draft starts unticked", async () => {
+  const h = await publishShell();
+  try {
+    await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Mine" }));
+    h.github.pushOther({ "src/data/site.json": h.github.files()["src/data/site.json"].replace("Sampletown", "Othertown") });
+    await h.go("#/publish");
+    h.root.querySelector('[data-action="publish-now"]').click();
+    await h.until(() => !h.root.querySelector(".vc-banner").hidden, "the refusal");
+    assert.match(h.root.querySelector(".vc-banner").textContent, /Not published: Salon info changed on the website after you started editing/);
+    assert.ok(h.root.querySelector('[data-resource="file:site"]').classList.contains("vc-review-conflict"));
+    // Once the site has rebuilt, the draft is known to be stale before trying.
+    h.redeploy();
+    await h.go("#/");
+    await h.go("#/publish");
+    assert.equal(h.root.querySelector(".vc-pick").checked, false);
+    assert.match(h.root.querySelector(".vc-review-stale").textContent, /cannot be published as it is/);
+    assert.equal(h.root.querySelector('[data-action="publish-now"]').disabled, true);
+  } finally { await h.close(); }
+});
+
+test("P8 shell: a publish remembered from before a reload is watched; after the wait it says it is still publishing", async () => {
+  const storage = new Map([["vibe-cms:publishing", JSON.stringify({ expected: "sha256:" + "1".repeat(64), at: Date.now() - 60_000, userId: "usr_owner", labels: ["Salon info"] })]]);
+  const h = await publishShell({ storage, maxWaitMs: 1_000 });
+  try {
+    assert.ok(["publishing", "late"].includes(h.live().dataset.state), "shown at once after the reload");
+    await h.until(() => h.live().dataset.state === "late", "the late message");
+    assert.match(h.live().textContent, /Still publishing/);
+    assert.ok([...h.live().querySelectorAll("button")].some((button) => button.textContent === "Check now"));
+  } finally { await h.close(); }
+});
+
+test("P8 shell: nothing to publish; the editor's Review & publish needs a saved draft", async () => {
+  const h = await publishShell();
+  try {
+    await h.go("#/publish");
+    assert.equal(h.root.querySelector("h1").textContent, "Nothing to publish");
+    await h.go("#/files/site");
+    const review = h.root.querySelector('[data-action="publish"]');
+    assert.equal(review.hidden, true, "no draft, no change: nothing to review");
+    type(h.window, h.root.querySelector('[data-path="tagline"] input'), "Changed");
+    assert.equal(review.disabled, true, "unsaved changes: save first");
+    h.root.querySelector('[data-action="save"]').click();
+    await h.until(() => !review.disabled, "the saved draft");
+    review.click();
+    await settle();
+    assert.equal(h.window.location.hash, "#/publish/file%3Asite");
+  } finally { await h.close(); }
 });

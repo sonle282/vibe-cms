@@ -2,7 +2,7 @@
 
 > Nguồn: [DESIGN.md](DESIGN.md) §I. Quy tắc: 1 task = 1 commit; mỗi task REPORT → DỪNG chờ review. Test của gói **không đọc
 > dữ liệu site khách**. Task có sửa repo site: đầu task `git status` sạch + pull nhánh production của site; có thay đổi
-> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-07 (P7).
+> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-08 (P8).
 
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
@@ -14,8 +14,10 @@
 | **P5** | API chung (files / collections / nháp / publish / live-version) + publish GitHub (1 commit, không force, thử lại) + audit | 24–34 | ✅ Xong (duyệt 2026-09-28; 91cf66a, CI 36402119201) |
 | **P5b** | `sourceVersion` bắt buộc khi tạo nháp (giữ bản gốc); publisher GitHub đối chiếu Mr Spa: 422 = nhánh đổi, raw ≤ 100 MB, giới hạn tốc độ | 3–5 | ✅ Xong (duyệt 2026-09-28; 22252a8, CI 36405197944) |
 | **P6** | Auth + People — phương án A (giống CMS cũ, SonLe chốt 2026-09-28): mật khẩu PBKDF2 100k, phiên KV 30 ngày, owner / editor, bootstrap, rate limit, People, bắt đổi mật khẩu tạm | 18–28 | ✅ Xong (review 2026-10-07: P6 review → P6b sửa 4 điểm; c550b79, CI 36408128831 + P6b 24f1e3b, CI 37642092177) |
-| **P7** | Admin shell + danh sách + form sinh từ schema (mọi kiểu field), lưu nháp qua API P5, ô khoá cho editor; demo dùng đủ mọi kiểu field; test DOM giả + e2e Chrome headless | 40–60 | 🔎 Chờ review (2026-10-07, commit P7 trên PR #1) |
-| P8 | Review / change summary + Save → review → Publish + Live | 20–30 | ⏳ |
+| **P7** | Admin shell + danh sách + form sinh từ schema (mọi kiểu field), lưu nháp qua API P5, ô khoá cho editor; demo dùng đủ mọi kiểu field; test DOM giả + e2e Chrome headless | 40–60 | ✅ Xong (merge 2026-10-08; 21ea0a8, CI 37643742576) |
+| **P8** | Review / change summary + Save → review → Publish + Live (`GET /drafts`, tóm tắt thay đổi, publish nhiều nháp = 1 commit, theo dõi live-version) | 20–30 | 🔎 Chờ review (2026-10-08) |
+| P8b | Màn People trong admin (SonLe chốt 2026-10-08: tách khỏi P8) | 6–10 | ⏳ |
+| P8c | Lọc HTML richText ở server (SonLe chốt 2026-10-08: tách khỏi P8) | 4–8 | ⏳ |
 | P9 | Bridge chung (inject vào iframe cùng origin, dự phòng loader; `data-cms-*` + selector, SECTION_MAP, U23, F-15) | 16–24 | ⏳ |
 | P10 | Ảnh (upload R2 staging, sheet chọn ảnh, alt) | 16–24 | ⏳ |
 | P11 | CLI `vibe-cms setup` (idempotent, `--account`) / `migrate` / `check` / `export` / `update` (đổi URL release) + `reset-owner-password` (owner quên mật khẩu → mật khẩu tạm, không sửa D1 tay) + tài liệu cài không token | 16–24 | ⏳ |
@@ -42,6 +44,9 @@
   giả, không gì remote) và lái Chrome headless bằng `playwright-core` (không tải trình duyệt: `CHROME_PATH`, Chromium sẵn
   ở `/opt/pw-browsers/chromium`, hoặc Chrome của runner CI). Owner sửa mọi field demo → lưu nháp → so với API; editor
   thấy ô khoá bị disabled. Test form trên DOM giả: `test/admin.test.mjs` (happy-dom).
+- **Publish trong e2e (P8):** `npm run e2e` chạy thêm GitHub giả trên 127.0.0.1 (`test/helpers/fake-github.mjs`), Worker
+  trỏ tới nó bằng `VIBE_GITHUB_API_URL` (chỉ nhận địa chỉ loopback). Owner xem lại 6 nháp → publish → đúng 1 commit,
+  file trên GitHub giả = nội dung nháp. "Live" (site build lại) được kiểm trong `test/admin.test.mjs`, không trong e2e.
 - **CI:** repo công khai (2026-09-28) → phút GitHub Actions không tính phí. Thực tế **~1 phút / lần** (job `check` 33 giây
   ở run 36372154008; job `secrets` quét gitleaks toàn lịch sử vài giây). Nếu repo về private: 2.000 phút / tháng ≈ 1.500+
   lần chạy.

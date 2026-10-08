@@ -5,10 +5,11 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.7.0 · P7.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
-> fields on the server, CMS API + one-commit GitHub publishing, sign-in + People, and the editor at `/admin` (lists +
-> forms generated from `cms.config`, drafts saved). Next: review / publish in the admin (P8), preview (P9), images
-> (P10), CLI (P11) ([docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
+> Status: **0.8.0 · P8.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
+> fields on the server, CMS API + one-commit GitHub publishing, sign-in + People, and the editor at `/admin` (lists,
+> forms generated from `cms.config`, drafts, review of changes, publish, live status). Next: People screen (P8b), rich
+> text sanitizer (P8c), preview (P9), images (P10), CLI (P11) ([docs/TRACKER.md](docs/TRACKER.md), design:
+> [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
 
 ## Install in a site (3 steps, no token)
 
@@ -155,12 +156,13 @@ needs these bindings / secrets (docs/DESIGN.md §F.1):
 Owners manage people through `/api/cms/users` (no People screen in the admin yet). New and reset users get a temporary
 password they must change at the first sign-in.
 
-## The editor (P7)
+## The editor (P7, P8)
 
 `/admin` signs people in and opens the editor: every file and collection of `cms.config.ts` in the navigation, lists
 with search, and a form generated from the fields — every field type, sections, nested lists, ordered references.
 Saving makes a **draft** (the website does not change); fields with `locked: "owner"` are shown to editors but cannot
-be changed. Publishing from the admin comes in P8. The browser code ships with the package
+be changed. **Review & publish** lists my drafts with what each changes in plain words ("Price: $35 → $40"); publishing
+the ticked ones makes one commit, and the admin says when the website serves them ("Live"). The browser code ships with the package
 (`@sonle282/vibe-cms/admin`); the site adds nothing.
 
 ## Develop this package

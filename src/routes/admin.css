@@ -190,3 +190,27 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
   .vc-hours-times { grid-template-columns: 1fr 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---------- P8: review + publish, live status */
+.vc-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px; background: var(--vc-accent); color: #fff; font-size: 11px; font-weight: 600; vertical-align: 1px; }
+.vc-live { margin: 0 8px; padding: 10px 12px; border-radius: var(--vc-radius-12); background: var(--vc-accent-bg); color: var(--vc-accent-strong); font-size: 12px; display: grid; gap: 6px; }
+.vc-live[data-state="live"] { background: var(--vc-success-bg); color: var(--vc-success); }
+.vc-live[data-state="late"] { background: var(--vc-warning-bg); color: var(--vc-warning); }
+.vc-live .vc-button { justify-self: start; min-height: 28px; padding: 0 8px; }
+.vc-review-list { display: grid; gap: 12px; }
+.vc-review-card { padding: 14px 18px; background: var(--vc-surface); border-radius: var(--vc-radius-14); box-shadow: 0 0 0 1px rgba(0,0,0,.05); }
+.vc-review-card.vc-review-conflict { box-shadow: 0 0 0 2px var(--vc-danger-fill); }
+.vc-review-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.vc-pick { width: 18px; height: 18px; margin: 0; accent-color: var(--vc-accent); }
+.vc-review-title { font-weight: 600; font-size: 15px; }
+.vc-review-group { color: var(--vc-fg-muted); font-weight: 400; }
+.vc-review-meta { color: var(--vc-fg-muted); font-size: 12px; margin-left: auto; }
+.vc-review-stale { margin: 8px 0 0; color: var(--vc-warning); font-size: 13px; }
+.vc-changes { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; }
+.vc-change { display: block; line-height: 1.7; font-size: 13px; padding: 6px 0; border-top: 1px solid #f0f0f3; }
+.vc-change:first-child { border-top: 0; }
+.vc-change-label { font-weight: 500; }
+.vc-change-locked { color: var(--vc-fg-subtle); font-size: 12px; }
+.vc-change-what { color: var(--vc-fg-muted); overflow-wrap: anywhere; }
+.vc-change-del { color: var(--vc-danger); text-decoration: line-through; background: var(--vc-danger-bg); padding: 0 4px; border-radius: 4px; }
+.vc-change-ins { color: var(--vc-success); text-decoration: none; background: var(--vc-success-bg); padding: 0 4px; border-radius: 4px; }

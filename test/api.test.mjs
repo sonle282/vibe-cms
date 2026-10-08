@@ -120,3 +120,32 @@ test("an unexpected failure is a plain 500 JSON without internals", async () => 
   assert.deepEqual([response.status, body.error], [500, "internal_error"]);
   assert.ok(!JSON.stringify(body).includes("secret internal detail"));
 });
+
+test("P8: GET /drafts lists my drafts (label, group, new / stale) — someone else's drafts are not mine", async () => {
+  const h = await harness();
+  try {
+    const site = (await h.request("GET", "/api/cms/files/site", { user: "usr_a:owner" })).body;
+    await h.request("PUT", "/api/cms/files/site", { user: "usr_a:owner", body: { content: { ...site.content, tagline: "A" }, expectedRevision: 0, sourceVersion: site.version } });
+    await h.request("PUT", "/api/cms/collections/services/items/gel-off", { user: "usr_a:owner", body: { content: { id: "gel-off", name: "Gel Off" }, expectedRevision: 0, sourceVersion: "new" } });
+    await h.request("PUT", "/api/cms/files/site", { user: "usr_b:editor", body: { content: { ...site.content, tagline: "B" }, expectedRevision: 0, sourceVersion: site.version } });
+    const mine = await h.request("GET", "/api/cms/drafts", { user: "usr_a:owner" });
+    assert.equal(mine.status, 200);
+    assert.deepEqual(mine.body.drafts.map((row) => [row.resource, row.label, row.group, row.isNew, row.stale]).sort(), [
+      ["file:site", "Salon info", "Salon info", false, false],
+      ["item:services:gel-off", "Gel Off", "Services", true, false],
+    ]);
+    assert.ok(!JSON.stringify(mine.body).includes("tagline"), "no content in the list");
+    // Someone publishes the salon info: my draft started from an older version → stale.
+    h.github.pushOther({ "src/data/site.json": h.github.files()["src/data/site.json"].replace("Demo Salon", "Demo Salon 2") });
+    await h.redeploy();
+    const after = await h.request("GET", "/api/cms/drafts", { user: "usr_a:owner" });
+    assert.equal(after.body.drafts.find((row) => row.resource === "file:site").stale, true);
+  } finally { await h.close(); }
+});
+
+test("P8: the GitHub API URL can only be redirected to this machine (tests); anything else means api.github.com", async () => {
+  const { loopbackApiUrl } = await import("../dist/api/index.js");
+  assert.equal(loopbackApiUrl("http://127.0.0.1:9123/x"), "http://127.0.0.1:9123");
+  assert.equal(loopbackApiUrl("http://localhost:8080"), "http://localhost:8080");
+  for (const value of ["https://evil.example", "http://10.0.0.1", "http://127.0.0.1.evil.example", "http://user:pw@127.0.0.1", "https://127.0.0.1", "", undefined, 42]) assert.equal(loopbackApiUrl(value), undefined, String(value));
+});
