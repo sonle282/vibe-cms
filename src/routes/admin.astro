@@ -6,18 +6,19 @@
 import { env } from "cloudflare:workers";
 import config from "virtual:vibe-cms/config";
 import content from "virtual:vibe-cms/content";
+import images from "virtual:vibe-cms/images";
 import { adminBoot, bootJson, createSiteRuntime, type SiteEnv } from "@sonle282/vibe-cms/api";
 import "./admin.css";
 
 export const prerender = false;
-const { auth } = createSiteRuntime({ config, content, env: env as SiteEnv, dev: import.meta.env.DEV });
+const { auth } = createSiteRuntime({ config, content, images, env: env as SiteEnv, dev: import.meta.env.DEV });
 const identity = await auth.identify(Astro.request);
 const current = identity ? await auth.session(Astro.request) : null;
 const state = identity === undefined ? "not-configured" : identity === null ? "signed-out" : identity.mustChangePassword ? "change-password" : "signed-in";
 const boot = identity && state === "signed-in"
   ? adminBoot(config, current
     ? { id: current.user.id, username: current.user.username, displayName: current.user.display_name, role: current.user.role }
-    : { id: identity.userId, username: identity.userId, displayName: "Local developer", role: identity.role })
+    : { id: identity.userId, username: identity.userId, displayName: "Local developer", role: identity.role }, { uploads: Boolean((env as SiteEnv).CMS_MEDIA) })
   : null;
 for (const [name, value] of Object.entries({
   "cache-control": "no-store",

@@ -66,7 +66,12 @@ export type CmsConfig = {
   contentDirs?: string[];
   files: CmsFile[];
   collections: CmsCollection[];
-  media?: { bucketPrefix: string; maxBytes: number };
+  /**
+   * P10: uploaded images. `dir` = where they are committed in the site's repo (default "public/assets/uploads"; served
+   * at the same path without "public"); `maxBytes` = largest file after the browser has prepared it (default 10 MiB).
+   * The site's R2 bucket <site>-media (binding CMS_MEDIA) holds them until they are published.
+   */
+  media?: { dir?: string; maxBytes?: number };
 };
 
 /** Identity helper so a site's config is type-checked in the editor. */

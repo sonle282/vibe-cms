@@ -30,6 +30,8 @@ export type FormOptions = {
   readOnly?: Record<string, string>;
   /** After every change, with the whole current value. */
   onChange?: (value: Record<string, unknown>, path: Path) => void;
+  /** P10: open the image picker for an image field; `done` receives the chosen image. Without it, only the address. */
+  pickImage?: (current: string, done: (image: { src: string }) => void) => void;
 };
 
 export type Form = {
@@ -141,6 +143,15 @@ export const createForm = (options: FormOptions): Form => {
     const thumb = h(doc, "img", { class: "vc-thumb", alt: "", hidden: true });
     const showThumb = (value: string) => { const ok = /^(\/(?!\/)|https:\/\/)/.test(value); thumb.hidden = !ok; if (ok) thumb.setAttribute("src", value); else thumb.removeAttribute("src"); };
     showThumb(src);
+    // P10: "Choose image…" opens the library / upload sheet; "Remove" empties the address (alt and phone image stay).
+    const pickers = (target: { input: HTMLInputElement; element: HTMLElement }, label: string, afterPick?: () => void) => {
+      if (!options.pickImage || disabled) return;
+      const choose = h(doc, "button", { type: "button", class: "vc-button", "aria-label": `Choose ${label}`, onclick: () => options.pickImage?.(target.input.value, (image) => { target.input.value = image.src; update(); afterPick?.(); }) }, "Choose image…");
+      const remove = h(doc, "button", { type: "button", class: "vc-button vc-quiet", "aria-label": `Remove ${label}`, onclick: () => { target.input.value = ""; update(); target.input.focus(); } }, "Remove");
+      target.element.append(h(doc, "div", { class: "vc-image-actions" }, choose, remove));
+    };
+    pickers(srcPart, `the image for ${field.label}`, () => { if (altPart && !altPart.input.value) altPart.input.focus(); });
+    if (mobilePart) pickers(mobilePart, `the phone image for ${field.label}`);
     const update = () => {
       const now = getAt(state, path);
       const nextSrc = srcPart.input.value;

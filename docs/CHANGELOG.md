@@ -3,6 +3,27 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.11.0 — unreleased (P10)
+
+- **Images.** Image fields get **Choose image…** and **Remove**. The sheet uploads a photo (drop or choose a file) or
+  picks one from the library: uploads (newest first) and the site's own images under `public/` (listed at build).
+  Search by name. After choosing, the cursor moves to the alt text when it is empty.
+- The browser prepares each upload: longest edge at most 2400 px, WebP (PNG / JPEG where WebP cannot be written).
+  Re-encoding drops hidden data such as the camera's GPS. Only JPEG, PNG, WebP and AVIF are accepted; SVG and GIF are not.
+- The server checks the real type and pixel size from the bytes. It refuses anything else (415) and anything larger
+  than `media.maxBytes` (413). Uploads share the publish rate limit, with their own key per person. The same bytes
+  uploaded again reuse the same file.
+- Uploads go to `/assets/uploads/YYYY/MM/<name>-<hash8>.<ext>` and wait in the site's R2 bucket (binding
+  `CMS_MEDIA`). Until the site is deployed with the file, an injected route serves the waiting copy at that address.
+- **Publishing adds every uploaded image the published content uses** (image fields, rich text, Markdown bodies) to
+  the same single commit, byte for byte, unless the branch already has it. An image that is neither waiting nor in the
+  repository stops the publish (409 `media_missing`, nothing committed).
+- New API: `GET /api/cms/media`, `POST /api/cms/media`; publish responses have `media`. New export
+  `@sonle282/vibe-cms/media`. New virtual module `virtual:vibe-cms/images`.
+- New optional config `media: { dir?, maxBytes? }`. The default is `public/assets/uploads`, 10 MiB.
+- Site action: to allow uploads, add an R2 bucket `<site>-media` as binding `CMS_MEDIA` (the P11 `setup` will do this).
+  Without it, everything else works and the sheet says uploading is not set up.
+
 ## 0.10.0 — unreleased (P8c)
 
 - **Rich text is cleaned on the server** when a draft is saved and again at publish, with the same HTML parser and

@@ -19,6 +19,7 @@ import type { AdminBoot, BootCollection, BootFile } from "./boot.js";
 import { clear, h } from "./dom.js";
 import { summarizeChanges, type Change, type ReferenceLabels } from "./changes.js";
 import { createForm, type Form, type ReferenceTarget } from "./form.js";
+import { openImagePicker, prepareImage, type LibraryImage, type Prepare } from "./media.js";
 import { accountScreen, peopleScreen, type ScreenKit } from "./people.js";
 import { clone, countChanges, getAt, ID_PATTERN, parsePathText, slugify } from "./value.js";
 
@@ -36,6 +37,8 @@ export type AdminOptions = {
   /** Where an unfinished publish is remembered across reloads (localStorage by default; null = nowhere). */
   storage?: Pick<Storage, "getItem" | "setItem" | "removeItem"> | null;
   now?: () => number;
+  /** P10: how a chosen file is prepared before uploading (resize + WebP in the browser by default). */
+  prepareImage?: Prepare;
 };
 
 /**
@@ -77,6 +80,19 @@ export const startAdmin = (options: AdminOptions) => {
   const maxWaitMs = options.maxWaitMs ?? 15 * 60_000;
   const storage = options.storage === undefined ? (() => { try { return win.localStorage; } catch { return null; } })() : options.storage;
   const { user } = boot;
+  const media = boot.media ?? { uploads: false, base: "/assets/uploads", maxBytes: 10 * 1024 * 1024 };
+  const prepare = options.prepareImage ?? prepareImage(win);
+  /** P10: the image sheet for an image field. */
+  const pickImage = (current: string, done: (image: { src: string }) => void) => openImagePicker({
+    doc, api, media, prepare, current, onPick: done,
+    upload: async (prepared) => {
+      const headers: Record<string, string> = { "x-file-name": encodeURIComponent(prepared.name) };
+      if (prepared.width && prepared.height) { headers["x-image-width"] = String(prepared.width); headers["x-image-height"] = String(prepared.height); }
+      const result = await api.upload<{ image: LibraryImage & { reused?: boolean } }>("/api/cms/media", prepared.blob, headers);
+      if (!result.ok) { if (result.status === 401 || result.error === "password_change_required") { dirtyGuard = false; win.location.assign("/admin"); } return { ok: false, message: result.message }; }
+      return { ok: true, image: { ...result.data.image, source: "upload" } };
+    },
+  });
 
   // ---------------------------------------------------------------- shell
 
@@ -342,7 +358,7 @@ export const startAdmin = (options: AdminOptions) => {
     };
 
     const form: Form = createForm({
-      doc, fields, sections: input.kind === "file" ? input.file.sections : undefined, value: saved, role: user.role, references, readOnly,
+      doc, fields, sections: input.kind === "file" ? input.file.sections : undefined, value: saved, role: user.role, references, readOnly, pickImage,
       onChange: (value, path) => {
         if (collection && isNew && path.length === 1 && path[0] === collection.idField && !autoId) idTouched = true;
         if (collection && isNew && !idTouched && path[0] !== collection.idField) {
