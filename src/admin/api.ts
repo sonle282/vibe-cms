@@ -28,20 +28,6 @@ export const createClient = (fetchImpl: Fetch) => {
     put: <T>(path: string, body: unknown) => call<T>("PUT", path, body),
     post: <T>(path: string, body: unknown) => call<T>("POST", path, body),
     delete: <T>(path: string) => call<T>("DELETE", path),
-    /** P10: raw bytes (an image) with extra headers; the answer is JSON like every other call. */
-    upload: async <T>(path: string, blob: Blob, headers: Record<string, string>): Promise<ApiResult<T>> => {
-      let response: Response;
-      try {
-        response = await fetchImpl(path, { method: "POST", credentials: "same-origin", headers: { accept: "application/json", "content-type": blob.type || "application/octet-stream", ...headers }, body: blob });
-      } catch {
-        return { ok: false, status: 0, error: "network", message: humanMessage("network"), data: {} };
-      }
-      let data: Record<string, unknown> = {};
-      try { data = (await response.json()) as Record<string, unknown>; } catch { /* not JSON */ }
-      if (response.ok) return { ok: true, status: response.status, data: data as T };
-      const error = typeof data.error === "string" ? data.error : `http_${response.status}`;
-      return { ok: false, status: response.status, error, message: humanMessage(error, typeof data.message === "string" ? data.message : ""), data };
-    },
   };
 };
 export type Client = ReturnType<typeof createClient>;
@@ -67,11 +53,6 @@ const MESSAGES: Record<string, string> = {
   github_unreachable: "GitHub could not be reached. Try again in a moment.",
   github_unauthorized: "The site's GitHub access has expired or was removed. Ask whoever set up the site to renew it.",
   github_forbidden: "The site's GitHub access is not allowed to publish. Ask whoever set up the site.",
-  // P10: images
-  unsupported_image: "Only JPEG, PNG, WebP or AVIF images can be uploaded.",
-  empty_file: "The file is empty.",
-  too_many_uploads: "Too many uploads in a minute. Wait a moment and try again.",
-  media_not_configured: "Uploading is not set up on this site (its image storage is missing). Ask whoever set up the site.",
   audit_unavailable: "Nothing was published because the activity log could not be written. Try again in a moment.",
 };
 /** Plain words for an error code; the server's own message for codes the admin does not know (it is written for people too). */

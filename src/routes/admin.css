@@ -240,24 +240,3 @@ a.vc-user-name { color: var(--vc-fg); text-decoration: none; } a.vc-user-name:ho
 @media (max-width: 760px) { .vc-people-fields { grid-template-columns: 1fr; } .vc-people-actions { white-space: normal; } }
 .vc-people th { white-space: nowrap; }
 .vc-people .vc-unpublished { display: block; margin-top: 4px; }
-
-/* ---------- P10: images — field buttons and the picker sheet (upload + library) */
-.vc-image-actions { display: flex; gap: 8px; margin-top: 6px; }
-.vc-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; background: rgba(29, 29, 31, 0.36); }
-.vc-sheet { display: grid; gap: 12px; grid-template-rows: auto auto auto auto 1fr; width: min(880px, 100%); max-height: min(760px, calc(100vh - 48px)); padding: 20px; background: var(--vc-surface); border-radius: var(--vc-radius-14); box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22); overflow: hidden; }
-.vc-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.vc-sheet-head h2 { margin: 0; font-size: 18px; }
-.vc-sheet .vc-toolbar { margin: 0; }
-.vc-drop { display: grid; gap: 4px; justify-items: center; padding: 18px; text-align: center; color: var(--vc-fg-muted); border: 1.5px dashed var(--vc-border-input); border-radius: var(--vc-radius-12); cursor: pointer; transition: background var(--vc-motion), border-color var(--vc-motion); }
-.vc-drop:hover, .vc-drop-over { background: var(--vc-accent-bg); border-color: var(--vc-accent); color: var(--vc-fg); }
-.vc-sheet-upload input:focus-visible + .vc-drop { outline: var(--vc-focus); outline-offset: 2px; }
-.vc-picker-status { margin: 0; min-height: 1.5em; color: var(--vc-fg-muted); }
-.vc-picker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; overflow: auto; padding: 2px; min-height: 120px; }
-.vc-tile { position: relative; display: grid; gap: 4px; width: 100%; padding: 6px; text-align: left; font: inherit; color: inherit; background: var(--vc-surface); border: 1px solid var(--vc-hairline); border-radius: var(--vc-radius-12); cursor: pointer; }
-.vc-tile:hover { border-color: var(--vc-accent); }
-.vc-tile-current { border-color: var(--vc-accent); box-shadow: 0 0 0 3px var(--vc-accent-ring); }
-.vc-tile img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--vc-radius-6); background: var(--vc-canvas); }
-.vc-tile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.vc-tile-meta { color: var(--vc-fg-subtle); font-size: 12px; }
-.vc-tile-badge { position: absolute; top: 10px; left: 10px; padding: 1px 6px; font-size: 11px; color: var(--vc-accent-strong); background: var(--vc-accent-bg); border-radius: 999px; }
-@media (max-width: 760px) { .vc-overlay { padding: 0; align-items: end; } .vc-sheet { max-height: 92vh; border-radius: var(--vc-radius-14) var(--vc-radius-14) 0 0; } .vc-picker-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); } }

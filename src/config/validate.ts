@@ -222,11 +222,10 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
   dirs = [...new Set(dirs)];
 
   if (config.media !== undefined) {
-    if (!isRecord(config.media)) err(context, "media", "must be { dir?, maxBytes? }");
+    if (!isRecord(config.media)) err(context, "media", "must be { bucketPrefix, maxBytes }");
     else {
-      for (const key of Object.keys(config.media)) if (!["dir", "maxBytes"].includes(key)) err(context, `media.${key}`, "is not a media setting", "media has dir and maxBytes");
-      if (config.media.dir !== undefined && (typeof config.media.dir !== "string" || !/^public(\/[a-z0-9][a-z0-9_-]*)+$/.test(config.media.dir))) err(context, "media.dir", `must be a folder inside public/ in lowercase letters, digits, "-" and "_" (got ${show(config.media.dir)})`, 'e.g. "public/assets/uploads"');
-      if (config.media.maxBytes !== undefined && !(Number.isInteger(config.media.maxBytes) && (config.media.maxBytes as number) > 0 && (config.media.maxBytes as number) <= 25 * 1024 * 1024)) err(context, "media.maxBytes", `must be a whole number of bytes from 1 to 26214400 (25 MiB) (got ${show(config.media.maxBytes)})`, "e.g. 10485760 (10 MiB)");
+      if (!filled(config.media.bucketPrefix) || !config.media.bucketPrefix.endsWith("/")) err(context, "media.bucketPrefix", `must be text ending with "/" (got ${show(config.media.bucketPrefix)})`, 'e.g. "demo/"');
+      if (!(Number.isInteger(config.media.maxBytes) && (config.media.maxBytes as number) > 0)) err(context, "media.maxBytes", `must be a whole number of bytes > 0 (got ${show(config.media.maxBytes)})`, "e.g. 10_000_000");
     }
   }
 

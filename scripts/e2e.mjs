@@ -6,8 +6,7 @@
 // P8: the owner reviews every draft (what changes, in plain words) and publishes them — one commit on a fake GitHub on
 // 127.0.0.1, whose files then hold exactly the drafts; the admin says "Publishing…".
 // P8b: the owner adds the editor on the People screen (temporary password shown once). P8c: unsafe HTML typed into rich
-// text is removed on save. P10: a photo is uploaded through the image sheet (made smaller + WebP in the browser, kept in
-// local R2, served at its final address) and published in the same commit, exact bytes.
+// text is removed on save.
 // Then the editor signs in: locked fields are shown but disabled, other fields save; they change their own password on
 // My account. Nothing remote; test values only.
 import assert from "node:assert/strict";
@@ -17,7 +16,6 @@ import { chromium } from "playwright-core";
 import { contentPaths, loadCmsConfig } from "../dist/index.js";
 import { lineDiff } from "../test/helpers/diff.mjs";
 import { startFakeGitHub } from "../test/helpers/fake-github.mjs";
-import { tinyPng } from "../test/helpers/images.mjs";
 import { findChrome, site, startDemoWithCms } from "./lib/e2e-site.mjs";
 
 const BOOT = { username: "owner", password: "bootstrap-e2e-secret" };
@@ -46,8 +44,6 @@ try {
   const input = (path) => field(path).locator("input, textarea, select").first();
   const button = (path, name) => field(path).getByRole("button", { name, exact: true });
   const saveState = () => page.locator(".vc-save-state").textContent();
-  // E2E_SCREENSHOTS=<folder>: keep pictures of the image sheet, the review and published screens (local look only; CI leaves it unset).
-  const shot = async (name) => { if (process.env.E2E_SCREENSHOTS) await page.screenshot({ path: join(process.env.E2E_SCREENSHOTS, `${name}.png`), fullPage: true }); };
   const api = (path) => page.evaluate(async (url) => (await fetch(url)).json(), path);
   const open = async (hash) => { await page.goto(`${base}/admin${hash}`); await page.locator(".vc-form, .vc-table, .vc-cards").first().waitFor(); };
   const save = async () => {
@@ -185,28 +181,12 @@ try {
   await save();
   const alex = await api("/api/cms/collections/team/items/alex");
   check("team: image + alt, one reference, ordered references, rich text", assertEqual(alex.draft?.content, { ...team[0], photo: { src: "/images/hero.svg", alt: "Alex at work" }, specialty: "spa-pedicure", services: ["spa-pedicure", "classic-manicure"], bio: "<p>Still invented.</p>" }), alex.draft);
-  // P10: Sam's photo through the image sheet — a large PNG chosen from the computer is made smaller and WebP in the
-  // browser, uploaded to the local R2 bucket, picked, and served at its final address until it is published.
   await open("#/collections/team/items/sam");
-  await field("photo").getByRole("button", { name: "Choose the image for Photo" }).click();
-  const sheet = page.getByRole("dialog", { name: "Choose an image" });
-  await sheet.locator('.vc-tile[data-src="/images/team-alex.svg"]').waitFor();
-  check("image sheet: the site's own images are in the library", (await sheet.locator(".vc-tile").count()) === 3);
-  await shot("p10-image-sheet");
-  await sheet.locator("input[type=file]").setInputFiles({ name: "Sam at the desk.png", mimeType: "image/png", buffer: Buffer.from(tinyPng(2600, 1300)) });
-  await sheet.waitFor({ state: "detached", timeout: 20_000 });
-  const samPhoto = await field("photo").getByLabel("Image address").inputValue();
-  check("upload: picked at its final address (month folder, name, hash, .webp)", /^\/assets\/uploads\/20\d\d\/\d\d\/sam-at-the-desk-[0-9a-f]{8}\.webp$/.test(samPhoto), samPhoto);
-  const library = await api("/api/cms/media");
-  check("upload: resized in the browser to 2400 px wide, WebP", assertEqual(library.uploads.map((image) => [image.src, image.width, image.height]), [[samPhoto, 2400, 1200]]) && library.uploads[0].bytes < 2_000_000, library.uploads);
-  const staged = await page.evaluate(async (url) => { const response = await fetch(url); const bytes = new Uint8Array(await response.arrayBuffer()); return { status: response.status, type: response.headers.get("content-type"), from: response.headers.get("x-vibe-cms-upload"), head: String.fromCharCode(...bytes.slice(0, 4), ...bytes.slice(8, 12)) }; }, samPhoto);
-  check("upload: served from staging before it is published", assertEqual(staged, { status: 200, type: "image/webp", from: "staging", head: "RIFFWEBP" }), staged);
-  check("upload: the thumbnail shows it", (await field("photo").locator(".vc-thumb").getAttribute("src")) === samPhoto);
-  await shot("p10-picked");
+  await field("photo").getByLabel("Image address").fill("/images/team-alex.svg");
   await input("specialty").selectOption("classic-manicure");
   await save();
   const sam = await api("/api/cms/collections/team/items/sam");
-  check("team: an image written as a plain path stays a path", assertEqual(sam.draft?.content, { ...team[1], photo: samPhoto, specialty: "classic-manicure" }), sam.draft);
+  check("team: an image written as a plain path stays a path", assertEqual(sam.draft?.content, { ...team[1], photo: "/images/team-alex.svg", specialty: "classic-manicure" }), sam.draft);
 
   // ---------------------------------------------------------------- owner: a Markdown post (status, list, body)
   await open("#/collections/posts/items/welcome");
@@ -247,6 +227,8 @@ try {
   await page.locator(".vc-nav-list").getByRole("link", { name: /Review & publish/ }).click();
   await page.locator(".vc-review-card").first().waitFor();
   const reviewText = await page.locator(".vc-review-list").innerText();
+  // E2E_SCREENSHOTS=<folder>: keep pictures of the review and published screens (local look only; CI leaves it unset).
+  const shot = async (name) => { if (process.env.E2E_SCREENSHOTS) await page.screenshot({ path: join(process.env.E2E_SCREENSHOTS, `${name}.png`), fullPage: true }); };
   await shot("p8-review");
   check("review: 6 drafts, all ticked", (await page.locator(".vc-review-card").count()) === 6 && (await page.locator(".vc-pick:checked").count()) === 6);
   for (const line of ["Salon name: Demo Salon → Demo Salon & Spa", "Phone (owner only): (555) 010-0000 → (555) 010-0001", "Featured services: removed Spa Pedicure", "Price (owner only): $35 → $40", "New service: Gel Removal", "Specialty: Nail Art → Spa Pedicure", "Status: published → draft"]) {
@@ -265,8 +247,6 @@ try {
   const servicesDiff = lineDiff(filesBefore["src/data/services.json"], published["src/data/services.json"]);
   check("services.json: only the changed / added lines move", servicesDiff.removed.length <= 2 && servicesDiff.added.length <= 3, servicesDiff);
   check("published team = the drafts", assertEqual(JSON.parse(published["src/data/team.json"]), [alex.draft.content, sam.draft.content]));
-  const committedImage = github.bytes(`public${samPhoto}`);
-  check("P10: the uploaded image is in the same commit, exact bytes (WebP)", committedImage && committedImage.subarray(0, 4).toString("latin1") === "RIFF" && committedImage.subarray(8, 12).toString("latin1") === "WEBP" && github.changedPaths(head).includes(`public${samPhoto}`), github.changedPaths(head));
   check("published post: front matter + body", /title: Welcome!/.test(published["src/content/posts/welcome.md"]) && published["src/content/posts/welcome.md"].endsWith("New **body** text.\n"));
   check("commit message names the owner's internal id, no email", /usr_[a-z2-7]{16}/.test(github.commit().message) && !github.commit().message.includes("@"));
   check("after publishing: 'Publishing…' until the site serves it; no drafts left", /Publishing… started/.test(await page.locator(".vc-live").innerText()) && await page.locator(".vc-badge").isHidden());
@@ -322,7 +302,7 @@ try {
   check("no script errors, no 5xx", problems.length === 0, problems);
   const failed = checks.filter((entry) => !entry.ok);
   assert.deepEqual(failed, [], "every e2e check passes");
-  console.log(`E2E (headless Chrome, wrangler dev --local, D1 + KV + R2 + rate limits, fake GitHub) OK: ${checks.length} checks passed — every demo field edited through /admin, reviewed and published in one commit; editor locks shown.`);
+  console.log(`E2E (headless Chrome, wrangler dev --local, D1 + KV + rate limits, fake GitHub) OK: ${checks.length} checks passed — every demo field edited through /admin, reviewed and published in one commit; editor locks shown.`);
 } finally {
   await browser.close();
   server.stop();

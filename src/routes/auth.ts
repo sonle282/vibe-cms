@@ -4,10 +4,9 @@ import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
 import config from "virtual:vibe-cms/config";
 import content from "virtual:vibe-cms/content";
-import images from "virtual:vibe-cms/images";
 import { createSiteRuntime, type SiteEnv } from "@sonle282/vibe-cms/api";
 
 export const prerender = false;
 
 let runtime: ReturnType<typeof createSiteRuntime> | undefined;
-export const ALL: APIRoute = ({ request }) => (runtime ??= createSiteRuntime({ config, content, images, env: env as SiteEnv, dev: import.meta.env.DEV })).auth.handleAuth(request);
+export const ALL: APIRoute = ({ request }) => (runtime ??= createSiteRuntime({ config, content, env: env as SiteEnv, dev: import.meta.env.DEV })).auth.handleAuth(request);

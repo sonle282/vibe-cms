@@ -9,7 +9,6 @@
  *   CMS_BOOTSTRAP_USERNAME / CMS_BOOTSTRAP_PASSWORD   secrets for the very first owner (ignored once used)
  *   CMS_SESSION_TTL_SECONDS  optional, 300 … 2,592,000 (default 30 days)
  *   VIBE_CMS_DEV_USER     "usr_dev:owner" — only with `dev` (import.meta.env.DEV) on localhost
- *   CMS_MEDIA             R2 <site>-media (P10: uploads until they are published; without it uploading is off)
  *   VIBE_GITHUB_API_URL   tests only: a fake GitHub on THIS machine (http://127.0.0.1:…, localhost, [::1]); any other
  *                         value is ignored, so the token can never be sent anywhere but api.github.com
  */
@@ -18,10 +17,9 @@ import { createCmsAuth, type RateLimiter, type SessionKv } from "../auth/index.j
 import { createBundledSource, createD1AuditLog, createD1DraftStore, type D1Like } from "../store/index.js";
 import { createCmsApi, devIdentity } from "./index.js";
 import { createGitHubPublisher } from "./github.js";
-import { createMediaStore, mediaSettings, type MediaBucket } from "../media/index.js";
 
 export type SiteEnv = {
-  CMS_DB?: D1Like; SESSION?: SessionKv; CMS_MEDIA?: MediaBucket; CMS_LOGIN_LIMITER?: RateLimiter; CMS_PUBLISH_LIMITER?: RateLimiter;
+  CMS_DB?: D1Like; SESSION?: SessionKv; CMS_LOGIN_LIMITER?: RateLimiter; CMS_PUBLISH_LIMITER?: RateLimiter;
   VIBE_GITHUB_TOKEN?: string; VIBE_GITHUB_API_URL?: string; CMS_BOOTSTRAP_USERNAME?: string; CMS_BOOTSTRAP_PASSWORD?: string; CMS_SESSION_TTL_SECONDS?: string; VIBE_CMS_DEV_USER?: string;
 };
 
@@ -34,10 +32,8 @@ export const loopbackApiUrl = (value: unknown) => {
   } catch { return undefined; }
 };
 
-export const createSiteRuntime = ({ config, content, env, dev, githubApiUrl, images = [] }: {
+export const createSiteRuntime = ({ config, content, env, dev, githubApiUrl }: {
   config: CmsConfig; content: Record<string, string>; env: SiteEnv;
-  /** P10: the site's own images (virtual:vibe-cms/images). */
-  images?: Array<{ src: string; width?: number; height?: number; bytes: number }>;
   /** import.meta.env.DEV — false in every production build. */
   dev: boolean;
   /** Tests only (fake GitHub). Routes never pass it. */
@@ -52,13 +48,12 @@ export const createSiteRuntime = ({ config, content, env, dev, githubApiUrl, ima
     sessionTtlSeconds: env.CMS_SESSION_TTL_SECONDS,
     devIdentity: devIdentity({ enabled: dev, value: env.VIBE_CMS_DEV_USER }),
   });
-  const media = env.CMS_MEDIA ? createMediaStore({ bucket: env.CMS_MEDIA, settings: mediaSettings(config.media) }) : undefined;
   const api = createCmsApi({
     config, source: createBundledSource(content),
     drafts: env.CMS_DB ? createD1DraftStore(env.CMS_DB) : undefined, audit,
     publisher: env.VIBE_GITHUB_TOKEN ? createGitHubPublisher({ token: env.VIBE_GITHUB_TOKEN, repo: config.repo, ...(apiUrl ? { apiUrl } : {}) }) : undefined,
-    identify: auth.identify, people: auth.people, media, siteImages: images,
+    identify: auth.identify, people: auth.people,
     publishLimiter: env.CMS_PUBLISH_LIMITER, requirePublishLimiter: !dev,
   });
-  return { api, auth, media };
+  return { api, auth };
 };

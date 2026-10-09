@@ -5,11 +5,11 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.11.0 · P10.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
+> Status: **0.10.0 · P8c.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
 > fields on the server, CMS API + one-commit GitHub publishing, sign-in, and the editor at `/admin` (lists, forms
 > generated from `cms.config`, drafts, review of changes, publish, live status, People, My account), rich text cleaned
-> on the server, images (upload to R2, picker, published in the same commit). Next: visual rich-text editor (P8d),
-> preview (P9), CLI (P11) ([docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
+> on the server. Next: preview (P9), images (P10), CLI (P11) ([docs/TRACKER.md](docs/TRACKER.md), design:
+> [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
 
 ## Install in a site (3 steps, no token)
 
@@ -167,17 +167,6 @@ the ticked ones makes one commit, and the admin says when the website serves the
 cleaned on the server (scripts, event handlers, frames, `javascript:` links… are removed and the editor is told);
 text already in the site's files is never changed by it (docs/DESIGN.md §F.2). The browser code ships with the package
 (`@sonle282/vibe-cms/admin`); the site adds nothing.
-
-## Images (P10)
-
-Image fields have **Choose image…**: upload a photo or pick one already on the site (docs/DESIGN.md §C.5). The browser
-makes it at most 2400 px and WebP; the server checks the real type from the bytes and keeps it in the site's R2 bucket
-until a publish puts it into the same commit as the content that uses it. The site needs:
-
-- **R2 binding `CMS_MEDIA`** — the site's `<site>-media` bucket. Without it everything else works and the picker says
-  uploading is not set up (images already in `public/` can still be chosen).
-- Optional `media: { dir: "public/assets/uploads", maxBytes: 10 * 1024 * 1024 }` in `cms.config.ts` (these are the
-  defaults; `maxBytes` at most 25 MiB).
 
 ## Develop this package
 

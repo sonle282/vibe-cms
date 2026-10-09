@@ -15,9 +15,3 @@ declare module "virtual:vibe-cms/content" {
 declare module "cloudflare:workers" {
   export const env: Record<string, unknown>;
 }
-
-// P10: the site's own images under public/ (built in for the image library).
-declare module "virtual:vibe-cms/images" {
-  const images: Array<{ src: string; width?: number; height?: number; bytes: number }>;
-  export default images;
-}

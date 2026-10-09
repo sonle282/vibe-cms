@@ -1,5 +1,5 @@
 // P7 e2e helpers: run the BUILT demo site (fixtures/demo-site/dist) in `wrangler dev --local` with the CMS bindings
-// (local D1 with the package migrations, local KV, local R2 for uploads (P10), local rate limits — placeholder ids, nothing remote, nothing
+// (local D1 with the package migrations, local KV, local rate limits — placeholder ids, nothing remote, nothing
 // deployed), and find a Chrome / Chromium to drive headless with playwright-core (no browser download).
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -29,7 +29,6 @@ export const startDemoWithCms = async (vars = {}) => {
     ...config,
     d1_databases: [{ binding: "CMS_DB", database_name: "vibe-cms-e2e", database_id: "local-only-e2e", migrations_dir: migrations }],
     kv_namespaces: [{ binding: "SESSION", id: "local-only-e2e-sessions" }],
-    r2_buckets: [{ binding: "CMS_MEDIA", bucket_name: "vibe-cms-e2e-media" }],
     ratelimits: [
       { name: "CMS_LOGIN_LIMITER", namespace_id: "9101", simple: { limit: 10, period: 60 } },
       { name: "CMS_PUBLISH_LIMITER", namespace_id: "9102", simple: { limit: 20, period: 60 } },

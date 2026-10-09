@@ -25,9 +25,6 @@
       ],
       "@sonle282/vibe-cms/admin": [
         "./src/admin/index.ts"
-      ],
-      "@sonle282/vibe-cms/media": [
-        "./src/media/index.ts"
       ]
     }
   },

@@ -12,9 +12,7 @@
  *   PUT    /collections/:key/items/:id      save my draft of one record (new id = new record)
  *   DELETE /collections/:key/items/:id      discard my draft
  *   GET    /drafts                          my drafts (label, updated, stale = the live content moved on) — P8
- *   GET    /media                           P10: uploads (newest first) + the site's own images (built in)
- *   POST   /media                           P10: upload one prepared image (raw bytes; x-file-name header)
- *   POST   /publish                         { resources: [...] } → exactly one commit (with the uploads it uses)
+ *   POST   /publish                         { resources: [...] } → exactly one commit
  *   GET    /live-version                    the version of the content this Worker serves
  * Every GET answers with the header x-cms-live-version (F-16).
  */
@@ -29,13 +27,12 @@ import {
 import { parseMarkdown } from "../writer/markdown.js";
 import { recordPath, writeArrayItem, writeFile, writeMarkdownItem } from "../writer/index.js";
 import type { WriteResult } from "../writer/json.js";
-import { GitPublishError, type CommitAuthor, type FileContent, type GitPublisher } from "./github.js";
-import { MediaError, uploadPathsIn, type MediaStore } from "../media/index.js";
+import { GitPublishError, type CommitAuthor, type GitPublisher } from "./github.js";
 import type { Identify, Identity, RateLimiter } from "../auth/index.js";
 
 export { createSiteRuntime, loopbackApiUrl, type SiteEnv } from "./runtime.js";
 export { adminBoot, bootJson, type AdminBoot } from "../admin/boot.js";
-export { createGitHubPublisher, GitPublishError, rateLimitWait, type CommitAuthor, type CommitInput, type FileContent, type GitHubOptions, type GitPublisher } from "./github.js";
+export { createGitHubPublisher, GitPublishError, rateLimitWait, type CommitAuthor, type CommitInput, type GitHubOptions, type GitPublisher } from "./github.js";
 
 // ---------------------------------------------------------------- identity
 
@@ -84,10 +81,6 @@ export type CmsApiDeps = {
   maxAttempts?: number;
   /** People API (P6, owner only): /users and /users/:id, after identity + Origin checks. */
   people?: (request: Request, user: Identity, id?: string) => Promise<Response>;
-  /** P10: uploads in the site's R2 bucket (undefined = no CMS_MEDIA binding: uploading is off). */
-  media?: MediaStore | undefined;
-  /** P10: the site's own images (public/…), listed at build time for the image library. */
-  siteImages?: Array<{ src: string; width?: number; height?: number; bytes: number }>;
   /** Publish rate limit (20 / minute / user on the first site). */
   publishLimiter?: RateLimiter | undefined;
   /** true in production builds: no publish limiter → publish answers 503. */
@@ -379,24 +372,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
           next[path] = result.text;
           if (result.rewroteWholeFile) warnings.push({ resource: target.resource, code: "rewrote_whole_file" });
         }
-        const files: Record<string, FileContent> = Object.fromEntries(paths.filter((path) => next[path] !== texts[path]).map((path) => [path, next[path] as string]));
-
-        // P10: uploads the published content uses and the branch does not have yet go into the same commit.
-        const mediaFiles: string[] = [];
-        const base = deps.media?.settings.base;
-        if (base) {
-          const used = uploadPathsIn(loaded.map(({ draft }) => JSON.stringify(draft.content)).join("\n"), base);
-          const inRepo = used.length && publisher.exists ? await publisher.exists(head.sha, used.map((path) => `public${path}`)) : new Set<string>();
-          const missing: string[] = [];
-          for (const path of used) {
-            if (inRepo.has(`public${path}`)) continue;
-            const staged = await deps.media!.read(path);
-            if (!staged) { missing.push(path); continue; }
-            files[`public${path}`] = staged.bytes;
-            mediaFiles.push(`public${path}`);
-          }
-          if (missing.length) return await failWith(409, "media_missing", `Some images are neither on the website nor uploaded: ${missing.join(", ")} — choose them again.`, { paths: missing });
-        }
+        const files = Object.fromEntries(paths.filter((path) => next[path] !== texts[path]).map((path) => [path, next[path] as string]));
 
         // 5. One commit (none when nothing changed), branch moved without force; if it moved under us, go again.
         let commitSha: string | null = null;
@@ -410,54 +386,13 @@ export const createCmsApi = (deps: CmsApiDeps) => {
         await Promise.all(loaded.map(({ target }) => audit.record({ at: now(), userId: user.userId, role: user.role, action: "succeeded", stage: "publish", resource: target.resource, detail: { publishId, commitSha, attempt, ...(warnings.some((warning) => warning.resource === target.resource && warning.code === "rewrote_whole_file") ? { warning: "rewrote_whole_file" } : {}), ...(sanitized.some((entry) => entry.resource === target.resource) ? { sanitized: sanitized.find((entry) => entry.resource === target.resource)!.fields.map((field) => field.path) } : {}) } })));
         for (const { target } of loaded) await drafts.clearAfterPublish(user.userId, target.resource);
         const expectedLiveVersion = await combinedVersion({ ...(await loadLive()), ...Object.fromEntries(Object.entries(next).filter((entry): entry is [string, string] => entry[1] !== undefined)) });
-        return json({ commitSha, resources: loaded.map(({ target }) => target.resource), files: Object.keys(files), media: mediaFiles, expectedLiveVersion, warnings, attempts: attempt });
+        return json({ commitSha, resources: loaded.map(({ target }) => target.resource), files: Object.keys(files), expectedLiveVersion, warnings, attempts: attempt });
       }
       return await failWith(502, "branch_moving", `The branch kept changing during publish (${maxAttempts} tries) — try again in a moment.`);
     } catch (error) {
       if (error instanceof ApiError) throw error;
       if (error instanceof GitPublishError) return await failWith(error.httpStatus, error.code, error.message, error.retryAfter === undefined ? {} : { retryAfter: error.retryAfter });
       return await failWith(500, "internal_error", "Publishing failed.");
-    }
-  };
-
-  // ---------------------------------------------------------------- media (P10)
-
-  const listMedia = async (request: Request) => {
-    const cursor = new URL(request.url).searchParams.get("cursor") ?? undefined;
-    const uploads = deps.media ? await deps.media.list({ cursor }) : { images: [], cursor: undefined };
-    return json({ uploads: uploads.images, cursor: uploads.cursor ?? null, site: cursor ? [] : deps.siteImages ?? [], uploadsEnabled: Boolean(deps.media), base: deps.media?.settings.base ?? null, maxBytes: deps.media?.settings.maxBytes ?? null });
-  };
-
-  const uploadMedia = async (request: Request, user: Identity) => {
-    const media = need(deps.media, "media");
-    // Same limiter as publishing, its own key: 20 uploads a minute per person.
-    if (deps.publishLimiter) {
-      let allowed: boolean;
-      try { allowed = (await deps.publishLimiter.limit({ key: `cms-media:${user.userId}` })).success; } catch { return fail(503, "limiter_unavailable", "Upload rate limiting is unavailable."); }
-      if (!allowed) fail(429, "too_many_uploads", "Too many uploads in a minute. Please wait a moment.", { retryAfter: 60 });
-    } else if (deps.requirePublishLimiter) fail(503, "publish_limiter_missing", "Upload rate limiting is not configured.");
-    const declared = Number(request.headers.get("content-length") ?? "0");
-    if (declared > media.settings.maxBytes) fail(413, "image_too_large", `The image is larger than ${Math.round(media.settings.maxBytes / 1024 / 1024)} MB.`);
-    // Read at most maxBytes + 1, whatever content-length says (a chunked body has none).
-    const chunks: Uint8Array[] = [];
-    let total = 0;
-    const reader = request.body?.getReader();
-    for (let part = reader ? await reader.read() : { done: true as const, value: undefined }; !part.done; part = await reader!.read()) {
-      total += part.value.length;
-      if (total > media.settings.maxBytes) { await reader!.cancel(); fail(413, "image_too_large", `The image is larger than ${Math.round(media.settings.maxBytes / 1024 / 1024)} MB.`); }
-      chunks.push(part.value);
-    }
-    const bytes = new Uint8Array(total);
-    chunks.reduce((offset, chunk) => { bytes.set(chunk, offset); return offset + chunk.length; }, 0);
-    let fileName = "image";
-    try { fileName = decodeURIComponent(request.headers.get("x-file-name") ?? "image"); } catch { /* keep "image" */ }
-    const number = (name: string) => { const value = Number(request.headers.get(name)); return Number.isInteger(value) && value > 0 && value < 100_000 ? value : undefined; };
-    try {
-      const staged = await media.stage({ bytes, fileName, userId: user.userId, width: number("x-image-width"), height: number("x-image-height") });
-      return json({ image: staged }, staged.reused ? 200 : 201);
-    } catch (error) {
-      if (error instanceof MediaError) fail(error.status, error.code, error.message);
-      throw error;
     }
   };
 
@@ -473,7 +408,6 @@ export const createCmsApi = (deps: CmsApiDeps) => {
       PATCH: (request, user, match) => (deps.people ?? fail(404, "not_found", "People are not available on this site."))(request, user, match[1]),
     } },
     { pattern: /^\/drafts$/, methods: { GET: (_request, user) => listDrafts(user) } },
-    { pattern: /^\/media$/, methods: { GET: (request) => listMedia(request), POST: (request, user) => uploadMedia(request, user) } },
     { pattern: /^\/live-version$/, methods: { GET: async () => json({ liveVersion: await getLiveVersion(), branch: config.repo.branch }) } },
     { pattern: /^\/publish$/, methods: { POST: (request, user) => publish(request, user) } },
     { pattern: /^\/files\/([a-z][a-z0-9-]*)$/, methods: {

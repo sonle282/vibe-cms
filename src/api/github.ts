@@ -20,9 +20,7 @@
  */
 
 export type CommitAuthor = { name: string; email: string };
-/** A file's new content: text (UTF-8) or exact bytes (P10: images). */
-export type FileContent = string | Uint8Array;
-export type CommitInput = { parent: string; files: Record<string, FileContent>; message: string; author: CommitAuthor; date?: string };
+export type CommitInput = { parent: string; files: Record<string, string>; message: string; author: CommitAuthor; date?: string };
 
 export interface GitPublisher {
   /** The branch's current commit. */
@@ -31,8 +29,6 @@ export interface GitPublisher {
   readFiles(sha: string, paths: string[]): Promise<Record<string, string | undefined>>;
   /** One commit with exactly `files` changed, on top of `parent`; then move the branch (no force). */
   commit(input: CommitInput): Promise<{ sha: string } | { conflict: true }>;
-  /** P10: which of `paths` exist at `sha` (one folder listing per folder — images are not downloaded). */
-  exists?(sha: string, paths: string[]): Promise<Set<string>>;
 }
 
 /** A publish error with a stable code for the API response and the audit row (never the token or a raw body). */
@@ -43,8 +39,8 @@ export class GitPublishError extends Error {
   }
 }
 
-const toBase64 = (content: FileContent) => {
-  const bytes = typeof content === "string" ? new TextEncoder().encode(content) : content;
+const toBase64 = (text: string) => {
+  const bytes = new TextEncoder().encode(text);
   let binary = "";
   for (let index = 0; index < bytes.length; index += 0x8000) binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
   return btoa(binary);
@@ -118,24 +114,11 @@ export const createGitHubPublisher = ({ token, repo, apiUrl = "https://api.githu
       }
       return out;
     },
-    async exists(sha, paths) {
-      const found = new Set<string>();
-      const folders = new Map<string, string[]>();
-      for (const path of paths) { const folder = path.slice(0, path.lastIndexOf("/")); folders.set(folder, [...(folders.get(folder) ?? []), path]); }
-      for (const [folder, wanted] of folders) {
-        const response = await call("GET", `/contents/${encodePath(folder)}?ref=${encodeURIComponent(sha)}`);
-        if (response.status === 404) continue;
-        const entries = await json<Array<{ path: string; type: string }> | { path: string; type: string }>(response, "contents");
-        const names = new Set((Array.isArray(entries) ? entries : [entries]).filter((entry) => entry.type === "file").map((entry) => entry.path));
-        for (const path of wanted) if (names.has(path)) found.add(path);
-      }
-      return found;
-    },
     async commit({ parent, files, message, author, date = new Date().toISOString() }) {
       const base = await json<{ tree: { sha: string } }>(await call("GET", `/git/commits/${encodeURIComponent(parent)}`), "commit");
       const tree = [];
-      for (const [path, content] of Object.entries(files)) {
-        const blob = await json<{ sha: string }>(await call("POST", "/git/blobs", { content: toBase64(content), encoding: "base64" }), "blob");
+      for (const [path, text] of Object.entries(files)) {
+        const blob = await json<{ sha: string }>(await call("POST", "/git/blobs", { content: toBase64(text), encoding: "base64" }), "blob");
         tree.push({ path, mode: "100644", type: "blob", sha: blob.sha });
       }
       const newTree = await json<{ sha: string }>(await call("POST", "/git/trees", { base_tree: base.tree.sha, tree }), "tree");
