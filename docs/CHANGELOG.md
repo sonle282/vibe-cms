@@ -3,6 +3,23 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.13.0 — unreleased (P9)
+
+- **Preview next to the form.** The real page, in a same-origin frame, shows the draft as it is typed: no reload, only
+  the elements of the changed field are updated (measured: under 16 ms a key). Text, rich text (cleaned; Markdown
+  shown as HTML), images, links, references, lists of text, opening hours. List items follow the form (added items
+  are copies of the first, removed ones are hidden). A new record shows where its collection is listed.
+- Click something on the page to edit it: the form opens that field (another record's content opens that record).
+  Focusing a field outlines it on the page with "Section · Field". Links to other sites and forms do nothing.
+- Desktop / phone width, reload, open the live page. Open by default on wide windows; the Preview button remembers
+  the choice. The page loads only when the pane is first shown.
+- Nothing is added to public pages: the admin works on the framed page directly (no script injected, no message
+  channel). Templates mark their fields with `data-cms-field`, `data-cms-field-href`, `data-cms-field-alt`,
+  `data-cms-item`, `data-cms-list`, `data-cms-item-index` and `data-cms-section` (docs/DESIGN.md §D); old templates
+  can use `bind: "<selector>"` in cms.config instead.
+- Site action: add `data-cms-*` attributes to templates (or `bind` selectors), set `preview` paths in cms.config, and
+  let the site frame its own pages (`X-Frame-Options: SAMEORIGIN` or `frame-ancestors 'self'`, not `DENY`).
+
 ## 0.12.0 — unreleased (P8d)
 
 - **Visual editor for rich text and Markdown bodies.** A toolbar replaces the raw HTML / Markdown box: paragraph,

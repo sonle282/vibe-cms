@@ -9,6 +9,8 @@
 // text is removed on save. P10: a photo is uploaded through the image sheet (made smaller + WebP in the browser, kept in
 // local R2, served at its final address) and published in the same commit, exact bytes. P8d: the blog post is written
 // in the visual editor (bold, heading, list, an uploaded image resized by dragging its corner) and saved as Markdown.
+// P9: the preview next to the form shows the draft on the real page as it is typed (no reload, < 16 ms a key), links
+// the page and the form both ways, and shows a new service in its list.
 // Then the editor signs in: locked fields are shown but disabled, other fields save; they change their own password on
 // My account. Nothing remote; test values only.
 import assert from "node:assert/strict";
@@ -40,7 +42,7 @@ try {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
   page.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`));
-  page.on("console", (message) => { if (message.type() === "error" && !/Failed to load resource/.test(message.text())) problems.push(`console: ${message.text()}`); });
+  page.on("console", (message) => { if (message.type() === "error" && !/Failed to load resource|Blocked form submission to '\/contact' because the form's frame is sandboxed/.test(message.text())) problems.push(`console: ${message.text()}`); });
   page.on("response", (response) => { if (response.status() >= 500) problems.push(`HTTP ${response.status()} ${response.url()}`); });
 
   const field = (path) => page.locator(`[data-path=${JSON.stringify(path)}]`);
@@ -49,6 +51,10 @@ try {
   // P8d: the visual editor — its editable area, a toolbar button, and its source view ("Edit HTML" / "Edit Markdown").
   const rich = (path) => field(path).locator(".vc-rich-area");
   const tool = (path, name) => field(path).locator(".vc-rich-toolbar").getByRole("button", { name, exact: true });
+  // P9: the preview pane (the real page in a same-origin iframe) and what it shows.
+  const preview = page.frameLocator(".vc-preview-frame");
+  const previewReady = () => page.locator('.vc-preview[data-state="ready"]').waitFor({ timeout: 20_000 });
+  const previewWindow = () => page.frames().find((frame) => frame.url().includes("cmsPreview=1"));
   const richSource = async (path) => {
     const toggle = field(path).locator(".vc-tool-source");
     if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
@@ -87,6 +93,10 @@ try {
   // ---------------------------------------------------------------- owner: every field of the salon info
   const siteBefore = data("src/data/site.json");
   await open("#/files/site");
+  // P9: the page is shown next to the form (wide window), and stays the same page while typing (no reload).
+  await previewReady();
+  check("preview: the home page next to the form, with how many places show the salon info", /Showing your changes on the page \(1\d places\)/.test(await page.locator(".vc-preview-status").textContent()), await page.locator(".vc-preview-status").textContent());
+  await previewWindow().evaluate(() => { window.__vibeCmsStayed = true; });
   check("salon info: nothing changed yet", (await saveState()) === "No changes" && await page.getByRole("button", { name: "Save draft" }).isDisabled());
   await input("name").fill("Demo Salon & Spa");
   await input("phone").fill("(555) 010-0001");
@@ -100,8 +110,25 @@ try {
   await field("hours[2]").getByLabel("Opens").fill("10:00");
   await field("hours[2]").getByLabel("Closes").fill("16:00");
   await field("hours").getByRole("button", { name: "Move Row 3 up" }).click();
-  await input("tagline").fill("Invented, and proud of it.");
+  // Typed key by key: every key shows on the page, without reloading it, each well under a frame (16 ms).
+  await input("tagline").fill("");
+  await input("tagline").pressSequentially("Invented, and proud of it.");
   await input("hero.title").fill("Hello from Demo Salon");
+  const paneData = await page.locator(".vc-preview").evaluate((element) => ({ updates: Number(element.dataset.updates), maxMs: Number(element.dataset.maxApplyMs) }));
+  check("preview: typing shows at once — heading, tagline, and the name bound by selector (cms.config bind)", (await preview.locator("h1").textContent()) === "Hello from Demo Salon" && (await preview.locator('[data-cms-field="site.tagline"]').textContent()) === "Invented, and proud of it." && (await preview.locator("header .brand strong").textContent()) === "Demo Salon & Spa");
+  check("preview: the page is never reloaded while typing", await previewWindow().evaluate(() => window.__vibeCmsStayed === true));
+  check("preview: each key applied in under 16 ms", paneData.updates >= 26 && paneData.maxMs < 16, paneData);
+  // From the form to the page: focusing a field outlines it, with its section and name.
+  await input("address.street").focus();
+  await page.waitForTimeout(300);
+  check("preview: focusing a field outlines it on the page with “Section · Field”", (await preview.locator("[data-vibe-cms-preview] span").textContent()) === "Contact & hours · Address › Street");
+  // From the page to the form: clicking an element opens its field.
+  await preview.locator('[data-cms-field="site.phone"]').click();
+  check("preview: clicking the phone on the page focuses its field", await page.evaluate(() => document.activeElement?.closest("[data-path]")?.getAttribute("data-path")) === "phone");
+  await preview.getByRole("link", { name: "Elsewhere" }).click();
+  await preview.locator("form button").click();
+  await page.waitForTimeout(300);
+  check("preview: links to other sites and forms do nothing", new URL(previewWindow().url()).pathname === "/" && await previewWindow().evaluate(() => window.__vibeCmsStayed === true));
   await (await richSource("hero.text")).fill("<p>Everything here is <em>invented</em>.</p>");
   await field("hero.image").getByLabel("Image address").fill("/images/team-sam.svg");
   await field("hero.image").getByLabel("Alt text (describes the image)").fill("A blue square");
@@ -121,6 +148,9 @@ try {
   await input("footerLinks[1].links[0].href").fill("/privacy/");
   await input("seo.title").fill("Demo Salon");
   await input("seo.description").fill("Invented salon.\nSecond line.");
+  const footerShown = await preview.locator("footer section:not([hidden])").evaluateAll((groups) => groups.map((group) => [group.querySelector("h2").textContent, [...group.querySelectorAll("li:not([hidden]) a")].map((a) => `${a.textContent} ${a.getAttribute("href")}`)]));
+  check("preview: rich text, image and list items (added, moved, removed) follow the form", assertEqual(footerShown, [["Visit us", ["Blog /blog/", "Team /team/"]], ["Legal", ["Privacy /privacy/"]]]) && (await preview.locator('[data-cms-field="site.hero.text"]').innerHTML()) === "<p>Everything here is <em>invented</em>.</p>" && (await preview.locator("img[data-cms-field]").getAttribute("src")) === "/images/team-sam.svg" && (await preview.locator('[data-cms-field="site.highlights"] li').allTextContents()).join(", ") === "Classic Manicure, Nail Art", footerShown);
+  await shot("p9-preview");
   await save();
   const siteExpected = {
     ...siteBefore, name: "Demo Salon & Spa", phone: "(555) 010-0001", email: "hi@demo.example", address: { ...siteBefore.address, street: "2 Example Street" },
@@ -157,7 +187,14 @@ try {
   await input("extras[2]").fill("Foot mask");
   await button("extras", "Delete Extra 2").click();
   await input("description").fill("Warm soak and massage.");
+  await previewReady();
+  check("preview: the service is shown in the services list as edited", (await preview.locator('[data-cms-item="services:spa-pedicure"]').innerText()) === "Spa Pedicure Deluxe — $40 (+ Paraffin, Foot mask)", await preview.locator('[data-cms-item="services:spa-pedicure"]').innerText());
   await save();
+  // Clicking content of another record on the page opens that record (here: the footer, from the salon info).
+  await preview.locator("footer h2").first().click();
+  await page.waitForURL(/#\/files\/site$/);
+  await page.locator(".vc-form").waitFor();
+  check("preview: clicking the footer opens the salon info at that field", await page.evaluate(() => document.activeElement?.closest("[data-path]")?.getAttribute("data-path")) === "footerLinks[0].title");
   const spa = await api("/api/cms/collections/services/items/spa-pedicure");
   check("service: every field in the draft", assertEqual(spa.draft?.content, { ...services[1], name: "Spa Pedicure Deluxe", price: "$40", category: "Nails", extras: ["Paraffin", "Foot mask"], description: "Warm soak and massage." }), spa.draft);
 
@@ -171,6 +208,8 @@ try {
   await input("category").selectOption("Nails");
   await field("extras").getByRole("button", { name: "Add extra" }).click();
   await input("extras[0]").fill("Cuticle oil");
+  await previewReady();
+  check("preview: a new service shows in the list as it is typed", (await preview.locator('[data-cms-item="services:gel-removal"]').innerText()) === "Gel Removal — $10 (+ Cuticle oil)" && (await preview.locator('[data-cms-list="services"] > li').count()) === 4);
   await save();
   await page.waitForURL(/#\/collections\/services\/items\/gel-removal$/);
   const gel = await api("/api/cms/collections/services/items/gel-removal");
@@ -267,6 +306,9 @@ try {
   check("editor: a library image is inserted", (await rich("body").locator("img").count()) === 2);
   await field("body").getByRole("button", { name: "Remove image" }).click();
   check("editor: Remove image takes it out", (await rich("body").locator("img").count()) === 1 && (await rich("body").locator('img[src="/images/hero.svg"]').count()) === 0);
+  await previewReady();
+  const postShown = await preview.locator('[data-cms-field="body"]').innerHTML();
+  check("preview: the post's own page shows the body as written (Markdown → HTML, the resized image)", /<p>New <strong>body<\/strong> text\.<\/p>\s*<h2>Opening hours<\/h2>/.test(postShown) && postShown.includes(`<img src="${postImageSrc}" alt="A pedicure chair" width="${postWidth}">`) && (await preview.locator("h1").textContent()) === "Welcome!", postShown);
   await save();
   const post = await api("/api/cms/collections/posts/items/welcome");
   const postBody = `New **body** text.\n\n## Opening hours\n\n- Mon to Fri\n- Sat\n\n<img src="${postImageSrc}" alt="A pedicure chair" width="${postWidth}">\n`;

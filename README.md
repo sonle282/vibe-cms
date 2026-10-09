@@ -5,12 +5,12 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.12.0 · P8d.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
+> Status: **0.13.0 · P9.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
 > fields on the server, CMS API + one-commit GitHub publishing, sign-in, and the editor at `/admin` (lists, forms
-> generated from `cms.config`, a visual rich-text editor, drafts, review of changes, publish, live status, People, My
-> account), rich text cleaned on the server, images (upload to R2, picker, inline images resized by dragging, published
-> in the same commit). Next: preview (P9), CLI (P11) ([docs/TRACKER.md](docs/TRACKER.md), design:
-> [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
+> generated from `cms.config`, a visual rich-text editor, a live preview of the draft on the real page, drafts, review
+> of changes, publish, live status, People, My account), rich text cleaned on the server, images (upload to R2, picker,
+> inline images resized by dragging, published in the same commit). Next: CLI (P11), then the first site
+> ([docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
 
 ## Install in a site (3 steps, no token)
 
@@ -181,6 +181,22 @@ until a publish puts it into the same commit as the content that uses it. The si
   uploading is not set up (images already in `public/` can still be chosen).
 - Optional `media: { dir: "public/assets/uploads", maxBytes: 10 * 1024 * 1024 }` in `cms.config.ts` (these are the
   defaults; `maxBytes` at most 25 MiB).
+
+## Preview (P9)
+
+Next to the form, the admin shows the real page with the draft on it, updated as you type; click something on the
+page to edit it. Templates say which field each element shows (nothing changes for visitors; docs/DESIGN.md §D):
+
+```astro
+<h1 data-cms-field="site.hero.title">{site.hero.title}</h1>
+<ul data-cms-list="services">{services.map((service) => (
+  <li data-cms-item={`services:${service.id}`}><strong data-cms-field="name">{service.name}</strong></li>
+))}</ul>
+```
+
+Set `preview: "/"` on files and `preview: "/services/"` or `"/blog/{slug}/"` on collections. The site must allow its
+own pages in a frame (`X-Frame-Options: SAMEORIGIN` or `frame-ancestors 'self'`, not `DENY`). No script is added to
+public pages.
 
 ## Develop this package
 

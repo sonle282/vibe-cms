@@ -12,4 +12,6 @@ export { ACCEPTED_TYPES, openImagePicker, prepareImage, type LibraryImage, type 
 // P8d. The Markdown converter (./markdown.js) is not exported here on purpose: the editor loads it only when needed.
 export { createRichEditor, type PickedImage, type RichEditor, type RichEditorOptions } from "./rich-editor.js";
 export { cleanRichDom, isEmptyRich, normalizeBlocks } from "./clean.js";
+export { attachBridge, bindingPath, configBinds, fieldAt, resolveBinding, resolveList, type Bridge, type BridgeOptions, type PreviewOwner, type PreviewSelection } from "./bridge.js";
+export { createPreview, framedUrl, previewUrl, type Preview, type PreviewOptions } from "./preview.js";
 export { clone, countChanges, emptyValue, getAt, holdsLockedValue, ID_PATTERN, keyPath, parsePathText, pathText, same, setAt, slugify, type Path } from "./value.js";

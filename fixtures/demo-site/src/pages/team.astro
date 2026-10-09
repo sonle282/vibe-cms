@@ -3,8 +3,15 @@ import Base from "../layouts/Base.astro";
 import team from "../data/team.json";
 import services from "../data/services.json";
 const name = (id: string) => services.find((service) => service.id === id)?.name ?? id;
+const photo = (value: string | { src: string; alt?: string }) => (typeof value === "string" ? { src: value, alt: "" } : { src: value.src, alt: value.alt ?? "" });
 ---
 <Base title="Team">
   <h1>Team</h1>
-  <ul>{team.map((member) => <li>{member.name}: {member.services.map(name).join(", ")}</li>)}</ul>
+  <ul data-cms-list="team">{team.map((member) => (
+    <li data-cms-item={`team:${member.id}`}>
+      <img data-cms-field="photo" src={photo(member.photo).src} alt={photo(member.photo).alt} width="80" height="80" />
+      <strong data-cms-field="name">{member.name}</strong>: <span data-cms-field="services">{member.services.map(name).join(", ")}</span>
+      <div data-cms-field="bio" set:html={"bio" in member ? member.bio : ""} />
+    </li>
+  ))}</ul>
 </Base>

@@ -4,5 +4,7 @@ import services from "../data/services.json";
 ---
 <Base title="Services">
   <h1>Services</h1>
-  <ul>{services.map((service) => <li>{service.name} — {service.price}{service.extras.length ? ` (+ ${service.extras.join(", ")})` : ""}</li>)}</ul>
+  <ul data-cms-list="services">{services.map((service) => (
+    <li data-cms-item={`services:${service.id}`}><strong data-cms-field="name">{service.name}</strong> — <span data-cms-field="price">{service.price}</span>{service.extras.length ? <span> (+ <span data-cms-field="extras">{service.extras.join(", ")}</span>)</span> : null}</li>
+  ))}</ul>
 </Base>

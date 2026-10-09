@@ -557,3 +557,42 @@ test("P10 shell: without the bucket the sheet says uploading is not set up; an e
   await assert.rejects(prepare(png), /can't be read as an image/);
   assert.equal((await prepareImage({ document })(png)).blob, png);
 });
+
+// ------------------------------------------------------------------ P9: preview pane
+
+test("P9 shell: the preview pane shows the record's page (cmsPreview=1); Preview toggles it and the choice is remembered", async () => {
+  const window = new Window({ url: "http://localhost/admin", settings: { disableIframePageLoading: true } });
+  const document = window.document;
+  const user = { userId: "usr_owner", role: "owner" };
+  const api = createCmsApi({ config, source: createBundledSource(files), drafts: createMemoryDraftStore(), audit: createMemoryAuditLog(), identify: () => user });
+  const fetch = async (url, init = {}) => api.handle(new Request(new URL(url, "http://localhost"), { ...init, headers: { ...(init.headers ?? {}), origin: "http://localhost" } }));
+  const store = new Map();
+  const storage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
+  const root = document.createElement("div");
+  document.body.append(root);
+  const app = startAdmin({ root, boot: adminBoot(config, { id: user.userId, username: "owner", displayName: "Owner", role: "owner" }), fetch, window, confirm: () => true, storage, preview: true });
+  await app.ready;
+  const go = async (hash) => { window.location.hash = hash; await settle(); await app.idle(); };
+  await go("#/files/site");
+  const pane = () => root.querySelector(".vc-preview");
+  const toggle = () => root.querySelector('[data-action="preview"]');
+  assert.equal(pane().hidden, false);
+  assert.equal(pane().querySelector("iframe").getAttribute("src"), "/?cmsPreview=1");
+  assert.equal(pane().querySelector("iframe").getAttribute("sandbox"), "allow-same-origin allow-scripts", "the page cannot navigate the admin, open pop-ups or send forms");
+  assert.equal(toggle().getAttribute("aria-pressed"), "true");
+  toggle().click();
+  assert.equal(pane().hidden, true);
+  assert.equal(store.get("vibe-cms:preview"), "off");
+  toggle().click();
+  assert.equal(store.get("vibe-cms:preview"), "on");
+  // A record's own page, from its fields.
+  await go("#/collections/posts/items/welcome");
+  assert.equal(pane().querySelector("iframe").getAttribute("src"), "/blog/welcome/?cmsPreview=1");
+  // A new record whose page is its own address: nothing to show until it is published.
+  await go("#/collections/posts/new");
+  assert.equal(pane().querySelector(".vc-preview-stage").hidden, true);
+  assert.match(pane().querySelector(".vc-preview-status").textContent, /A new post gets its own page once it is published/);
+  // A new record of a collection listed on one page: the list page (the record is shown there as it is typed).
+  await go("#/collections/services/new");
+  assert.equal(pane().querySelector("iframe").getAttribute("src"), "/services/?cmsPreview=1");
+});

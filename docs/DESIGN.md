@@ -293,23 +293,42 @@ nên Ctrl+Z / Ctrl+Y vẫn chạy, dán chỉ giữ chữ), thêm phần ảnh m
 - **Xem lại (P8):** dòng thay đổi của richText đọc như chữ thường (bỏ ký hiệu Markdown), và mỗi ảnh có dòng riêng:
   thêm, xoá, đổi cỡ ("438 px wide → original size"), đổi alt; chỉ đổi định dạng → "(new formatting)".
 
-## D. Hợp đồng visual editing
+## D. Hợp đồng visual editing (P9)
 
-**Binding:** thuộc tính trong template — `data-cms-field="site.phone"`, danh sách `data-cms-list="services"` + mỗi item
-`data-cms-item-index="2"`, section `data-cms-section="contact"`, link `data-cms-field-href`, ảnh `data-cms-field-alt`.
-Đây là cách mặc định (quyết định 6). `bind: "<selector>"` trong config chỉ cho site cũ phải giữ HTML từng byte — bridge gắn
-thuộc tính lúc chạy trong preview.
+**Binding:** thuộc tính trong template (quyết định 6), không đổi gì với khách xem trang:
 
-**Nạp bridge (quyết định 7):** P9 thử trước: admin mở trang trong `<iframe>` **cùng origin**, đợi `load`, tự chèn script
-bridge vào `iframe.contentDocument` → HTML public không đổi byte nào. Rủi ro cần đo ở P9: trang điều hướng trong iframe
-(phải chèn lại mỗi lần `load`), CSP của site chặn script chèn, trang tải lâu (bridge vào muộn). Chỉ khi cách này không đạt
-mới thêm preview loader (~1 KB, không làm gì ngoài khung CMS) — **hỏi SonLe duyệt** trước khi đổi HTML public.
+| Thuộc tính | Nghĩa |
+|---|---|
+| `data-cms-field="site.hero.title"` | field của file (`<key file>.<đường dẫn>`, chỉ số list viết `.0` hoặc `[0]`) |
+| `data-cms-field-href` / `data-cms-field-alt` | `href` / `alt` của phần tử lấy từ field |
+| `data-cms-item="services:spa-pedicure"` | một bản ghi; `data-cms-field` bên trong là field của bản ghi đó |
+| `data-cms-list="services"` | nơi liệt kê bản ghi của collection (bản ghi mới hiện ở đây, là bản sao bản ghi đầu) |
+| `data-cms-list="site.footerLinks"` + item `data-cms-item-index="0"` | một field list; field bên trong item tính từ item; list lồng nhau được |
+| `data-cms-section="contact"` | phần tử của một section trong `cms.config` (khung 1 px) |
 
-**Thông điệp bridge** (`postMessage` cùng origin + token preview): admin → preview: `SECTION_MAP`, `LOAD_DRAFT`,
-`UPDATE_FIELD` (không bao giờ post ngược `FIELD_SELECTED`), `SCROLL_TO_FIELD` (`scrollOnly`, `itemIndex`, `section`),
-`CLEAR_SELECTION`, `HIGHLIGHT_SITE`; preview → admin: `EDITOR_READY`, `FIELD_SELECTED` (chỉ khi người bấm trong
-preview), `DRAFT_APPLIED`. Khung: field 2 px + chip "Section · Field", section 1 px nhạt, hover nét đứt cấp phần tử; vẽ
-lại theo khung hình, không transition vị trí; không render lại preview khi gõ.
+`bind: "<selector>"` trong config cho site cũ phải giữ HTML từng byte: lúc preview, bridge gắn `data-cms-field` vào
+phần tử khớp selector (field của file, mọi độ sâu ngoài list).
+
+**Nạp bridge (quyết định 7) — làm ở P9, có chỉnh:** admin mở trang trong `<iframe>` **cùng origin**
+(`?cmsPreview=1`, `sandbox="allow-same-origin allow-scripts"`: trang không điều hướng được admin, không mở pop-up,
+không gửi form) và **bridge chạy trong JS của admin, thao tác thẳng trên `iframe.contentDocument`**, gắn lại sau mỗi
+lần `load`. **Không chèn script vào trang, không `postMessage`** → HTML public không đổi byte nào, CSP của site không
+chặn được, không có kênh tin nhắn nào để giả mạo (nên không cần token preview). Cần ở site: cho chính site nhúng trang
+của nó (`X-Frame-Options: SAMEORIGIN` hoặc `frame-ancestors 'self'`; không đặt `DENY`) — không được thì pane nói rõ.
+Không cần preview loader.
+
+**Việc của bridge** (thay các thông điệp cũ bằng lời gọi hàm): `LOAD_DRAFT` = áp nháp khi gắn; `UPDATE_FIELD` = khi
+form đổi, chỉ cập nhật phần tử của field đó (text, richText đã lọc — Markdown chuyển sang HTML, ảnh `src` / `alt`,
+link an toàn, reference ra tên, list chữ, giờ mở cửa; item list thêm = bản sao item đầu, bớt = ẩn); `SECTION_MAP` =
+`cms.config` sections; `SCROLL_TO_FIELD` = focus field trong form → cuộn + khung (không báo ngược); `FIELD_SELECTED`
+= chỉ khi người bấm trong preview → form focus field đó (bấm vào nội dung của bản ghi / file khác → mở bản ghi đó, đúng
+field); `CLEAR_SELECTION` = Esc. Link sang site khác và form không chạy trong preview. Khung: field chọn 2 px + chip
+"Section · Field", section 1 px nhạt, hover nét đứt; vẽ bằng CSSOM (`element.style`, không thuộc tính `style` → CSP
+không chặn), theo khung hình. **Không render lại preview khi gõ**; e2e đo: mỗi phím < 16 ms, trang không tải lại.
+
+**Pane:** cạnh form (cửa sổ ≥ 1 200 px mở sẵn; nút Preview bật / tắt, nhớ lựa chọn), Desktop / Phone (390 px), Reload,
+Open live page; trang chỉ tải khi pane được mở lần đầu. Bản ghi mới có trang riêng (`/blog/{slug}/`) → "có trang khi
+được publish"; bản ghi mới của collection liệt kê trên 1 trang → hiện ngay trong list.
 
 ---
 
@@ -531,7 +550,7 @@ thay đổi lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tà
 | **P8b** | Màn People trong admin (thêm người + mật khẩu tạm hiện 1 lần, khoá / mở, đặt lại mật khẩu, đổi vai trò; API P6) + My account (tự đổi mật khẩu) (§C.4) | owner tạo editor bằng giao diện | test DOM + e2e |
 | **P8c** | Lọc HTML của richText ở server (lưu nháp + publish): chỉ giữ thẻ / thuộc tính an toàn, link an toàn (§F.2) | HTML nguy hiểm không vào nháp / commit | test sanitizer (≥ 1 ca mỗi kiểu tấn công) |
 | **P8d** | Trình soạn thảo richText trực quan (§C.6): thanh định dạng; chèn / xoá ảnh trong bài, kéo đổi cỡ giữ tỉ lệ (`width`), alt; dán chỉ giữ chữ; ảnh từ bộ chọn của P10 | sửa bài blog demo có chèn, xoá, đổi cỡ ảnh mà không gõ HTML | test DOM + e2e (kéo đổi cỡ) |
-| **P9** | Bridge: inject vào iframe cùng origin (dự phòng loader), `data-cms-*` + selector, SECTION_MAP, khung 2 cấp, không render khi gõ | preview demo chọn / hover / focus đúng, HTML public không đổi | test bridge + đo khi gõ |
+| **P9** | Bridge trên iframe cùng origin (§D: chạy trong admin, không script trên trang), `data-cms-*` + selector, SECTION_MAP, khung 2 cấp, không render khi gõ | preview demo chọn / hover / focus đúng, HTML public không đổi | test bridge + đo khi gõ |
 | **P10** | Ảnh: upload R2 staging, sheet chọn ảnh, alt (§C.5) | đổi ảnh demo + publish | test upload pipeline |
 | **P11** | CLI `setup` (idempotent, `--account`) / `migrate` / `check` / `export` / `update` / `reset-owner-password` (đặt mật khẩu tạm cho owner quên mật khẩu, không sửa D1 tay) + tài liệu cài | cài demo từ đầu theo tài liệu **bằng URL release, không token**; `setup` lần 2 = không đổi gì; `update` đổi URL sang bản mới | chạy local (miniflare); xuất / nhập D1 demo khớp số dòng |
 | P12–P15 | Site pilot 1: tách nội dung → JSON; adapter cho route gói; cài gói + config + ô khoá; setup + kiểm production | **P15: Workers Builds của site build xanh không có biến môi trường token nào** (gói cài từ URL release) + 1 cặp publish + **lưu và đọc lại 1 nháp > 100 KB trên D1 THẬT** | so HTML public; Workers Builds log |

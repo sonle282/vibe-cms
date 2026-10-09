@@ -20,8 +20,10 @@ import { clear, h } from "./dom.js";
 import { summarizeChanges, type Change, type ReferenceLabels } from "./changes.js";
 import { createForm, type Form, type ReferenceTarget } from "./form.js";
 import { openImagePicker, prepareImage, type LibraryImage, type Prepare } from "./media.js";
+import { configBinds, fieldAt, type PreviewOwner } from "./bridge.js";
+import { createPreview, previewUrl, type Preview } from "./preview.js";
 import { accountScreen, peopleScreen, type ScreenKit } from "./people.js";
-import { clone, countChanges, getAt, ID_PATTERN, parsePathText, slugify } from "./value.js";
+import { clone, countChanges, getAt, ID_PATTERN, parsePathText, pathText, slugify, type Path } from "./value.js";
 
 export type AdminOptions = {
   root: HTMLElement;
@@ -39,6 +41,8 @@ export type AdminOptions = {
   now?: () => number;
   /** P10: how a chosen file is prepared before uploading (resize + WebP in the browser by default). */
   prepareImage?: Prepare;
+  /** P9: show the preview next to the form (default: on for wide windows, then as the person last left it). */
+  preview?: boolean;
 };
 
 /**
@@ -197,7 +201,10 @@ export const startAdmin = (options: AdminOptions) => {
     } catch {
       if (stillHere()) show({ title: "Error", crumbs: [["Overview", "#/"], ["Error"]] }, message("Something went wrong", "The page could not be shown. Reload to try again."));
     }
-    if (stillHere()) main.querySelector<HTMLElement>("h1")?.focus();
+    // The screen's heading gets focus (screen readers announce the page), unless the screen asked for a field (P9).
+    const after = focusAfterShow;
+    focusAfterShow = undefined;
+    if (stillHere() && !after?.()) main.querySelector<HTMLElement>("h1")?.focus();
   };
 
   const failed = (result: ApiFail, crumbsFor: Array<[string, string?]>) => {
@@ -298,6 +305,50 @@ export const startAdmin = (options: AdminOptions) => {
     await editor({ kind: "item", collection, id, url: id === undefined ? undefined : `/api/cms/collections/${encodeURIComponent(key)}/items/${encodeURIComponent(id)}`, crumbs: [["Overview", "#/"], [collection.label, `#/collections/${key}`]], stillHere });
   };
 
+  // ---------------------------------------------------------------- P9: preview helpers
+
+  /** "Homepage · Banner › Heading", "Service · Price", "Footer links › Group 2 › Group title". */
+  const describeField = (fields: Record<string, Field>, path: Path, prefix: string) => {
+    const labels: string[] = [];
+    for (let length = 1; length <= path.length; length += 1) {
+      const step = path[length - 1];
+      const found = fieldAt(fields, path.slice(0, length));
+      if (typeof step === "number") { const list = fieldAt(fields, path.slice(0, length - 1))?.field; labels.push(`${list?.type === "list" ? list.itemLabel ?? "Item" : "Item"} ${step + 1}`); continue; }
+      if (found && !found.rest.length && found.field.label && labels[labels.length - 1] !== found.field.label) labels.push(found.field.label);
+    }
+    return [prefix, labels.join(" › ")].filter(Boolean).join(" · ");
+  };
+  const describeOwner = (owner: PreviewOwner, path: Path) => {
+    const [kind, key] = owner.split(":");
+    if (kind === "file") {
+      const file = boot.files.find((entry) => entry.key === key);
+      if (!file) return path.join(".");
+      const section = file.sections?.find((entry) => entry.fields.includes(String(path[0])) || entry.fields.some((field) => keyMatches(field, path)));
+      return describeField(file.fields, path, section?.label ?? file.label);
+    }
+    const collection = boot.collections.find((entry) => entry.key === key);
+    return collection ? describeField(editorFields({ kind: "item", collection, isNew: false }), path, collection.itemLabel) : path.join(".");
+  };
+  const keyMatches = (key: string, path: Path) => key.split(".").every((part, index) => path[index] === part);
+  const sectionKeyOf = (owner: PreviewOwner, path: Path) => {
+    const [kind, key] = owner.split(":");
+    if (kind !== "file") return undefined;
+    return boot.files.find((entry) => entry.key === key)?.sections?.find((entry) => entry.fields.some((field) => keyMatches(field, path)))?.key;
+  };
+  const hashOf = (owner: PreviewOwner) => {
+    const [kind, key, ...rest] = owner.split(":");
+    return kind === "file" ? `#/files/${key}` : `#/collections/${key}/items/${encodeURIComponent(rest.join(":"))}`;
+  };
+  const previewPreference = () => {
+    if (options.preview !== undefined) return options.preview;
+    try { const saved = storage?.getItem("vibe-cms:preview"); if (saved === "on" || saved === "off") return saved === "on"; } catch { /* no storage */ }
+    return (win.innerWidth || 0) >= 1200;
+  };
+  /** After a click in the preview on another record's content: the field to open when its editor shows. */
+  let pendingFocus: string | undefined;
+  /** Set by a screen that wants focus somewhere other than its heading once it is shown. */
+  let focusAfterShow: (() => boolean) | undefined;
+
   type EditorInput = { stillHere: () => boolean; crumbs: Array<[string, string?]>; url: string | undefined } & ({ kind: "file"; file: BootFile } | { kind: "item"; collection: BootCollection; id: string | undefined });
 
   const editor = async (input: EditorInput) => {
@@ -366,8 +417,50 @@ export const startAdmin = (options: AdminOptions) => {
           const source = Object.entries(collection.fields).find(([key, field]) => field.type === "text" && key !== collection.idField);
           if (source && path[0] === source[0]) { autoId = true; form.setValue([collection.idField], slugify(String(value[source[0]] ?? ""))); autoId = false; }
         }
+        preview?.update(value, path, isNew ? owner() : undefined);
         refresh();
       },
+    });
+
+    // P9: the page next to the form, showing this draft as it is typed.
+    const owner = (): PreviewOwner => (input.kind === "file" ? `file:${input.file.key}` : `item:${input.collection.key}:${input.id ?? (String(form.value()[input.collection.idField] ?? "") || "new")}`);
+    const pattern = input.kind === "file" ? input.file.preview : input.collection.preview;
+    let preview: Preview | undefined;
+    let previewToggle: HTMLButtonElement | undefined;
+    let suppressScroll = false;
+    let lastFocused = "";
+    if (pattern) {
+      const placeholders = /\{[^}]+\}/.test(pattern);
+      const url = isNew && placeholders ? undefined : previewUrl(pattern, saved) ?? (placeholders ? undefined : pattern);
+      preview = createPreview({
+        doc, win, url, title: input.kind === "file" ? input.file.label : `${input.collection.itemLabel}`,
+        unavailable: isNew ? `A new ${collection!.itemLabel.toLowerCase()} gets its own page once it is published.` : "This record's page could not be found from its fields.",
+        owner: owner(), value: () => form.value(), fields, markdown: collection?.markdown && !("body" in collection.fields) ? ["body"] : [],
+        newItem: isNew && collection && !placeholders ? { collection: collection.key } : undefined,
+        binds: input.kind === "file" ? configBinds(input.file.key, input.file.fields) : undefined,
+        describe: describeOwner, sectionOf: sectionKeyOf,
+        referenceLabel: (to, id) => references[to]?.items.find((item) => item.id === id)?.label ?? id,
+        onSelect: ({ owner: selectedOwner, path }) => {
+          const text = pathText(path);
+          if (selectedOwner !== owner()) { pendingFocus = text; win.location.hash = hashOf(selectedOwner); return; }
+          suppressScroll = true;
+          reveal(text);
+          suppressScroll = false;
+        },
+      });
+      previewToggle = h(doc, "button", { type: "button", class: "vc-button vc-quiet", "data-action": "preview", "aria-pressed": "false" }, "Preview");
+    }
+    /** Focus a field (or the closest one that has its own control). */
+    const reveal = (text: string) => {
+      let key = text;
+      while (key) { if (form.focus(key)) { lastFocused = key; return true; } key = /^(.*?)(\.[^.[\]]+|\[[^\]]*\])$/.exec(key)?.[1] ?? ""; }
+      return false;
+    };
+    form.element.addEventListener("focusin", (event) => {
+      const at = (event.target as Element | null)?.closest?.("[data-path]")?.getAttribute("data-path");
+      if (!at || at === lastFocused) return;
+      lastFocused = at;
+      if (!suppressScroll) preview?.scrollTo(parsePathText(at));
     });
 
     const validate = () => {
@@ -446,16 +539,27 @@ export const startAdmin = (options: AdminOptions) => {
     const onKey = (event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void doSave(); } };
     doc.addEventListener("keydown", onKey);
 
-    actions.append(discard, save, publish);
+    actions.append(...(previewToggle ? [previewToggle] : []), discard, save, publish);
     if (view?.draft?.stale) showBanner("The website changed after this draft was started (someone published). Publishing this draft is refused until you discard it and make your change again on the current content.");
     const intro = isNew ? `Fill in the new ${collection!.itemLabel.toLowerCase()} and save a draft. It is not on the website until it is published.`
       : hasDraft ? "You are editing your saved draft. The website shows the published version until the draft is published." : "Changes are saved as a draft first; the website does not change until a draft is published.";
     const crumbsFor: Array<[string, string?]> = [...input.crumbs, [titleText() || "…"]];
-    show({ title: titleText(), crumbs: crumbsFor, dirty, save: doSave, leave: () => doc.removeEventListener("keydown", onKey) }, [
-      title, h(doc, "p", { class: "vc-lead" }, intro),
-      fieldsRequiredNote(fields), banner, form.element,
-    ]);
+    const content = [title, h(doc, "p", { class: "vc-lead" }, intro), fieldsRequiredNote(fields), banner, form.element];
+    const split = preview ? h(doc, "div", { class: "vc-editor-split" }, h(doc, "div", { class: "vc-editor-main" }, ...content), preview.element) : undefined;
+    const setPreview = (on: boolean, remember: boolean) => {
+      if (!split || !previewToggle) return;
+      split.classList.toggle("vc-preview-on", on);
+      body.classList.toggle("vc-body-wide", on);
+      previewToggle.setAttribute("aria-pressed", String(on));
+      preview!.element.hidden = !on;
+      if (on) preview!.start();
+      if (remember) { try { storage?.setItem("vibe-cms:preview", on ? "on" : "off"); } catch { /* no storage */ } }
+    };
+    previewToggle?.addEventListener("click", () => setPreview(previewToggle!.getAttribute("aria-pressed") !== "true", true));
+    show({ title: titleText(), crumbs: crumbsFor, dirty, save: doSave, leave: () => { doc.removeEventListener("keydown", onKey); preview?.destroy(); body.classList.remove("vc-body-wide"); } }, split ? [split] : content);
+    setPreview(previewPreference(), false);
     refresh();
+    if (pendingFocus) { const target = pendingFocus; pendingFocus = undefined; focusAfterShow = () => reveal(target); }
   };
 
   // ---------------------------------------------------------------- P8: review + publish

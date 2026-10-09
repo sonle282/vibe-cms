@@ -47,7 +47,11 @@ try {
   const image = await fetch(`${base}/images/hero.svg`);
   assert.equal(image.status, 200, "the site's own images are still served as static files");
   const home = await fetch(`${base}/`);
-  assert.match(await home.text(), /Welcome to Demo Salon/, "the prerendered home page is served");
-  console.log(`Smoke passed on ${base}: /admin 200 (not framable), /api/cms/health ${JSON.stringify(body)}, / and /services/ prerendered; /api/cms/* → 503 auth_not_configured (dev variable ignored in a production build); /api/auth/login → 503 and /admin says sign-in is not set up (no bindings); upload addresses 404 without R2.`);
+  const homeHtml = await home.text();
+  assert.match(homeHtml, /Welcome to Demo Salon/, "the prerendered home page is served");
+  // P9: the preview adds nothing to public pages — only the template's data-cms-* attributes are there, no CMS script.
+  assert.match(homeHtml, /data-cms-field="site.hero.title"/, "the template marks its fields");
+  assert.doesNotMatch(homeHtml, /<script|cmsPreview|vibe-cms/i, "no CMS script or preview code on a public page");
+  console.log(`Smoke passed on ${base}: /admin 200 (not framable), /api/cms/health ${JSON.stringify(body)}, / and /services/ prerendered; /api/cms/* → 503 auth_not_configured (dev variable ignored in a production build); /api/auth/login → 503 and /admin says sign-in is not set up (no bindings); upload addresses 404 without R2; public pages carry no CMS script.`);
 } finally { stop(); }
 process.exit(0);
