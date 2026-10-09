@@ -81,7 +81,9 @@ test("People: owners see it in the navigation; the list shows everyone, with no 
   await h.go("#/people");
   assert.equal(h.root.querySelector("h1").textContent, "People");
   const me = h.rowOf("owner");
-  assert.match(me.textContent, /Olivia Owner owner \(you\)OwnerActiveOct 8, 2026/);
+  // Last sign-in: today (the setup signed in just now), in the browser's own date format.
+  const today = new Date().toLocaleString([], { day: "numeric", month: "short", year: "numeric" });
+  assert.ok(me.textContent.startsWith(`Olivia Owner owner (you)OwnerActive${today}`), me.textContent);
   assert.equal(me.querySelector("select"), null, "no role menu on yourself");
   assert.equal(h.button(me, "Disable"), undefined, "you cannot disable yourself");
   for (const form of h.root.querySelectorAll("form")) assert.equal(form.getAttribute("method"), "post");

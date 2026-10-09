@@ -194,7 +194,7 @@ coi là đổi giá → lưu 2 lần (dời rồi sửa), hoặc thêm `id` cho 
   Header: `x-frame-options: DENY`, `frame-ancestors 'none'`, `no-store`, `referrer-policy: same-origin`.
 - **Điều hướng bằng hash:** `#/` tổng quan · `#/files/<key>` · `#/collections/<key>` (tìm kiếm, "Add …") ·
   `#/collections/<key>/items/<id>` · `#/collections/<key>/new`. Cột trái: mọi file + collection, người dùng, Sign out.
-- **Form** sinh từ field: text (1 dòng / nhiều dòng, đếm `maxLength`), richText (ô HTML), image (địa chỉ + alt + ảnh
+- **Form** sinh từ field: text (1 dòng / nhiều dòng, đếm `maxLength`), richText (trình soạn thảo trực quan từ P8d, §C.6), image (địa chỉ + alt + ảnh
   điện thoại; giữ dạng chuỗi nếu bản gốc là chuỗi và không có alt), select, hours (ngày, nghỉ, giờ mở / đóng, nhãn, thêm
   / dời / xoá hàng), object, list (thêm / dời ↑↓ nếu `ordered` / xoá, tôn trọng `min` / `max`, lồng nhau), reference (1 =
   ô chọn; nhiều = danh sách + dời nếu `ordered`), key có chấm, section. Bản ghi: ô ID (bản mới: tự điền từ tên, sửa
@@ -268,6 +268,30 @@ Cùng cách của CMS cũ (cùng đường dẫn ảnh, giữ tạm ở R2, rout
   có (hỏi GitHub theo thư mục tháng) → thêm **byte chính xác** vào **cùng 1 commit**; không có ở R2 lẫn repo → 409
   `media_missing` + `paths`, không commit gì. Response có `media` (file ảnh đã thêm).
 - **Chưa làm (để sau):** dọn `staging/` sau khi publish, đếm "đang dùng ở đâu", xoá ảnh khỏi thư viện.
+
+## C.6 Trình soạn thảo trực quan (P8d)
+
+Thay ô gõ HTML / Markdown của P7, giống CMS cũ (thanh định dạng trên vùng soạn `contenteditable`, lệnh `execCommand`
+nên Ctrl+Z / Ctrl+Y vẫn chạy, dán chỉ giữ chữ), thêm phần ảnh mà CMS cũ chưa có.
+
+- **Thanh định dạng:** đoạn, H2, H3, đậm, nghiêng, danh sách chấm / số, trích dẫn, link (ô nhập địa chỉ; chỉ nhận
+  https:// · / · # · mailto: · tel:), bỏ link, ảnh; nút "Edit HTML" / "Edit Markdown" để xem / sửa mã nguồn.
+- **Ảnh trong bài:** nút Image mở sheet chọn ảnh của P10 (tải lên hoặc thư viện) → chèn tại con trỏ, ảnh được chọn,
+  con trỏ vào ô alt. Bấm ảnh để chọn: thanh ảnh có Alt text, Width (px), Original size, Replace…, Remove image; khung
+  viền + **tay kéo ở góc**: kéo to / nhỏ (tối thiểu 40 px, tối đa bề rộng vùng soạn), phím mũi tên ±10 px (Shift ±50).
+  **Tỉ lệ luôn giữ:** chỉ ghi `width`, xoá `height` (CSS `height:auto`). Delete / Backspace xoá ảnh đang chọn.
+- **Giá trị:** richText vẫn là HTML; thân bài Markdown vẫn là Markdown (chuyển bằng unified: micromark / mdast / hast,
+  có GFM; bộ chuyển chỉ tải khi mở bài Markdown — 184 KB riêng, admin chính 83 KB). Markdown viết lại **theo thói quen
+  của bài** (dấu danh sách, `*` / `_`, `**` / `__`, đường kẻ); ảnh có cỡ ghi thành `<img src alt width>` (Markdown
+  không có cỡ; Astro hiển thị HTML trong Markdown). Ô chưa sửa thì **không đổi giá trị** (đúng từng byte).
+- **Bài không giữ được:** nếu Markdown → HTML → Markdown → HTML ra khác (khối HTML thô, chú thích chân trang…), bài
+  mở ở chế độ Markdown kèm ghi chú, không cho chuyển sang trực quan — không âm thầm viết lại bài.
+- **An toàn:** giá trị được dựng trong tài liệu "trơ" (`createHTMLDocument`: không tải, không chạy gì) và lọc bằng
+  **cùng danh sách** với server (`src/check/rich-text-allow.ts`, dùng chung cho hast ở server và DOM ở trình duyệt);
+  `<b>` / `<i>` → `<strong>` / `<em>`, `span` / `font` / `style` bỏ, khối lồng trong `<p>` được tách ra, `&nbsp;`
+  thành dấu cách. Thả file / HTML vào vùng soạn bị chặn (ảnh chỉ qua sheet). Server vẫn lọc lại khi lưu (P8c).
+- **Xem lại (P8):** dòng thay đổi của richText đọc như chữ thường (bỏ ký hiệu Markdown), và mỗi ảnh có dòng riêng:
+  thêm, xoá, đổi cỡ ("438 px wide → original size"), đổi alt; chỉ đổi định dạng → "(new formatting)".
 
 ## D. Hợp đồng visual editing
 
@@ -506,7 +530,7 @@ thay đổi lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tà
 | **P8** | Review / change summary + Save → review → Publish + trạng thái Live (§C.3) | luồng đủ trên demo | e2e + test change summary |
 | **P8b** | Màn People trong admin (thêm người + mật khẩu tạm hiện 1 lần, khoá / mở, đặt lại mật khẩu, đổi vai trò; API P6) + My account (tự đổi mật khẩu) (§C.4) | owner tạo editor bằng giao diện | test DOM + e2e |
 | **P8c** | Lọc HTML của richText ở server (lưu nháp + publish): chỉ giữ thẻ / thuộc tính an toàn, link an toàn (§F.2) | HTML nguy hiểm không vào nháp / commit | test sanitizer (≥ 1 ca mỗi kiểu tấn công) |
-| **P8d** | Trình soạn thảo richText trực quan: thanh định dạng; chèn / xoá ảnh trong bài, kéo đổi cỡ giữ tỉ lệ (`width`), alt; dán chỉ giữ chữ; ảnh từ bộ chọn của P10 | sửa bài blog demo có chèn, xoá, đổi cỡ ảnh mà không gõ HTML | test DOM + e2e (kéo đổi cỡ) |
+| **P8d** | Trình soạn thảo richText trực quan (§C.6): thanh định dạng; chèn / xoá ảnh trong bài, kéo đổi cỡ giữ tỉ lệ (`width`), alt; dán chỉ giữ chữ; ảnh từ bộ chọn của P10 | sửa bài blog demo có chèn, xoá, đổi cỡ ảnh mà không gõ HTML | test DOM + e2e (kéo đổi cỡ) |
 | **P9** | Bridge: inject vào iframe cùng origin (dự phòng loader), `data-cms-*` + selector, SECTION_MAP, khung 2 cấp, không render khi gõ | preview demo chọn / hover / focus đúng, HTML public không đổi | test bridge + đo khi gõ |
 | **P10** | Ảnh: upload R2 staging, sheet chọn ảnh, alt (§C.5) | đổi ảnh demo + publish | test upload pipeline |
 | **P11** | CLI `setup` (idempotent, `--account`) / `migrate` / `check` / `export` / `update` / `reset-owner-password` (đặt mật khẩu tạm cho owner quên mật khẩu, không sửa D1 tay) + tài liệu cài | cài demo từ đầu theo tài liệu **bằng URL release, không token**; `setup` lần 2 = không đổi gì; `update` đổi URL sang bản mới | chạy local (miniflare); xuất / nhập D1 demo khớp số dòng |

@@ -29,7 +29,10 @@ const toggle = (window, element, checked) => { element.checked = checked; elemen
 const references = () => ({ services: { label: "Services", itemLabel: "Service", items: services.map((item) => ({ id: item.id, label: item.name })) } });
 const siteForm = (document, role = "owner", onChange) => createForm({ doc: document, fields: config.files[0].fields, sections: config.files[0].sections, value: site, role, references: references(), onChange });
 const at = (form, path) => form.element.querySelector(`[data-path=${JSON.stringify(path)}]`);
-const control = (form, path) => at(form, path).querySelector("input, textarea, select");
+// The field's main control: a visual editor's area (P8d) or the first input.
+const control = (form, path) => at(form, path).querySelector("[data-vc-primary]:not([hidden])") ?? at(form, path).querySelector("input, textarea, select");
+/** Type into a visual editor's area (happy-dom has no editing commands: set the HTML, fire input). */
+const edit = (window, area, html) => { area.innerHTML = html; area.dispatchEvent(new window.Event("input", { bubbles: true })); };
 const press = (form, path, label) => { const button = [...at(form, path).querySelectorAll("button")].find((entry) => entry.getAttribute("aria-label") === label); assert.ok(button, `button "${label}" in ${path}`); assert.equal(button.disabled, false, `"${label}" is enabled`); button.click(); };
 
 // ------------------------------------------------------------------ values
@@ -66,7 +69,7 @@ test("form: every field of the demo's salon info renders with the right control,
   const { document } = dom();
   const form = siteForm(document);
   assert.deepEqual([...form.element.querySelectorAll("section h2")].map((node) => node.textContent), ["Contact & hours", "Homepage", "Footer & search"]);
-  const expected = { name: "INPUT", phone: "INPUT", email: "INPUT", "address.street": "INPUT", tagline: "INPUT", "hero.title": "INPUT", "hero.text": "TEXTAREA", "seo.title": "INPUT", "seo.description": "TEXTAREA" };
+  const expected = { name: "INPUT", phone: "INPUT", email: "INPUT", "address.street": "INPUT", tagline: "INPUT", "hero.title": "INPUT", "hero.text": "DIV", "seo.title": "INPUT", "seo.description": "TEXTAREA" };
   for (const [path, tag] of Object.entries(expected)) assert.equal(control(form, path)?.tagName, tag, path);
   assert.equal(at(form, "hours").querySelectorAll(".vc-hours-row").length, 3);
   assert.equal(at(form, "hero.image").querySelectorAll("input").length, 2, "image: address + alt");
@@ -91,7 +94,7 @@ test("form: text, select, image, rich text, dotted keys — edits land at the ri
   const form = siteForm(document, "owner", (_value, path) => changes.push(path.join(".")));
   type(window, control(form, "tagline"), "New tagline");
   type(window, control(form, "seo.title"), "Search title");
-  type(window, control(form, "hero.text"), "<p>Hi</p>");
+  edit(window, control(form, "hero.text"), "<p>Hi</p>");
   const [src, alt] = at(form, "hero.image").querySelectorAll("input");
   type(window, src, "/images/new.svg");
   type(window, alt, "");
@@ -447,7 +450,10 @@ test("P8 shell: nothing to publish; the editor's Review & publish needs a saved 
 test("P8c shell: unsafe HTML typed in rich text is removed on save; the form shows what was saved and says where", async () => {
   const h = await shell();
   await h.go("#/files/site");
+  // Typed as HTML in the editor's source view ("Edit HTML").
+  h.root.querySelector('[data-path="hero.text"] .vc-tool-source').click();
   const text = h.root.querySelector('[data-path="hero.text"] textarea');
+  assert.equal(text.hidden, false);
   type(h.window, text, '<p>Hello</p><script>alert(1)</script><a href="javascript:alert(2)">x</a>');
   h.button("Save draft").click();
   for (let i = 0; i < 40 && h.state() !== "Draft saved · not live yet"; i += 1) await settle();

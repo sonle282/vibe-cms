@@ -17,16 +17,13 @@ import { sanitize, type Schema } from "hast-util-sanitize";
 import { toHtml } from "hast-util-to-html";
 import type { Field } from "../config/index.js";
 import { toTree, type FieldTree } from "../config/tree.js";
+import { RICH_TEXT_ATTRIBUTES, RICH_TEXT_PROTOCOLS, RICH_TEXT_STRIP, RICH_TEXT_TAGS } from "./rich-text-allow.js";
 
 export const RICH_TEXT_SCHEMA: Schema = {
-  tagNames: ["a", "blockquote", "br", "code", "div", "em", "figcaption", "figure", "h2", "h3", "hr", "img", "li", "ol", "p", "pre", "strong", "u", "ul"],
-  attributes: {
-    "*": ["className", "title"],
-    a: ["href", "rel", "target"],
-    img: ["alt", "height", "loading", "src", "width"],
-  },
-  protocols: { href: ["http", "https", "mailto", "tel"], src: ["http", "https"] },
-  strip: ["script", "style", "noscript", "iframe", "object", "embed", "form"],
+  tagNames: RICH_TEXT_TAGS,
+  attributes: Object.fromEntries(Object.entries(RICH_TEXT_ATTRIBUTES).map(([tag, names]) => [tag, names.map((name) => (name === "class" ? "className" : name))])),
+  protocols: RICH_TEXT_PROTOCOLS,
+  strip: RICH_TEXT_STRIP,
   // No id / name on content: nothing to clobber.
   clobber: [],
   clobberPrefix: "",
