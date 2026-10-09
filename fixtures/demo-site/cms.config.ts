@@ -22,7 +22,8 @@ export default defineCmsConfig({
         { key: "footer", label: "Footer & search", fields: ["footerLinks", "seo.title", "seo.description"] },
       ],
       fields: {
-        name: f.text({ label: "Salon name", required: true, maxLength: 60 }),
+        // P9: the header shows the name without a data-cms-field attribute; the preview finds it by selector.
+        name: f.text({ label: "Salon name", required: true, maxLength: 60, bind: "header .brand strong" }),
         // Locked for editors by default on every site: price, hours, phone, email, address.
         phone: f.text({ label: "Phone", locked: "owner" }),
         email: f.text({ label: "Email", locked: "owner" }),
@@ -74,6 +75,7 @@ export default defineCmsConfig({
       label: "Blog",
       itemLabel: "Post",
       store: { kind: "markdown-dir", dir: "src/content/posts", slugField: "slug" },
+      preview: "/blog/{slug}/",
       status: { field: "status", live: "published", draft: "draft" },
       fields: {
         title: f.text({ label: "Title", required: true, maxLength: 80 }),

@@ -1,13 +1,23 @@
 ---
 import Base from "../layouts/Base.astro";
 import site from "../data/site.json";
+import services from "../data/services.json";
+const name = (id: string) => services.find((service) => service.id === id)?.name ?? id;
 ---
 <Base title="Home">
-  <h1>{site.hero.title}</h1>
-  <p>{site.hero.text}</p>
-  <p>{site.tagline}</p>
-  <h2>Hours</h2>
-  <ul>{site.hours.map((row) => <li>{row.label}: {"closed" in row && row.closed ? "Closed" : `${row.open} – ${row.close}`}</li>)}</ul>
-  <p>Call {site.phone} · <a href={`mailto:${site.email}`}>{site.email}</a></p>
-  <p>{site.address.street}, {site.address.city}</p>
+  <section data-cms-section="home">
+    <h1 data-cms-field="site.hero.title">{site.hero.title}</h1>
+    <div data-cms-field="site.hero.text" set:html={site.hero.text} />
+    <img data-cms-field="site.hero.image" src={site.hero.image.src} alt={site.hero.image.alt} width="240" />
+    <p data-cms-field="site.tagline">{site.tagline}</p>
+    <h2>Featured</h2>
+    <ul data-cms-field="site.highlights">{site.highlights.map((id) => <li>{name(id)}</li>)}</ul>
+  </section>
+  <section data-cms-section="contact">
+    <h2>Hours</h2>
+    <ul>{site.hours.map((row) => <li>{row.label}: {"closed" in row && row.closed ? "Closed" : `${row.open} – ${row.close}`}</li>)}</ul>
+    <p>Call <span data-cms-field="site.phone">{site.phone}</span> · <a href={`mailto:${site.email}`} data-cms-field="site.email">{site.email}</a></p>
+    <p><span data-cms-field="site.address.street">{site.address.street}</span>, <span data-cms-field="site.address.city">{site.address.city}</span></p>
+    <form action="/contact" method="post"><button type="submit">Send a test message</button></form>
+  </section>
 </Base>

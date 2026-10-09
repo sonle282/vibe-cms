@@ -1,0 +1,18 @@
+---
+// One page per published post (status: published), the body rendered from Markdown.
+import Base from "../../layouts/Base.astro";
+type Post = { frontmatter: { slug: string; title: string; status: string; cover?: string }; Content: (props: Record<string, never>) => unknown };
+export const getStaticPaths = () => {
+  const posts = Object.values(import.meta.glob<Post>("../../content/posts/*.md", { eager: true }));
+  return posts.filter((post) => post.frontmatter.status === "published").map((post) => ({ params: { slug: post.frontmatter.slug }, props: { post } }));
+};
+const { post } = Astro.props as { post: Post };
+const { Content, frontmatter } = post;
+---
+<Base title={frontmatter.title}>
+  <article data-cms-item={`posts:${frontmatter.slug}`}>
+    <h1 data-cms-field="title">{frontmatter.title}</h1>
+    {frontmatter.cover && <img data-cms-field="cover" src={frontmatter.cover} alt="" width="240" />}
+    <div data-cms-field="body"><Content /></div>
+  </article>
+</Base>

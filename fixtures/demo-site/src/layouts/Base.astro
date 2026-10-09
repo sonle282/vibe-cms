@@ -1,4 +1,6 @@
 ---
+// The demo's pages carry data-cms-* attributes so the CMS preview (P9) knows which field each element shows. They
+// change nothing for visitors. The salon name in the header has none: cms.config binds it by selector (`bind`).
 import site from "../data/site.json";
 const { title } = Astro.props as { title: string };
 ---
@@ -10,7 +12,20 @@ const { title } = Astro.props as { title: string };
     <title>{title} · {site.name}</title>
   </head>
   <body style="font: 16px/1.5 system-ui, sans-serif; margin: 40px;">
-    <nav><a href="/">Home</a> · <a href="/services/">Services</a> · <a href="/team/">Team</a></nav>
+    <header>
+      <a href="/" class="brand"><strong>{site.name}</strong></a>
+      <nav><a href="/">Home</a> · <a href="/services/">Services</a> · <a href="/team/">Team</a> · <a href="https://example.com/">Elsewhere</a></nav>
+    </header>
     <slot />
+    <footer data-cms-section="footer">
+      <div data-cms-list="site.footerLinks">
+        {site.footerLinks.map((group, index) => (
+          <section data-cms-item-index={index}>
+            <h2 data-cms-field="title">{group.title}</h2>
+            <ul data-cms-list="links">{group.links.map((link, at) => <li data-cms-item-index={at}><a data-cms-field="label" data-cms-field-href="href" href={link.href}>{link.label}</a></li>)}</ul>
+          </section>
+        ))}
+      </div>
+    </footer>
   </body>
 </html>
