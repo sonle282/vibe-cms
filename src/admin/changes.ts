@@ -34,6 +34,23 @@ export type SummaryInput = {
 const MAX = 140;
 const short = (text: string) => { const flat = text.replace(/\s+/g, " ").trim(); return flat.length > MAX ? `${flat.slice(0, MAX - 1)}…` : flat; };
 const empty = (value: unknown) => value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0) || (isRecord(value) && Object.keys(value).length === 0);
+/** P8d: rich text / Markdown as a reader sees it: no tags, no Markdown symbols, no images (listed on their own). */
+export const plainText = (value: string) => value
+  .replace(/<img\b[^>]*>/gi, " ").replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+  .replace(/<br\s*\/?>|<\/(p|div|li|h[1-6]|blockquote)>/gi, " ").replace(/<[^>]*>/g, "")
+  .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+  .replace(/^[ \t]*(#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+|\d+\.[ \t]+)/gm, "").replace(/\*\*|__|\*|`/g, "");
+export type RichImage = { src: string; alt: string; width: string };
+/** P8d: the images in rich text (<img>) or Markdown (![alt](src)), in order. */
+export const imagesIn = (value: string): RichImage[] => {
+  const out: RichImage[] = [];
+  for (const [tag] of value.matchAll(/<img\b[^>]*>/gi)) {
+    const attr = (name: string) => { const found = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag); return found ? found[1] ?? found[2] ?? found[3] ?? "" : ""; };
+    out.push({ src: attr("src"), alt: attr("alt"), width: attr("width") });
+  }
+  for (const found of value.matchAll(/!\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)) out.push({ src: found[2], alt: found[1], width: "" });
+  return out;
+};
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /** "Mon–Fri 09:00–19:00 · Sat 09:00–17:00 · Sun closed" */
@@ -61,7 +78,7 @@ export const summarizeChanges = ({ fields, before, after, references = {}, newRe
     if (value === undefined || value === null) return "";
     switch (field.type) {
       case "text": case "select": return short(String(value));
-      case "richText": return short(String(value).replace(/<br\s*\/?>|<\/(p|div|li|h[1-6])>/gi, " ").replace(/<[^>]*>/g, ""));
+      case "richText": return short(plainText(String(value)));
       case "image": return typeof value === "string" ? value : isRecord(value) ? String(value.src ?? "") : "";
       case "hours": return formatHours(value);
       case "reference": return Array.isArray(value) ? value.map((id) => refLabel(field.to, id)).join(", ") : refLabel(field.to, value);
@@ -90,6 +107,25 @@ export const summarizeChanges = ({ fields, before, after, references = {}, newRe
       case "object":
         if ((isRecord(b) || empty(b)) && (isRecord(a) || empty(a))) { walk(field.fields, isRecord(b) ? b : {}, isRecord(a) ? a : {}, label, path, isLocked); return; }
         break;
+      case "richText": {
+        // P8d: the words, then each image added / removed / resized / re-described; "formatting" when only that moved.
+        const [tb, ta] = [typeof b === "string" ? b : "", typeof a === "string" ? a : ""];
+        const lock = isLocked ? { locked: true } : {};
+        const before = out.length;
+        if (short(plainText(tb)) !== short(plainText(ta))) push({ path: where, label, kind: kindOf(plainText(tb).trim(), plainText(ta).trim()), before: short(plainText(tb)), after: short(plainText(ta)), ...lock });
+        const [ib, ia] = [imagesIn(tb), imagesIn(ta)];
+        const size = (image: RichImage) => (image.width ? `${image.width} px wide` : "original size");
+        for (const image of ia) {
+          const was = ib.find((other) => other.src === image.src);
+          if (!was) { push({ path: where, label: `${label} › image`, kind: "added", after: image.src, ...lock }); continue; }
+          ib.splice(ib.indexOf(was), 1);
+          if (was.width !== image.width) push({ path: where, label: `${label} › image size`, kind: "changed", before: size(was), after: size(image), ...lock });
+          if (was.alt !== image.alt) push({ path: where, label: `${label} › image alt text`, kind: kindOf(was.alt, image.alt), before: short(was.alt), after: short(image.alt), ...lock });
+        }
+        for (const image of ib) push({ path: where, label: `${label} › image`, kind: "removed", before: image.src, ...lock });
+        if (out.length === before) push({ path: where, label, kind: "changed", before: short(plainText(tb)), after: `${short(plainText(ta))} (new formatting)`, ...lock });
+        return;
+      }
       case "image": {
         const parts = (value: unknown) => (typeof value === "string" ? { src: value, alt: "", mobile: "" } : isRecord(value) ? { src: String(value.src ?? ""), alt: String(value.alt ?? ""), mobile: String(value.mobile ?? "") } : { src: "", alt: "", mobile: "" });
         const [pb, pa] = [parts(b), parts(a)];

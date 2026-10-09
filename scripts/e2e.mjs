@@ -7,7 +7,8 @@
 // 127.0.0.1, whose files then hold exactly the drafts; the admin says "Publishing…".
 // P8b: the owner adds the editor on the People screen (temporary password shown once). P8c: unsafe HTML typed into rich
 // text is removed on save. P10: a photo is uploaded through the image sheet (made smaller + WebP in the browser, kept in
-// local R2, served at its final address) and published in the same commit, exact bytes.
+// local R2, served at its final address) and published in the same commit, exact bytes. P8d: the blog post is written
+// in the visual editor (bold, heading, list, an uploaded image resized by dragging its corner) and saved as Markdown.
 // Then the editor signs in: locked fields are shown but disabled, other fields save; they change their own password on
 // My account. Nothing remote; test values only.
 import assert from "node:assert/strict";
@@ -45,6 +46,14 @@ try {
   const field = (path) => page.locator(`[data-path=${JSON.stringify(path)}]`);
   const input = (path) => field(path).locator("input, textarea, select").first();
   const button = (path, name) => field(path).getByRole("button", { name, exact: true });
+  // P8d: the visual editor — its editable area, a toolbar button, and its source view ("Edit HTML" / "Edit Markdown").
+  const rich = (path) => field(path).locator(".vc-rich-area");
+  const tool = (path, name) => field(path).locator(".vc-rich-toolbar").getByRole("button", { name, exact: true });
+  const richSource = async (path) => {
+    const toggle = field(path).locator(".vc-tool-source");
+    if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
+    return field(path).locator("textarea.vc-rich-source");
+  };
   const saveState = () => page.locator(".vc-save-state").textContent();
   // E2E_SCREENSHOTS=<folder>: keep pictures of the image sheet, the review and published screens (local look only; CI leaves it unset).
   const shot = async (name) => { if (process.env.E2E_SCREENSHOTS) await page.screenshot({ path: join(process.env.E2E_SCREENSHOTS, `${name}.png`), fullPage: true }); };
@@ -93,7 +102,7 @@ try {
   await field("hours").getByRole("button", { name: "Move Row 3 up" }).click();
   await input("tagline").fill("Invented, and proud of it.");
   await input("hero.title").fill("Hello from Demo Salon");
-  await input("hero.text").fill("<p>Everything here is <em>invented</em>.</p>");
+  await (await richSource("hero.text")).fill("<p>Everything here is <em>invented</em>.</p>");
   await field("hero.image").getByLabel("Image address").fill("/images/team-sam.svg");
   await field("hero.image").getByLabel("Alt text (describes the image)").fill("A blue square");
   await field("highlights").locator("select").selectOption("nail-art");
@@ -181,7 +190,10 @@ try {
   await button("services", "Remove Nail Art").click();
   await field("services").locator("select").selectOption("spa-pedicure");
   await button("services", "Move Spa Pedicure up").click();
-  await input("bio").fill("<p>Still invented.</p>");
+  // P8d: rich text typed in the visual editor (select all, type over it).
+  await rich("bio").click();
+  await page.keyboard.press("Control+A");
+  await page.keyboard.type("Still invented.");
   await save();
   const alex = await api("/api/cms/collections/team/items/alex");
   check("team: image + alt, one reference, ordered references, rich text", assertEqual(alex.draft?.content, { ...team[0], photo: { src: "/images/hero.svg", alt: "Alex at work" }, specialty: "spa-pedicure", services: ["spa-pedicure", "classic-manicure"], bio: "<p>Still invented.</p>" }), alex.draft);
@@ -216,10 +228,50 @@ try {
   await button("tags", "Delete Tag 1").click();
   await field("tags").getByRole("button", { name: "Add tag" }).click();
   await input("tags[1]").fill("update");
-  await input("body").fill("New **body** text.\n");
+  // P8d: the Markdown body in the visual editor — typed text, bold, a heading, a list, an uploaded image with alt text
+  // resized by dragging its corner (ratio kept), and a second image inserted then removed. Saved as Markdown.
+  await field("body").locator('.vc-rich-editor[data-mode="visual"]').waitFor();
+  await rich("body").click();
+  await page.keyboard.press("Control+A");
+  await page.keyboard.type("New ");
+  await page.keyboard.press("Control+B"); await page.keyboard.type("body"); await page.keyboard.press("Control+B");
+  await page.keyboard.type(" text.");
+  await page.keyboard.press("Enter");
+  await tool("body", "Heading").click();
+  await page.keyboard.type("Opening hours");
+  await page.keyboard.press("Enter");
+  await tool("body", "Bulleted list").click();
+  await page.keyboard.type("Mon to Fri"); await page.keyboard.press("Enter");
+  await page.keyboard.type("Sat"); await page.keyboard.press("Enter"); await page.keyboard.press("Enter");
+  await tool("body", "Insert an image").click();
+  const postSheet = page.getByRole("dialog", { name: "Choose an image" });
+  await postSheet.locator(".vc-tile").first().waitFor();
+  await postSheet.locator("input[type=file]").setInputFiles({ name: "Post chair.png", mimeType: "image/png", buffer: Buffer.from(tinyPng(1600, 1200)) });
+  await postSheet.waitFor({ state: "detached", timeout: 20_000 });
+  const postImage = rich("body").locator("img");
+  const postImageSrc = await postImage.getAttribute("src");
+  check("editor: the uploaded image is in the text, selected, alt asked for", /^\/assets\/uploads\/20\d\d\/\d\d\/post-chair-[0-9a-f]{8}\.webp$/.test(postImageSrc ?? "") && await field("body").getByLabel("Alt text").evaluate((element) => element === document.activeElement), postImageSrc);
+  await field("body").getByLabel("Alt text").fill("A pedicure chair");
+  const before = await postImage.boundingBox();
+  const handle = await field("body").locator(".vc-rich-handle").boundingBox();
+  await page.mouse.move(handle.x + 8, handle.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + 8 - 200, handle.y + 8 + 40, { steps: 10 });
+  await page.mouse.up();
+  const after = await postImage.boundingBox();
+  const postWidth = Number(await postImage.getAttribute("width"));
+  check("editor: dragging the corner resizes the image, ratio kept, width written", Math.abs(postWidth - (before.width - 200)) <= 2 && Math.abs(after.width - postWidth) <= 1 && Math.abs(after.height / after.width - 0.75) < 0.01 && !(await postImage.getAttribute("height")), { before, after, postWidth });
+  await shot("p8d-editor");
+  await tool("body", "Insert an image").click();
+  await page.getByRole("dialog", { name: "Choose an image" }).locator('.vc-tile[data-src="/images/hero.svg"]').click();
+  check("editor: a library image is inserted", (await rich("body").locator("img").count()) === 2);
+  await field("body").getByRole("button", { name: "Remove image" }).click();
+  check("editor: Remove image takes it out", (await rich("body").locator("img").count()) === 1 && (await rich("body").locator('img[src="/images/hero.svg"]').count()) === 0);
   await save();
   const post = await api("/api/cms/collections/posts/items/welcome");
-  check("post: front matter fields + Markdown body", assertEqual(post.draft?.content, { slug: "welcome", title: "Welcome!", status: "draft", cover: "/images/team-sam.svg", tags: ["demo", "update"], body: "New **body** text.\n" }), post.draft);
+  const postBody = `New **body** text.\n\n## Opening hours\n\n- Mon to Fri\n- Sat\n\n<img src="${postImageSrc}" alt="A pedicure chair" width="${postWidth}">\n`;
+  check("post: front matter fields + Markdown body written by the visual editor", assertEqual(post.draft?.content, { slug: "welcome", title: "Welcome!", status: "draft", cover: "/images/team-sam.svg", tags: ["demo", "update"], body: postBody }), post.draft);
+  check("editor: Edit Markdown shows the same text", (await (await richSource("body")).inputValue()) === postBody);
 
   // Discard a draft (confirm), then the live content again.
   await open("#/collections/posts/items/spring-colours");
@@ -249,7 +301,7 @@ try {
   const reviewText = await page.locator(".vc-review-list").innerText();
   await shot("p8-review");
   check("review: 6 drafts, all ticked", (await page.locator(".vc-review-card").count()) === 6 && (await page.locator(".vc-pick:checked").count()) === 6);
-  for (const line of ["Salon name: Demo Salon → Demo Salon & Spa", "Phone (owner only): (555) 010-0000 → (555) 010-0001", "Featured services: removed Spa Pedicure", "Price (owner only): $35 → $40", "New service: Gel Removal", "Specialty: Nail Art → Spa Pedicure", "Status: published → draft"]) {
+  for (const line of ["Salon name: Demo Salon → Demo Salon & Spa", "Phone (owner only): (555) 010-0000 → (555) 010-0001", "Featured services: removed Spa Pedicure", "Price (owner only): $35 → $40", "New service: Gel Removal", "Specialty: Nail Art → Spa Pedicure", "Status: published → draft", "Text: This post is invented. It exists so the CMS has a Markdown record to edit. → New body text. Opening hours Mon to Fri Sat", "Text › image: added /assets/uploads/"]) {
     check(`review says “${line}”`, reviewText.replace(/\s+/g, " ").includes(line), reviewText.slice(0, 2500));
   }
   const head = github.head();
@@ -267,7 +319,8 @@ try {
   check("published team = the drafts", assertEqual(JSON.parse(published["src/data/team.json"]), [alex.draft.content, sam.draft.content]));
   const committedImage = github.bytes(`public${samPhoto}`);
   check("P10: the uploaded image is in the same commit, exact bytes (WebP)", committedImage && committedImage.subarray(0, 4).toString("latin1") === "RIFF" && committedImage.subarray(8, 12).toString("latin1") === "WEBP" && github.changedPaths(head).includes(`public${samPhoto}`), github.changedPaths(head));
-  check("published post: front matter + body", /title: Welcome!/.test(published["src/content/posts/welcome.md"]) && published["src/content/posts/welcome.md"].endsWith("New **body** text.\n"));
+  check("published post: front matter + body", /title: Welcome!/.test(published["src/content/posts/welcome.md"]) && published["src/content/posts/welcome.md"].endsWith(postBody));
+  check("P8d: the image in the post body is in the same commit", github.bytes(`public${postImageSrc}`)?.subarray(8, 12).toString("latin1") === "WEBP");
   check("commit message names the owner's internal id, no email", /usr_[a-z2-7]{16}/.test(github.commit().message) && !github.commit().message.includes("@"));
   check("after publishing: 'Publishing…' until the site serves it; no drafts left", /Publishing… started/.test(await page.locator(".vc-live").innerText()) && await page.locator(".vc-badge").isHidden());
 
@@ -298,9 +351,9 @@ try {
   await save();
   check("editor saves an unlocked field", (await api("/api/cms/files/site")).draft?.content.tagline === "Edited by the editor.");
   // P8c: unsafe HTML typed into rich text never reaches a draft.
-  await input("hero.text").fill('<p>Hi</p><img src="x" onerror="alert(1)"><script>alert(2)</script>');
+  await (await richSource("hero.text")).fill('<p>Hi</p><img src="x" onerror="alert(1)"><script>alert(2)</script>');
   await save();
-  check("rich text: the script and the onerror are removed on save, and the editor is told", (await input("hero.text").inputValue()) === '<p>Hi</p><img src="x">' && /removed for safety/.test(await page.locator(".vc-banner").innerText()) && (await api("/api/cms/files/site")).draft?.content.hero.text === '<p>Hi</p><img src="x">');
+  check("rich text: the script and the onerror are removed on save, and the editor is told", (await (await richSource("hero.text")).inputValue()) === '<p>Hi</p><img src="x">' && /removed for safety/.test(await page.locator(".vc-banner").innerText()) && (await api("/api/cms/files/site")).draft?.content.hero.text === '<p>Hi</p><img src="x">');
   await open("#/collections/services/items/nail-art");
   check("editor: price disabled on a service", await input("price").isDisabled());
   await open("#/collections/services/new");

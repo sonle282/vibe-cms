@@ -1,6 +1,6 @@
 /**
  * P7: the editing form, generated from a file's / collection's fields in cms.config — every field type: text (single /
- * multiline, maxLength counter), richText, image (address + alt + mobile), select, hours, object, list (ordered, min /
+ * multiline, maxLength counter), richText (P8d: the visual editor, src/admin/rich-editor.ts), image (address + alt + mobile), select, hours, object, list (ordered, min /
  * max, nested), reference (one / many, ordered), dotted keys ("seo.title"), sections.
  *
  * The form edits a copy of the content: keys it does not know (and keys nobody touched) stay exactly as they were, so
@@ -11,6 +11,7 @@
 import type { Field, ImageField, ListField, ReferenceField, Section } from "../config/index.js";
 import type { Role } from "../locks/index.js";
 import { clear, h, icon, uid, type Child } from "./dom.js";
+import { createRichEditor, type RichEditor, type RichEditorOptions } from "./rich-editor.js";
 import { clone, emptyValue, getAt, holdsLockedValue, isRecord, keyPath, pathText, setAt, type Path } from "./value.js";
 
 export type ReferenceOption = { id: string; label: string };
@@ -31,7 +32,11 @@ export type FormOptions = {
   /** After every change, with the whole current value. */
   onChange?: (value: Record<string, unknown>, path: Path) => void;
   /** P10: open the image picker for an image field; `done` receives the chosen image. Without it, only the address. */
-  pickImage?: (current: string, done: (image: { src: string }) => void) => void;
+  pickImage?: (current: string, done: (image: { src: string; width?: number; height?: number }) => void) => void;
+  /** P8d: top-level keys whose rich text is Markdown (a Markdown record's body); the rest is HTML. */
+  markdown?: string[];
+  /** P8d tests: how the visual editor loads its Markdown converter. */
+  loadMarkdown?: RichEditorOptions["loadMarkdown"];
 };
 
 export type Form = {
@@ -45,6 +50,9 @@ export type Form = {
   clearErrors(): void;
   /** Focus the first input of a field (by path text). */
   focus(path: string): boolean;
+  /** P8d: the visual editors on the form (rich text, Markdown body), by path text; `ready` once all show their value. */
+  editors: Map<string, RichEditor>;
+  ready: Promise<void>;
 };
 
 const DAYS: Array<[number, string, string]> = [[1, "Mon", "Monday"], [2, "Tue", "Tuesday"], [3, "Wed", "Wednesday"], [4, "Thu", "Thursday"], [5, "Fri", "Friday"], [6, "Sat", "Saturday"], [0, "Sun", "Sunday"]];
@@ -84,10 +92,11 @@ export const createForm = (options: FormOptions): Form => {
     const error = h(doc, "p", { class: "vc-error", id: errorId, hidden: true });
     const label = group
       ? h(doc, "legend", { class: hideLabel ? "vc-label vc-sr-only" : "vc-label" }, ...labelContent(field, locked))
-      : h(doc, "label", { class: hideLabel ? "vc-label vc-sr-only" : "vc-label", for: inputId }, ...labelContent(field, locked));
+      : h(doc, "label", { class: hideLabel ? "vc-label vc-sr-only" : "vc-label", for: inputId, id: inputId ? `${inputId}-label` : undefined }, ...labelContent(field, locked));
     const wrapper = h(doc, group ? "fieldset" : "div", { class: `vc-field vc-field-${field.type}${locked || reason ? " vc-locked" : ""}`, "data-path": text, "data-type": field.type, ...(group && (locked || reason) ? { disabled: true } : {}) }, label, control, help, error);
     const described = [help ? helpId : null, errorId].filter(Boolean).join(" ");
-    const inputs = () => [...wrapper.querySelectorAll<HTMLElement>("input, select, textarea")];
+    // The visible main control first (a visual editor's area or its source box), then everything else.
+    const inputs = () => [...new Set([...wrapper.querySelectorAll<HTMLElement>("[data-vc-primary]:not([hidden])"), ...wrapper.querySelectorAll<HTMLElement>("input, select, textarea")])];
     for (const input of inputs()) if (!input.getAttribute("aria-describedby")) input.setAttribute("aria-describedby", described);
     registry.set(text, { wrapper, error, inputs, show });
     return wrapper;
@@ -95,16 +104,34 @@ export const createForm = (options: FormOptions): Form => {
 
   // ---------------------------------------------------------------- field types
 
-  const textInput = (field: Extract<Field, { type: "text" | "richText" }>, path: Path, disabled: boolean) => {
+  const editors = new Map<string, RichEditor>();
+  /** P8d: rich text (HTML) and a Markdown body get the visual editor. */
+  const richInput = (field: Extract<Field, { type: "richText" }>, path: Path, disabled: boolean) => {
     const id = uid("f");
     const current = getAt(state, path);
     const wasAbsent = current === undefined;
-    const multiline = field.type === "richText" || field.multiline;
-    const input = multiline
-      ? h(doc, "textarea", { id, rows: field.type === "richText" ? 6 : 3, class: field.type === "richText" ? "vc-input vc-rich" : "vc-input", disabled, spellcheck: "true" })
+    const markdown = path.length === 1 && Boolean(options.markdown?.includes(String(path[0])));
+    const editor = createRichEditor({
+      doc, id, label: field.label, format: markdown ? "markdown" : "html", disabled,
+      value: typeof current === "string" ? current : current === undefined || current === null ? "" : String(current),
+      onChange: (value) => set(path, value === "" && wasAbsent ? undefined : value),
+      ...(options.pickImage ? { pickImage: options.pickImage } : {}),
+      ...(options.loadMarkdown ? { loadMarkdown: options.loadMarkdown } : {}),
+    });
+    editor.area.setAttribute("aria-labelledby", `${id}-label`);
+    editors.set(pathText(path), editor);
+    return { control: editor.element, id, show: (value: unknown) => editor.setValue(typeof value === "string" ? value : "") };
+  };
+
+  const textInput = (field: Extract<Field, { type: "text" }>, path: Path, disabled: boolean) => {
+    const id = uid("f");
+    const current = getAt(state, path);
+    const wasAbsent = current === undefined;
+    const input = field.multiline
+      ? h(doc, "textarea", { id, rows: 3, class: "vc-input", disabled, spellcheck: "true" })
       : h(doc, "input", { id, type: "text", class: "vc-input", disabled, autocomplete: "off" });
     input.value = typeof current === "string" ? current : current === undefined || current === null ? "" : String(current);
-    const max = field.type === "text" ? field.maxLength : undefined;
+    const max = field.maxLength;
     const counter = max ? h(doc, "span", { class: "vc-counter", "aria-live": "polite" }) : null;
     const count = () => { if (counter && max) { counter.textContent = `${input.value.length} / ${max}`; counter.classList.toggle("vc-over", input.value.length > max); } };
     count();
@@ -340,9 +367,16 @@ export const createForm = (options: FormOptions): Form => {
     const shown = extra.label ? { ...field, label: extra.label } : field;
     const common = { path, field: shown, locked: locked && !lockedAbove, reason, hideLabel: extra.hideLabel };
     switch (field.type) {
-      case "text": case "richText": {
+      case "text": {
         const { control, id, show } = textInput(field, path, disabled);
         return wrap({ ...common, group: false, control, inputId: id, show });
+      }
+      case "richText": {
+        const { control, id, show } = richInput(field, path, disabled);
+        const wrapper = wrap({ ...common, group: false, control, inputId: id, show });
+        // A label cannot point at an editable area: clicking it focuses the editor.
+        wrapper.querySelector(".vc-label")?.addEventListener("click", () => (wrapper.querySelector<HTMLElement>("[data-vc-primary]:not([hidden])"))?.focus());
+        return wrapper;
       }
       case "select": {
         const { control, id, show } = selectInput(field, path, disabled);
@@ -397,6 +431,8 @@ export const createForm = (options: FormOptions): Form => {
 
   return {
     element,
+    editors,
+    ready: Promise.all([...editors.values()].map((editor) => editor.ready)).then(() => undefined),
     value: () => clone(state),
     setValue: (path, value) => { setAt(state, path, value); registry.get(pathText(path))?.show?.(value); changed(path); },
     clearErrors,

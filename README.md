@@ -5,11 +5,12 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.11.0 · P10.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
+> Status: **0.12.0 · P8d.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
 > fields on the server, CMS API + one-commit GitHub publishing, sign-in, and the editor at `/admin` (lists, forms
-> generated from `cms.config`, drafts, review of changes, publish, live status, People, My account), rich text cleaned
-> on the server, images (upload to R2, picker, published in the same commit). Next: visual rich-text editor (P8d),
-> preview (P9), CLI (P11) ([docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
+> generated from `cms.config`, a visual rich-text editor, drafts, review of changes, publish, live status, People, My
+> account), rich text cleaned on the server, images (upload to R2, picker, inline images resized by dragging, published
+> in the same commit). Next: preview (P9), CLI (P11) ([docs/TRACKER.md](docs/TRACKER.md), design:
+> [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
 
 ## Install in a site (3 steps, no token)
 
@@ -165,7 +166,9 @@ Saving makes a **draft** (the website does not change); fields with `locked: "ow
 be changed. **Review & publish** lists my drafts with what each changes in plain words ("Price: $35 → $40"); publishing
 the ticked ones makes one commit, and the admin says when the website serves them ("Live"). Rich text people type is
 cleaned on the server (scripts, event handlers, frames, `javascript:` links… are removed and the editor is told);
-text already in the site's files is never changed by it (docs/DESIGN.md §F.2). The browser code ships with the package
+text already in the site's files is never changed by it (docs/DESIGN.md §F.2). Rich text and Markdown bodies are edited
+in a visual editor with a formatting toolbar and images you can insert, resize by dragging (ratio kept) and describe;
+Markdown stays Markdown, in the post's own style (§C.6). The browser code ships with the package
 (`@sonle282/vibe-cms/admin`); the site adds nothing.
 
 ## Images (P10)

@@ -108,3 +108,15 @@ test("records: a new record is one line; a Markdown body change uses the editor'
   assert.deepEqual(lines(summarizeChanges({ fields: config.collections[0].fields, before: undefined, after: gel, newRecord: { itemLabel: "Service", title: "Gel Removal" } })), ["New service: Gel Removal"]);
   assert.deepEqual(lines(summarizeChanges({ fields: { name: f.text({ label: "Name" }) }, before: { name: "x", extra: 1 }, after: { name: "x", extra: 2 } })), ["extra (not in the form): 1 → 2"]);
 });
+
+test("P8d: rich text — words without Markdown symbols, and each image added, removed, resized or re-described", async () => {
+  const { imagesIn, plainText } = await import("../dist/admin/index.js");
+  const fields = { body: { type: "richText", label: "Text" } };
+  const run = (before, after) => lines(summarizeChanges({ fields, before: { body: before }, after: { body: after } }));
+  assert.equal(plainText("New **body** text.\n\n## Hours\n\n- Mon\n- [Sat](/sat)\n").replace(/\s+/g, " ").trim(), "New body text. Hours Mon Sat");
+  assert.deepEqual(imagesIn('a <img src="/a.webp" alt="A chair" width="438"> ![B](/b.webp "t") <IMG SRC=/c.png>'), [{ src: "/a.webp", alt: "A chair", width: "438" }, { src: "/c.png", alt: "", width: "" }, { src: "/b.webp", alt: "B", width: "" }]);
+  assert.deepEqual(run("Hello\n", 'Hello there\n\n<img src="/a.webp" alt="Chair" width="438">\n'), ["Text: Hello → Hello there", "Text › image: added “/a.webp”"]);
+  assert.deepEqual(run('<p>Hi <img src="/a.webp" alt="Chair" width="438"></p>', '<p>Hi <img src="/a.webp" alt="A chair"></p>'), ["Text › image size: 438 px wide → original size", "Text › image alt text: Chair → A chair"]);
+  assert.deepEqual(run("Hi ![x](/b.webp)\n", "Hi\n"), ["Text › image: removed “/b.webp”"]);
+  assert.deepEqual(run("Hello\n", "**Hello**\n"), ["Text: Hello → Hello (new formatting)"]);
+});

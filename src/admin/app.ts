@@ -52,7 +52,7 @@ export const editorFields = (target: { kind: "file"; file: BootFile } | { kind: 
   if (!(collection.idField in collection.fields)) fields[collection.idField] = { type: "text", label: "ID", required: true, help: isNew ? "Used in the page address: lowercase letters, numbers and dashes. It can't be changed later." : undefined };
   if (collection.status && !(collection.status.field in collection.fields)) fields[collection.status.field] = { type: "select", label: "Status", options: [collection.status.live, collection.status.draft] };
   Object.assign(fields, collection.fields);
-  if (collection.markdown && !("body" in fields)) fields.body = { type: "richText", label: "Text", help: "Markdown: **bold**, *italic*, [link](https://…); a blank line starts a new paragraph." };
+  if (collection.markdown && !("body" in fields)) fields.body = { type: "richText", label: "Text", help: "Format with the toolbar; “Edit Markdown” shows the text as Markdown." };
   return fields;
 };
 
@@ -359,6 +359,7 @@ export const startAdmin = (options: AdminOptions) => {
 
     const form: Form = createForm({
       doc, fields, sections: input.kind === "file" ? input.file.sections : undefined, value: saved, role: user.role, references, readOnly, pickImage,
+      markdown: collection?.markdown && !("body" in collection.fields) ? ["body"] : [],
       onChange: (value, path) => {
         if (collection && isNew && path.length === 1 && path[0] === collection.idField && !autoId) idTouched = true;
         if (collection && isNew && !idTouched && path[0] !== collection.idField) {

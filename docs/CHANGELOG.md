@@ -3,6 +3,29 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.12.0 — unreleased (P8d)
+
+- **Visual editor for rich text and Markdown bodies.** A toolbar replaces the raw HTML / Markdown box: paragraph,
+  heading, subheading, bold, italic, bulleted / numbered list, quote, link (web, site, mail or phone addresses only),
+  remove link, image. "Edit HTML" / "Edit Markdown" shows the source. Paste keeps only the text. Undo works.
+- **Images in the text:** insert from the image sheet (upload or library), then click an image to set its alt text,
+  replace it, remove it, or resize it by dragging its corner, typing a width or with the arrow keys. The ratio is
+  always kept: only `width` is written.
+- Rich text stays HTML. A Markdown body stays Markdown and keeps the post's own style (list marker, `*` / `_`, `**` /
+  `__`). A resized image is written as `<img src alt width>` inside the Markdown. A field nobody edits is never
+  re-written. A post the editor could not show without changing it (HTML blocks, footnotes) opens as Markdown, with
+  a note.
+- What the editor shows is built in an inert document and cleaned with the same allow-list as the server (now shared:
+  `src/check/rich-text-allow.ts`). The server still cleans on save.
+- The review screen reads rich-text changes as plain words and lists each image added, removed, resized or
+  re-described.
+- New runtime dependencies (MIT, admin only; the Markdown part loads only when a Markdown body is opened):
+  `mdast-util-from-markdown`, `mdast-util-to-hast`, `hast-util-from-dom`, `hast-util-to-mdast`,
+  `mdast-util-to-markdown`, `mdast-util-gfm`, `micromark-extension-gfm`.
+- Fixed: a People test pinned to a calendar date ("Oct 8, 2026") failed from the next day on.
+- Site action: none. Sites that show Markdown bodies must render HTML inside Markdown (Astro does by default) for
+  resized images; CSS `img { max-width: 100%; height: auto; }` keeps their ratio on small screens.
+
 ## 0.11.0 — unreleased (P10)
 
 - **Images.** Image fields get **Choose image…** and **Remove**. The sheet uploads a photo (drop or choose a file) or
