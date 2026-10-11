@@ -3,6 +3,22 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.14.0 — unreleased (P11)
+
+- **The `vibe-cms` command** (`npx vibe-cms help`, run in the site's folder):
+  `setup --site <site> [--account <id>] [--local]` creates — only if missing — D1 `<site>-cms`, KV `<site>-session`,
+  R2 `<site>-media`, writes the five CMS bindings into `wrangler.jsonc` (comments, order and other bindings kept) and
+  applies the migrations; a second run changes nothing. A binding that already points at another site's database or
+  bucket is refused. `migrate`, `check` (config + content + bindings point only at `<site>-*`), `export` / `import`
+  (D1 rows + a counts file; import only into an empty database with the same migrations, rows compared),
+  `update [version]` (release URL in package.json + `npm install`, prints the "Site action" notes in between) and
+  `reset-owner-password` (temporary password shown once, must be changed, sessions signed out, audited).
+- Cloudflare goes through the site's own wrangler and the signed-in user; the CLI never handles tokens or secrets.
+- New runtime dependency (MIT, CLI only): `jsonc-parser`.
+- CI installs the packed package from a local release URL with no token and runs the README steps on the demo site.
+- Site action: none to upgrade. A new site uses `npx vibe-cms setup --site <site>` instead of writing the bindings
+  by hand; an existing site can run it once (it keeps what is right and says what it changed).
+
 ## 0.13.0 — unreleased (P9)
 
 - **Preview next to the form.** The real page, in a same-origin frame, shows the draft as it is typed: no reload, only

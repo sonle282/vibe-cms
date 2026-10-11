@@ -2,7 +2,7 @@
 
 > Nguồn: [DESIGN.md](DESIGN.md) §I. Quy tắc: 1 task = 1 commit; mỗi task REPORT → DỪNG chờ review. Test của gói **không đọc
 > dữ liệu site khách**. Task có sửa repo site: đầu task `git status` sạch + pull nhánh production của site; có thay đổi
-> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-09 (P9).
+> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-11 (P11).
 
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
@@ -19,9 +19,9 @@
 | **P8b** | Màn People trong admin (SonLe chốt 2026-10-08: tách khỏi P8): thêm người + mật khẩu tạm 1 lần, vai trò, khoá / mở, đặt lại mật khẩu; + My account (tự đổi mật khẩu) | 6–10 | ✅ Xong (merge 2026-10-08; 29ffc13, CI 37714369737) |
 | **P8c** | Lọc HTML richText ở server (SonLe chốt 2026-10-08: tách khỏi P8): hast + cùng danh sách với CMS cũ, lưu nháp + publish + cảnh báo lúc build | 4–8 | ✅ Xong (merge 2026-10-08; 3414a26, CI 37715518893) |
 | **P8d** | Trình soạn thảo richText trực quan (SonLe thêm 2026-10-08): thanh định dạng (đoạn, H2 / H3, đậm, nghiêng, danh sách, trích dẫn, link) thay ô HTML; **chèn / xoá ảnh trong bài**, **kéo đổi cỡ ảnh giữ nguyên tỉ lệ** (ghi `width`), sửa alt; dán chỉ giữ chữ. Chèn ảnh từ thư viện / tải lên dùng bộ chọn ảnh của P10 | 12–20 | ✅ Xong (merge 2026-10-09; 8e91b7f, CI 37884855754) |
-| **P9** | Bridge chung (iframe cùng origin — bridge chạy trong admin, không script trên trang; `data-cms-*` + selector, SECTION_MAP, U23, F-15) + pane preview cạnh form | 16–24 | 🔎 Chờ review (commit + CI: xem PR) |
+| **P9** | Bridge chung (iframe cùng origin — bridge chạy trong admin, không script trên trang; `data-cms-*` + selector, SECTION_MAP, U23, F-15) + pane preview cạnh form | 16–24 | ✅ Xong (merge 2026-10-09; a6c1c0d, CI 37889486648) |
 | **P10** | Ảnh (upload R2 staging, sheet chọn ảnh, alt) — SonLe duyệt làm trước P8d (2026-10-08) | 16–24 | ✅ Xong (merge 2026-10-09; 9be4829, CI 37717835049) |
-| P11 | CLI `vibe-cms setup` (idempotent, `--account`) / `migrate` / `check` / `export` / `update` (đổi URL release) + `reset-owner-password` (owner quên mật khẩu → mật khẩu tạm, không sửa D1 tay) + tài liệu cài không token | 16–24 | ⏳ |
+| **P11** | CLI `vibe-cms setup` (idempotent, `--account`) / `migrate` / `check` / `export` + `import` / `update` (đổi URL release) + `reset-owner-password` (owner quên mật khẩu → mật khẩu tạm, không sửa D1 tay) + tài liệu cài không token | 16–24 | 🔎 Chờ review (commit + CI: xem PR) |
 | P12 | Innovate Bước 0 + tách nội dung → JSON (HTML public giống từng byte) | 10–16 | ⏳ |
 | P13 | Innovate: adapter Cloudflare cho route gói, gộp worker form liên hệ | 8–14 | ⏳ |
 | P14 | Innovate: cài gói (URL release) + `cms.config` + `data-cms-*` + ô khoá | 10–16 | ⏳ |
@@ -61,6 +61,20 @@
   "Contact & hours · Address › Street"; bấm số điện thoại trên trang → form focus đúng ô; link ngoài + form không chạy;
   footer (list lồng nhau) thêm / bớt / đổi chỗ theo form; dịch vụ sửa và dịch vụ mới hiện trong list; bấm footer từ
   trang dịch vụ → mở Salon info đúng field; bài blog: thân Markdown + ảnh đã đổi cỡ hiện trên trang bài.
+- **CLI (P11):** `test/cli.test.mjs` chạy `setup` với wrangler GIẢ (`test/helpers/fake-wrangler.mjs`, account trong file
+  JSON): lần 1 tạo D1 / KV / R2 + ghi 5 binding + 5 migration; lần 2 không tạo gì, `wrangler.jsonc` giống từng byte;
+  `--account` khác → mọi lệnh chạy ở account đó, id đổi theo, tên + rate limit giữ; binding trỏ site khác → từ chối,
+  không chạy gì trên Cloudflare; chưa đăng nhập → báo `wrangler login`, không ghi file. `npm run install:local`
+  (scripts/install-local.mjs) cài site demo TỪ ĐẦU theo README bằng URL release trên 127.0.0.1 (`npm pack` của
+  checkout), không token (npm user config rỗng, không biến npm_* / NODE_AUTH_TOKEN): `npm i <URL>` → `setup --local`
+  ×2 → `check` → build → `wrangler dev`: owner bootstrap đăng nhập → `reset-owner-password` (mật khẩu cũ 401, mật
+  khẩu tạm 200 + phải đổi) → `export` / `import` vào D1 mới khớp từng bảng (import lần 2 bị từ chối) → `update`
+  (latest từ GitHub API giả) lên X.Y.(Z+1), in "Site action"; bản không có → không đổi gì. Chưa chạy với Cloudflare
+  thật (không có account trong test): lần đầu là P15 — `wrangler r2 bucket list` không có dạng JSON nên CLI đọc dòng
+  `name:`; nếu wrangler đổi cách in, `setup` sẽ báo tạo bucket "already exists" chứ không hỏng dữ liệu.
+- **Phiên bản astro / adapter khi cài site:** để npm tự lấy bản mới nhất của `astro@^7.2.1` + `@astrojs/cloudflare@^14.2.1`
+  (2026-10-11) thì build lỗi (adapter gọi `beginContentEntryCollection`, astro đã cài không có) → test cài ghim đúng
+  bản trong lockfile của gói (astro 7.3.5, adapter 14.3.3, wrangler 4.142.0). P12–P18: site ghim cùng các bản này.
 - **CI:** repo công khai (2026-09-28) → phút GitHub Actions không tính phí. Thực tế **~1 phút / lần** (job `check` 33 giây
   ở run 36372154008; job `secrets` quét gitleaks toàn lịch sử vài giây). Nếu repo về private: 2.000 phút / tháng ≈ 1.500+
   lần chạy.
