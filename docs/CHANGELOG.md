@@ -3,8 +3,18 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## 0.20.0 — unreleased (U1)
+## 0.20.0 — unreleased (U1, U2)
 
+- **The Mr Spa CMS frame** (U2): a 64 px rail — the site's mark, **Pages** (every file, the old Overview), one place
+  per collection, **Drafts** with the number waiting; People and Activity (owners) at the bottom, and the avatar with
+  the account menu (My account, Sign out). A 56 px top bar: `Pages / Homepage` crumbs, the preview's Desktop / Phone
+  switch in the middle, the save state and the screen's buttons on the right — **Publish is the one primary button**
+  (Save draft next to it), Version history is an icon. In the editor the page fills the canvas (padding 24, the page
+  in a white frame with rounded corners) and the form is in a 360 px inspector on the right; without the preview the
+  form is centred as before. The window itself never scrolls — only the canvas and the inspector. "Publishing… / Live"
+  is a line under the top bar on every screen.
+- New, optional: a collection's `icon` on the rail — `list` (default), `box`, `grid`, `pencil`, `image`,
+  `calendar`, `star`, `tag`, `users`, `file` (Lucide shapes); anything else is a config error.
 - **The admin uses the Mr Spa CMS design system** (one look for every site's CMS): the same role-based colour tokens
   and values (text, text-secondary, canvas, surface, hairline, input border, accent, success, warning, danger), Geist
   Variable self-hosted for the admin only (the website and the preview keep their own fonts), the type roles (dialog

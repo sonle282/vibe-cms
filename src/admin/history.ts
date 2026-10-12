@@ -20,7 +20,7 @@ const when = (iso: string) => {
 
 export const historyScreen = async (kit: ScreenKit, stillHere: () => boolean, resource: string, target: HistoryTarget | undefined, go: (hash: string) => void) => {
   const { doc, api, user } = kit;
-  const crumbs: Array<[string, string?]> = [["Overview", "#/"], ...(target ? [[target.label, target.href] as [string, string]] : []), ["History"]];
+  const crumbs: Array<[string, string?]> = [...(target ? [[target.label, target.href] as [string, string]] : []), ["History"]];
   if (user.role !== "owner") return kit.show({ title: "History", crumbs }, kit.message("History", "Only an owner can see the history and restore older versions."));
   if (!target) return kit.show({ title: "History", crumbs }, kit.message("Not found", "There is nothing with this address in the CMS."));
   const result = await api.get<HistoryView>(`/api/cms/history?resource=${encodeURIComponent(resource)}`);

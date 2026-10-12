@@ -3,7 +3,7 @@
  * Every mistake is collected in one pass; each problem names its place (e.g. collections[0].fields.items.of.fields.price)
  * and says how to fix it. Warnings never stop the build.
  */
-import { FIELD_TYPES, type CmsConfig } from "./index.js";
+import { COLLECTION_ICONS, FIELD_TYPES, type CmsConfig } from "./index.js";
 import { RICH_TEXT_TAGS } from "../check/rich-text-allow.js";
 
 export type Problem = { path: string; message: string; hint?: string };
@@ -293,7 +293,8 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     collections.forEach((entry, index) => {
       const at = `collections[${index}]`;
       if (!isRecord(entry)) { err(context, at, "must be an object", "{ key, label, itemLabel, store, fields }"); return; }
-      for (const key of Object.keys(entry)) if (!["key", "label", "itemLabel", "store", "status", "preview", "order", "access", "fixed", "rules", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, itemLabel, store, status, preview, order, access, fixed, rules, fields");
+      for (const key of Object.keys(entry)) if (!["key", "label", "itemLabel", "icon", "store", "status", "preview", "order", "access", "fixed", "rules", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, itemLabel, icon, store, status, preview, order, access, fixed, rules, fields");
+      if (entry.icon !== undefined && !(COLLECTION_ICONS as readonly unknown[]).includes(entry.icon)) err(context, `${at}.icon`, `${show(entry.icon)} is not an icon of the admin`, `use one of ${COLLECTION_ICONS.join(", ")}`);
       checkRules(context, entry, at);
       checkAccess(context, entry, at);
       checkBoolean(context, entry, "fixed", at);

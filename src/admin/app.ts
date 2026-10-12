@@ -18,7 +18,7 @@ import type { Field } from "../config/index.js";
 import { checkRecordValues } from "../check/values.js";
 import { createClient, humanMessage, type ApiFail, type Client, type Fetch } from "./api.js";
 import type { AdminBoot, BootCollection, BootFile } from "./boot.js";
-import { clear, h } from "./dom.js";
+import { clear, h, icon } from "./dom.js";
 import { summarizeChanges, type Change, type ReferenceLabels } from "./changes.js";
 import { createForm, type Form, type ReferenceTarget } from "./form.js";
 import { adjustImage, measureImage, openImagePicker, prepareImage, type Adjust, type LibraryImage, type Measure, type Prepare } from "./media.js";
@@ -111,17 +111,19 @@ export const startAdmin = (options: AdminOptions) => {
   // ---------------------------------------------------------------- shell
 
   const link = (href: string, text: string, extra: Record<string, string> = {}) => h(doc, "a", { href, ...extra }, text);
-  const navItems = [
-    link("#/", "Overview", { "data-route": "#/" }),
-    ...boot.files.map((file) => link(`#/files/${file.key}`, file.label, { "data-route": `#/files/${file.key}` })),
-    ...boot.collections.map((collection) => link(`#/collections/${collection.key}`, collection.label, { "data-route": `#/collections/${collection.key}` })),
-  ];
+  // U2: the rail (64 px, like the Mr Spa CMS): the site's mark, Pages (every file — the overview), one place per
+  // collection, Drafts with a count; at the bottom People and Activity (owners) and the avatar with the account menu.
+  const railItem = (href: string, label: string, iconName: string, ...extra: Node[]) => h(doc, "a", { href, "data-route": href, class: "vc-rail-item", title: label }, icon(doc, iconName), h(doc, "span", { class: "vc-rail-label" }, label), ...extra);
   // P8: my drafts waiting to be published, with a count.
   const draftBadge = h(doc, "span", { class: "vc-badge", hidden: true });
-  const publishLink = h(doc, "a", { href: "#/publish", "data-route": "#/publish", class: "vc-nav-publish" }, "Review & publish ", draftBadge);
-  navItems.push(publishLink);
-  // P8b: People, for owners only (the server refuses editors anyway).
-  if (user.role === "owner") navItems.push(link("#/people", "People", { "data-route": "#/people" }), link("#/activity", "Activity", { "data-route": "#/activity" }));
+  const navItems = [
+    railItem("#/", "Pages", "file"),
+    ...boot.collections.map((collection) => railItem(`#/collections/${collection.key}`, collection.label, collection.icon ?? "list")),
+    railItem("#/publish", "Drafts", "inbox", draftBadge),
+  ];
+  // P8b: People and Activity, for owners only (the server refuses editors anyway).
+  const ownerItems = user.role === "owner" ? [railItem("#/people", "People", "users"), railItem("#/activity", "Activity", "activity")] : [];
+  navItems.push(...ownerItems);
   const refreshDrafts = async () => {
     const result = await api.get<{ drafts: DraftRow[] }>("/api/cms/drafts");
     const count = result.ok ? result.data.drafts.length : 0;
@@ -130,25 +132,44 @@ export const startAdmin = (options: AdminOptions) => {
     draftBadge.setAttribute("aria-label", `${plural(count, "draft")} waiting`);
     return result;
   };
-  // P8: is the last publish live yet?
+  // P8: is the last publish live yet? (U2: a line under the top bar, on every screen.)
   const liveBox = h(doc, "div", { class: "vc-live", role: "status", "aria-live": "polite", hidden: true });
-  const signOut = h(doc, "button", { type: "button", class: "vc-button vc-quiet", onclick: async () => {
+  const signOut = h(doc, "button", { type: "button", class: "vc-menu-item", role: "menuitem", onclick: async () => {
+    closeMenu();
     if (current?.dirty?.() && !ask(leaveMessage(current.dirty()))) return;
     dirtyGuard = false;
     await api.post("/api/auth/logout", {});
     win.location.assign("/admin");
-  } }, "Sign out");
-  const nav = h(doc, "nav", { class: "vc-nav", "aria-label": "Content" },
-    h(doc, "div", { class: "vc-brand" }, h(doc, "span", { class: "vc-brand-name" }, boot.site.name), h(doc, "span", { class: "vc-brand-sub" }, "Vibe CMS")),
-    h(doc, "ul", { class: "vc-nav-list" }, navItems.map((item) => h(doc, "li", {}, item))),
-    liveBox,
-    h(doc, "div", { class: "vc-user" }, h(doc, "a", { class: "vc-user-name", href: "#/account", title: "My account" }, user.displayName), h(doc, "span", { class: "vc-user-role" }, user.role === "owner" ? "Owner" : "Editor"), signOut));
+  } }, icon(doc, "logout"), "Sign out");
+  const initials = user.displayName.split(/s+/).filter(Boolean).map((word) => word[0]).join("").slice(0, 2).toUpperCase() || "?";
+  const menu = h(doc, "div", { class: "vc-menu", role: "menu", hidden: true, "aria-label": "Account" },
+    h(doc, "div", { class: "vc-menu-head" }, h(doc, "span", { class: "vc-user-name-text" }, user.displayName), h(doc, "span", { class: "vc-user-role" }, user.role === "owner" ? "Owner" : "Editor")),
+    h(doc, "a", { class: "vc-menu-item vc-user-name", role: "menuitem", href: "#/account", onclick: () => closeMenu() }, icon(doc, "user"), "My account"),
+    signOut);
+  const avatar = h(doc, "button", { type: "button", class: "vc-avatar", "aria-haspopup": "menu", "aria-expanded": "false", "aria-label": `${user.displayName} — account`, title: user.displayName }, initials);
+  const closeMenu = () => { menu.hidden = true; avatar.setAttribute("aria-expanded", "false"); };
+  avatar.addEventListener("click", () => {
+    const open = menu.hidden;
+    menu.hidden = !open;
+    avatar.setAttribute("aria-expanded", String(open));
+    if (open) menu.querySelector<HTMLElement>(".vc-menu-item")?.focus();
+  });
+  menu.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeMenu(); avatar.focus(); } });
+  doc.addEventListener("click", (event) => { if (!menu.hidden && !menu.contains(event.target as Node) && event.target !== avatar) closeMenu(); });
+  const mark = h(doc, "a", { class: "vc-mark", href: "#/", title: `${boot.site.name} · Vibe CMS`, "aria-label": `${boot.site.name} — Pages` }, (boot.site.name.trim()[0] ?? "V").toUpperCase());
+  const nav = h(doc, "nav", { class: "vc-rail", "aria-label": "Content" },
+    mark,
+    h(doc, "ul", { class: "vc-nav-list" }, navItems.filter((item) => !ownerItems.includes(item)).map((item) => h(doc, "li", {}, item))),
+    h(doc, "ul", { class: "vc-nav-list vc-rail-bottom" }, ownerItems.map((item) => h(doc, "li", {}, item))),
+    h(doc, "div", { class: "vc-user" }, avatar, menu));
   const crumbs = h(doc, "nav", { class: "vc-crumbs", "aria-label": "Breadcrumb" });
   const saveState = h(doc, "span", { class: "vc-save-state", role: "status", "aria-live": "polite" });
+  // U2: the preview's device switch sits in the middle of the top bar (editor with the preview open).
+  const topCenter = h(doc, "div", { class: "vc-top-center" });
   const actions = h(doc, "div", { class: "vc-actions" });
   const body = h(doc, "div", { class: "vc-body" });
   const toast = h(doc, "div", { class: "vc-toast", role: "status", "aria-live": "polite", "aria-atomic": "true", hidden: true });
-  const main = h(doc, "main", { class: "vc-main", id: "vc-main" }, h(doc, "header", { class: "vc-top" }, crumbs, h(doc, "div", { class: "vc-top-right" }, saveState, actions)), body);
+  const main = h(doc, "main", { class: "vc-main", id: "vc-main" }, h(doc, "header", { class: "vc-top" }, crumbs, topCenter, h(doc, "div", { class: "vc-top-right" }, saveState, actions)), liveBox, body);
   clear(root);
   root.append(h(doc, "a", { class: "vc-skip", href: "#vc-main", onclick: (event: Event) => { event.preventDefault(); main.querySelector<HTMLElement>("h1")?.focus(); } }, "Skip to content"), h(doc, "div", { class: "vc-app" }, nav, main), toast);
 
@@ -173,9 +194,9 @@ export const startAdmin = (options: AdminOptions) => {
       crumbs.append(href ? link(href, text) : h(doc, "span", { "aria-current": "page" }, text));
     });
     clear(body);
-    body.append(...content);
+    body.append(h(doc, "div", { class: "vc-page-inner" }, ...content));
     doc.title = `${screen.title} · ${boot.site.name} · Vibe CMS`;
-    const route = currentHash.startsWith("#/publish") ? "#/publish" : currentHash.startsWith("#/activity") ? "#/activity" : currentHash.startsWith("#/history/") ? "" : currentHash.split("/").slice(0, 3).join("/") || "#/";
+    const route = currentHash.startsWith("#/publish") ? "#/publish" : currentHash.startsWith("#/activity") ? "#/activity" : currentHash.startsWith("#/history/") ? "" : currentHash.startsWith("#/files/") ? "#/" : currentHash.split("/").slice(0, 3).join("/") || "#/";
     for (const item of navItems) { if (item.dataset.route === route) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current"); }
   };
   const heading = (text: string) => h(doc, "h1", { class: "vc-title", tabindex: "-1" }, text);
@@ -193,6 +214,8 @@ export const startAdmin = (options: AdminOptions) => {
     currentHash = hash;
     const mine = (generation += 1);
     clear(actions);
+    clear(topCenter);
+    closeMenu();
     setState("idle", "");
     clear(body);
     body.append(h(doc, "p", { class: "vc-loading" }, "Loading…"));
@@ -209,9 +232,9 @@ export const startAdmin = (options: AdminOptions) => {
       else if (parts[0] === "activity" && parts.length <= 2) await activityScreen(kit, stillHere, parts[1]);
       else if (parts[0] === "history" && parts.length === 2) await historyScreen(kit, stillHere, parts[1], historyTarget(parts[1]), (hash) => { win.location.hash = hash; });
       else if (parts[0] === "account" && parts.length === 1) await accountScreen(kit, stillHere);
-      else show({ title: "Not found", crumbs: [["Overview", "#/"], ["Not found"]] }, message("Not found", "There is nothing at this address in the CMS.", link("#/", "Go to the overview")));
+      else show({ title: "Not found", crumbs: [["Pages", "#/"], ["Not found"]] }, message("Not found", "There is nothing at this address in the CMS.", link("#/", "Go to the overview")));
     } catch {
-      if (stillHere()) show({ title: "Error", crumbs: [["Overview", "#/"], ["Error"]] }, message("Something went wrong", "The page could not be shown. Reload to try again."));
+      if (stillHere()) show({ title: "Error", crumbs: [["Pages", "#/"], ["Error"]] }, message("Something went wrong", "The page could not be shown. Reload to try again."));
     }
     // The screen's heading gets focus (screen readers announce the page), unless the screen asked for a field (P9).
     const after = focusAfterShow;
@@ -237,13 +260,13 @@ export const startAdmin = (options: AdminOptions) => {
   const overview = async (stillHere: () => boolean) => {
     const result = await api.get<ContentView>("/api/cms/content");
     if (!stillHere()) return;
-    if (!result.ok) return failed(result, [["Overview"]]);
+    if (!result.ok) return failed(result, [["Pages"]]);
     const pill = (draft: boolean, text = "Draft saved") => h(doc, "span", { class: `vc-pill ${draft ? "vc-pill-draft" : "vc-pill-live"}` }, draft ? text : "Live");
     const cards = [
       ...result.data.files.map((file) => h(doc, "li", {}, h(doc, "a", { class: "vc-card", href: `#/files/${file.key}` }, h(doc, "span", { class: "vc-card-title" }, file.label), h(doc, "span", { class: "vc-card-meta" }, "Page content"), pill(file.hasDraft)))),
       ...result.data.collections.map((collection) => h(doc, "li", {}, h(doc, "a", { class: "vc-card", href: `#/collections/${collection.key}` }, h(doc, "span", { class: "vc-card-title" }, collection.label), h(doc, "span", { class: "vc-card-meta" }, plural(collection.count, collection.itemLabel.toLowerCase())), collection.drafts ? pill(true, `${plural(collection.drafts, "draft")}`) : null))),
     ];
-    show({ title: "Overview", crumbs: [["Overview"]] }, [heading(`${boot.site.name}`), h(doc, "p", { class: "vc-lead" }, `Signed in as ${user.displayName}. Pick what to edit. Saving makes a draft; the website changes only when a draft is published.`), h(doc, "ul", { class: "vc-cards" }, cards)]);
+    show({ title: "Pages", crumbs: [["Pages"]] }, [heading(`${boot.site.name}`), h(doc, "p", { class: "vc-lead" }, `Signed in as ${user.displayName}. Pick what to edit. Saving makes a draft; the website changes only when a draft is published.`), h(doc, "ul", { class: "vc-cards" }, cards)]);
   };
 
   // ---------------------------------------------------------------- collection list
@@ -252,7 +275,7 @@ export const startAdmin = (options: AdminOptions) => {
 
   const listCollection = async (key: string, stillHere: () => boolean) => {
     const collection = collectionOf(key);
-    const crumbsFor: Array<[string, string?]> = [["Overview", "#/"], [collection?.label ?? key]];
+    const crumbsFor: Array<[string, string?]> = [[collection?.label ?? key]];
     if (!collection) return show({ title: "Not found", crumbs: crumbsFor }, message("Not found", `There is no "${key}" in this site's CMS.`));
     const result = await api.get<ListView>(`/api/cms/collections/${encodeURIComponent(key)}`);
     if (!stillHere()) return;
@@ -308,15 +331,15 @@ export const startAdmin = (options: AdminOptions) => {
 
   const editFile = async (key: string, stillHere: () => boolean) => {
     const file = boot.files.find((entry) => entry.key === key);
-    if (!file) return show({ title: "Not found", crumbs: [["Overview", "#/"], ["Not found"]] }, message("Not found", `There is no "${key}" in this site's CMS.`));
-    await editor({ kind: "file", file, url: `/api/cms/files/${encodeURIComponent(key)}`, crumbs: [["Overview", "#/"]], stillHere });
+    if (!file) return show({ title: "Not found", crumbs: [["Pages", "#/"], ["Not found"]] }, message("Not found", `There is no "${key}" in this site's CMS.`));
+    await editor({ kind: "file", file, url: `/api/cms/files/${encodeURIComponent(key)}`, crumbs: [["Pages", "#/"]], stillHere });
   };
 
   const editItem = async (key: string, id: string | undefined, stillHere: () => boolean) => {
     const collection = collectionOf(key);
-    if (!collection) return show({ title: "Not found", crumbs: [["Overview", "#/"], ["Not found"]] }, message("Not found", `There is no "${key}" in this site's CMS.`));
-    if (id === undefined && collection.fixed) return show({ title: collection.label, crumbs: [["Overview", "#/"], [collection.label, `#/collections/${key}`]] }, message(`${collection.label} is a fixed set`, `A new ${collection.itemLabel.toLowerCase()} cannot be added here — which ones exist is decided in the website's code. Open one to change it.`, link(`#/collections/${key}`, `Back to ${collection.label}`)));
-    await editor({ kind: "item", collection, id, url: id === undefined ? undefined : `/api/cms/collections/${encodeURIComponent(key)}/items/${encodeURIComponent(id)}`, crumbs: [["Overview", "#/"], [collection.label, `#/collections/${key}`]], stillHere });
+    if (!collection) return show({ title: "Not found", crumbs: [["Pages", "#/"], ["Not found"]] }, message("Not found", `There is no "${key}" in this site's CMS.`));
+    if (id === undefined && collection.fixed) return show({ title: collection.label, crumbs: [[collection.label, `#/collections/${key}`]] }, message(`${collection.label} is a fixed set`, `A new ${collection.itemLabel.toLowerCase()} cannot be added here — which ones exist is decided in the website's code. Open one to change it.`, link(`#/collections/${key}`, `Back to ${collection.label}`)));
+    await editor({ kind: "item", collection, id, url: id === undefined ? undefined : `/api/cms/collections/${encodeURIComponent(key)}/items/${encodeURIComponent(id)}`, crumbs: [[collection.label, `#/collections/${key}`]], stillHere });
   };
 
   // ---------------------------------------------------------------- P9: preview helpers
@@ -402,10 +425,11 @@ export const startAdmin = (options: AdminOptions) => {
     const banner = h(doc, "div", { class: "vc-banner", role: "alert", hidden: true });
     const showBanner = (text: string, ...extra: Node[]) => { clear(banner); banner.append(h(doc, "p", {}, text), ...extra); banner.hidden = false; };
     const title = heading("");
-    const save = h(doc, "button", { type: "button", class: "vc-button vc-primary", "data-action": "save" }, "Save draft");
+    // U2: one primary button per screen, like the Mr Spa CMS — Publish; Save draft is the plain button next to it.
+    const save = h(doc, "button", { type: "button", class: "vc-button", "data-action": "save" }, "Save draft");
     const discard = h(doc, "button", { type: "button", class: "vc-button vc-quiet", "data-action": "discard" }, "Discard draft");
     const resourceOf = () => (input.kind === "file" ? `file:${input.file.key}` : `item:${input.collection.key}:${input.id ?? String(form.value()[input.collection.idField] ?? "")}`);
-    const publish = h(doc, "button", { type: "button", class: "vc-button", "data-action": "publish", onclick: () => { win.location.hash = `#/publish/${encodeURIComponent(resourceOf())}`; } }, "Review & publish");
+    const publish = h(doc, "button", { type: "button", class: "vc-button vc-primary", "data-action": "publish", onclick: () => { win.location.hash = `#/publish/${encodeURIComponent(resourceOf())}`; } }, "Review & publish");
 
     const dirty = () => countChanges(saved, form.value());
     const refresh = () => {
@@ -463,7 +487,7 @@ export const startAdmin = (options: AdminOptions) => {
           suppressScroll = false;
         },
       });
-      previewToggle = h(doc, "button", { type: "button", class: "vc-button vc-quiet", "data-action": "preview", "aria-pressed": "false" }, "Preview");
+      previewToggle = h(doc, "button", { type: "button", class: "vc-button vc-quiet vc-toggle", "data-action": "preview", "aria-pressed": "false", title: "Show or hide the preview" }, "Preview");
     }
     /** Focus a field (or the closest one that has its own control). */
     const reveal = (text: string) => {
@@ -555,7 +579,7 @@ export const startAdmin = (options: AdminOptions) => {
     doc.addEventListener("keydown", onKey);
 
     // P12c: History, for owners, once the resource exists on the website.
-    const historyLink = user.role === "owner" && !isNew && view?.content ? link(`#/history/${encodeURIComponent(resourceOf())}`, "History", { class: "vc-button vc-quiet", "data-action": "history" }) : null;
+    const historyLink = user.role === "owner" && !isNew && view?.content ? h(doc, "a", { href: `#/history/${encodeURIComponent(resourceOf())}`, class: "vc-icon-button vc-top-icon", "data-action": "history", "aria-label": "Version history", title: "Version history" }, icon(doc, "history")) : null;
     actions.append(...(previewToggle ? [previewToggle] : []), ...(historyLink ? [historyLink] : []), discard, save, publish);
     if (view?.draft?.stale) showBanner("The website changed after this draft was started (someone published). Publishing this draft is refused until you discard it and make your change again on the current content.");
     const intro = isNew ? `Fill in the new ${collection!.itemLabel.toLowerCase()} and save a draft. It is not on the website until it is published.`
@@ -567,6 +591,9 @@ export const startAdmin = (options: AdminOptions) => {
       if (!split || !previewToggle) return;
       split.classList.toggle("vc-preview-on", on);
       body.classList.toggle("vc-body-wide", on);
+      // U2: the device switch in the middle of the top bar, while the preview is open.
+      clear(topCenter);
+      if (on) topCenter.append(preview!.devices);
       previewToggle.setAttribute("aria-pressed", String(on));
       preview!.element.hidden = !on;
       if (on) preview!.start();
@@ -611,7 +638,7 @@ export const startAdmin = (options: AdminOptions) => {
   };
 
   const review = async (preselect: string | undefined, stillHere: () => boolean) => {
-    const crumbsFor: Array<[string, string?]> = [["Overview", "#/"], ["Review & publish"]];
+    const crumbsFor: Array<[string, string?]> = [["Drafts", "#/publish"], ["Review & publish"]];
     const listed = await refreshDrafts();
     if (!stillHere()) return;
     if (!listed.ok) return failed(listed, crumbsFor);

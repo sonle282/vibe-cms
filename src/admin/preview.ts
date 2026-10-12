@@ -6,7 +6,7 @@
  */
 import type { Field } from "../config/index.js";
 import { attachBridge, type Bridge, type BridgeOptions, type PreviewOwner, type PreviewSelection } from "./bridge.js";
-import { h } from "./dom.js";
+import { h, icon } from "./dom.js";
 import type { Path } from "./value.js";
 
 export type PreviewOptions = {
@@ -30,6 +30,8 @@ export type PreviewOptions = {
 };
 export type Preview = {
   element: HTMLElement;
+  /** U2: Desktop / Phone, a segmented switch the shell puts in the middle of the top bar. */
+  devices: HTMLElement;
   /** Load the page (once). */
   start: () => void;
   frame: HTMLIFrameElement;
@@ -56,18 +58,18 @@ export const createPreview = (options: PreviewOptions): Preview => {
   const status = h(doc, "p", { class: "vc-preview-status", role: "status", "aria-live": "polite" });
   const frame = h(doc, "iframe", { class: "vc-preview-frame", title: `Preview: ${options.title}`, sandbox: "allow-same-origin allow-scripts", referrerpolicy: "same-origin" });
   const stage = h(doc, "div", { class: "vc-preview-stage", "data-device": "desktop" }, frame);
-  const device = (name: "desktop" | "phone", label: string) => h(doc, "button", { type: "button", class: "vc-tool", "data-device": name, "aria-pressed": String(name === "desktop"), onclick: () => {
+  const device = (name: "desktop" | "phone", label: string) => h(doc, "button", { type: "button", class: "vc-segment-item", "data-device": name, "aria-pressed": String(name === "desktop"), "aria-label": label, title: label, onclick: () => {
     stage.dataset.device = name;
-    for (const button of devices) button.setAttribute("aria-pressed", String(button.dataset.device === name));
+    for (const button of buttons) button.setAttribute("aria-pressed", String(button.dataset.device === name));
     win.requestAnimationFrame?.(() => bridge?.clearSelection());
-  } }, label);
-  const devices = [device("desktop", "Desktop"), device("phone", "Phone")];
-  const reload = h(doc, "button", { type: "button", class: "vc-tool", onclick: () => { status.textContent = "Loading the page…"; try { frame.contentWindow?.location.reload(); } catch { if (options.url) frame.setAttribute("src", framedUrl(options.url)); } } }, "Reload");
-  const live = options.url ? h(doc, "a", { class: "vc-tool vc-preview-open", href: options.url, target: "_blank", rel: "noopener" }, "Open live page") : null;
+  } }, icon(doc, name === "desktop" ? "laptop" : "phone"));
+  const buttons = [device("desktop", "Desktop"), device("phone", "Phone")];
+  const devices = h(doc, "div", { class: "vc-segment vc-devices", role: "group", "aria-label": "Preview size" }, ...buttons);
+  const reload = h(doc, "button", { type: "button", class: "vc-icon-button vc-preview-reload", "aria-label": "Reload the preview", title: "Reload the preview", onclick: () => { status.textContent = "Loading the page…"; try { frame.contentWindow?.location.reload(); } catch { if (options.url) frame.setAttribute("src", framedUrl(options.url)); } } }, icon(doc, "reload"));
+  const live = options.url ? h(doc, "a", { class: "vc-icon-button vc-preview-open", href: options.url, target: "_blank", rel: "noopener", "aria-label": "Open live page", title: "Open live page" }, icon(doc, "external")) : null;
   const element = h(doc, "aside", { class: "vc-preview", "aria-label": "Preview" },
-    h(doc, "div", { class: "vc-preview-bar", role: "toolbar", "aria-label": "Preview" },
-      h(doc, "span", { class: "vc-preview-title" }, "Preview"), ...devices, reload, live ?? h(doc, "span")),
-    status, stage);
+    h(doc, "div", { class: "vc-preview-bar", role: "toolbar", "aria-label": "Preview" }, status, reload, live ?? h(doc, "span")),
+    stage);
 
   const attach = () => {
     bridge?.detach();
@@ -113,7 +115,7 @@ export const createPreview = (options: PreviewOptions): Preview => {
   }
 
   return {
-    element, frame, start,
+    element, devices, frame, start,
     update: (value, path, nextOwner) => { if (nextOwner) owner = nextOwner; bridge?.update(value, path, nextOwner); updateStats(); },
     scrollTo: (path) => { bridge?.scrollTo(path); },
     bridge: () => bridge,

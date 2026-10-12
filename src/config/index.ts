@@ -67,11 +67,17 @@ export type CmsFile = {
   fields: Record<string, Field>;
 };
 
+/** U2: the icon a collection shows on the rail of the admin (Lucide shapes); "list" when not set. */
+export const COLLECTION_ICONS = ["list", "box", "grid", "pencil", "image", "calendar", "star", "tag", "users", "file"] as const;
+export type CollectionIcon = (typeof COLLECTION_ICONS)[number];
+
 /** Many records: one JSON array file (products.json) or one Markdown file per record (blog). */
 export type CmsCollection = {
   key: string;
   label: string;
   itemLabel: string;
+  /** U2: its icon on the rail. */
+  icon?: CollectionIcon;
   store: { kind: "json-array"; path: string; idField: string } | { kind: "markdown-dir"; dir: string; slugField: string };
   status?: { field: string; live: string; draft: string };
   preview?: string;

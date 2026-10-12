@@ -2,7 +2,7 @@
 
 > Nguồn: [DESIGN.md](DESIGN.md) §I. Quy tắc: 1 task = 1 commit; mỗi task REPORT → DỪNG chờ review. Test của gói **không đọc
 > dữ liệu site khách**. Task có sửa repo site: đầu task `git status` sạch + pull nhánh production của site; có thay đổi
-> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (U1 · design system của Mr Spa).
+> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (U2 · khung của Mr Spa).
 
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
@@ -31,8 +31,8 @@
 | **P12f** | Gói: cắt / đổi cỡ ảnh = **bản sao mới**, giữ ảnh gốc (như Mr Spa), làm trong trình duyệt — không binding `IMAGES` | 8–14 | ✅ Xong (merge 2026-10-12; 884a683, CI 38198654822) |
 | **P13** | Novelle: `cms.config` trên JSON có sẵn (không đổi nội dung) + plugin + `bind` selector; chạy song song CMS chép ở local | 10–16 | ✅ Xong (merge 2026-10-12; novelle PR #1, cài v0.19.0 từ URL release) |
 | **P14** | Novelle: chuyển (`setup --site novelle`, nhập users, gỡ CMS chép), G.2 1 cặp trên `dev`, Workers Builds không biến token | 10–16 | ✅ Xong (merge 2026-10-12; novelle PR #2, 30af26c; publish 37868c7 + revert a913f91 trên demo) |
-| **U1** | UI = design system của Mr Spa (SonLe 2026-10-12: CMS mọi site dùng chung 1 bộ): token theo vai trò + giá trị của Mr Spa (design-004 · Foundations), font Geist tự host, cỡ control 40 / 36 / 30, pill 6 px chấm, focus, reduced motion | 6–10 | 🔄 Đang review |
-| U2 | UI: khung như Mr Spa — rail 64, top bar 56, canvas, inspector 360 | 10–16 | ⏳ |
+| **U1** | UI = design system của Mr Spa (SonLe 2026-10-12: CMS mọi site dùng chung 1 bộ): token theo vai trò + giá trị của Mr Spa (design-004 · Foundations), font Geist tự host, cỡ control 40 / 36 / 30, pill 6 px chấm, focus, reduced motion | 6–10 | ✅ Xong (merge 2026-10-12; 6191ef3, PR #16) |
+| **U2** | UI: khung như Mr Spa — rail 64 (Pages = mọi file, mỗi collection 1 chỗ + `icon` trong config, Drafts có số; People / Activity dưới cùng; avatar → menu My account / Sign out), top bar 56 (crumb `Pages / Tên`, chọn thiết bị ở giữa, Publish là nút chính duy nhất), canvas padding 24 + preview bo 12, form trong inspector 360 bên phải; trang không bao giờ cuộn — chỉ canvas / inspector | 10–16 | 🔄 Đang review |
 | U3 | UI: thành phần — hộp xác nhận thay `window.confirm`, toast, tooltip, ô ảnh + sheet, modal review | 10–16 | ⏳ |
 | U4 | UI: màn hình + lời văn như Mr Spa (Pages, Drafts, People, Activity, History, Media, Sign-in, chặn < 900 px, chữ trạng thái), release + `vibe-cms update` cho Novelle | 12–18 | ⏳ |
 | P15 | Innovate: tách nốt `site.ts` → JSON (reviews, FAQ, membership, chính sách, Journal…) — HTML giống từng byte | 8–14 | ⏳ |
