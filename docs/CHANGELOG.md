@@ -3,6 +3,16 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.20.0 — unreleased (U1)
+
+- **The admin uses the Mr Spa CMS design system** (one look for every site's CMS): the same role-based colour tokens
+  and values (text, text-secondary, canvas, surface, hairline, input border, accent, success, warning, danger), Geist
+  Variable self-hosted for the admin only (the website and the preview keep their own fonts), the type roles (dialog
+  18/600 · section 16/600 · body 14 · label 13/500 · help 12), spacing 4–40, radius chip 6 · button / input 10 · image 12 ·
+  card 14 · dialog 16, controls input 40 · button 36 · compact 30, status pills with a 6 px dot (Live green, Draft saved
+  blue, Unsaved changes amber, Off grey, Failed rose), the 2 px focus ring, and no motion when the system asks for less.
+- Site action: none.
+
 ## 0.19.0 — 2026-10-12 (P12f · first release: everything below, P1–P12f)
 
 - **Crop / resize = a new copy.** In the image sheet every image (the site's own or an upload) has "Crop / resize":
