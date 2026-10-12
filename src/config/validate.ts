@@ -39,7 +39,7 @@ const GITHUB_REPO = /^[A-Za-z0-9._-]{1,100}$/;
 
 const BASE_OPTIONS = ["type", "label", "help", "required", "locked", "bind"];
 const FIELD_OPTIONS: Record<string, string[]> = {
-  text: ["maxLength", "multiline", "pattern", "patternHint", "tokens"],
+  text: ["maxLength", "multiline", "pattern", "patternHint", "tokens", "from"],
   richText: ["allow"],
   image: ["alt", "mobile"],
   select: ["options"],
@@ -50,6 +50,7 @@ const FIELD_OPTIONS: Record<string, string[]> = {
   tuple: ["items"],
   pick: ["choices"],
   toggle: [],
+  number: ["min", "max", "integer"],
 };
 const TOP_LEVEL = ["configVersion", "site", "repo", "roles", "contentDirs", "files", "collections", "media"];
 
@@ -162,6 +163,12 @@ export const checkField = (context: Context, field: unknown, at: string, depth: 
       if (!Array.isArray(field.items) || field.items.length < 2) { err(context, `${at}.items`, "required — at least two fields, one per place", 'e.g. f.tuple([f.text({ label: "Service" }), f.text({ label: "Price" })], { label: "Service and price" })'); break; }
       field.items.forEach((item, index) => checkField(context, item, `${at}.items[${index}]`, depth + 1));
       break;
+    case "number": {
+      checkBoolean(context, field, "integer", at);
+      for (const key of ["min", "max"] as const) if (field[key] !== undefined && !(typeof field[key] === "number" && Number.isFinite(field[key]))) err(context, `${at}.${key}`, `must be a number (got ${show(field[key])})`);
+      if (typeof field.min === "number" && typeof field.max === "number" && field.min > field.max) err(context, `${at}.min`, `is bigger than max (${field.min} > ${field.max})`);
+      break;
+    }
     case "pick":
       if (typeof field.choices !== "function") err(context, `${at}.choices`, "required — a function that lists the choices from the record's content", "e.g. choices: (content) => content.menu.map((line) => ({ value: line.id, label: line.name }))");
       break;
@@ -184,6 +191,12 @@ export const checkFields = (context: Context, fields: unknown, at: string, depth
     const parent = keys.find((other) => key.startsWith(`${other}.`));
     if (parent) err(context, keyPath(at, key), `clashes with the field "${parent}" at the same level (one value cannot be both)`, `rename one, or put "${key.slice(parent.length + 1)}" inside ${parent}'s fields`);
     checkField(context, fields[key], keyPath(at, key), depth);
+    // P16a: an id made from another field must name a text field of the same object.
+    const field = fields[key];
+    if (isRecord(field) && field.type === "text" && field.from !== undefined) {
+      const source = typeof field.from === "string" ? fields[field.from] : undefined;
+      if (!isRecord(source) || source.type !== "text") err(context, `${keyPath(at, key)}.from`, `must name a text field next to it (got ${show(field.from)})`, `e.g. from: "name"`);
+    }
   }
 };
 

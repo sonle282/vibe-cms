@@ -226,6 +226,13 @@ and the files hold names. An upload is named by where it is committed, from `roo
 The library lists the manifest (`exclude` hides logos and the like). The build and every save refuse a name that is
 neither in the manifest nor an upload.
 
+## Numbers and ids made from a name (P16a)
+
+```ts
+priority: f.number({ label: "Order", integer: true, min: 1, max: 99 }),   // a JSON number
+id: f.text({ label: "ID", from: "name", pattern: "[a-z0-9]+(?:-[a-z0-9]+)*" }),  // made from "name" while the item is new
+```
+
 ## History (P12c)
 
 Owners have **History** in the editor: every version of that file or record, newest first, read from the site's

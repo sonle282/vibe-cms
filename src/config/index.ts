@@ -24,7 +24,9 @@ type Base = {
  * tell people when it does not ("a time like 09:30"); `tokens` = the {words} the site's code fills in ({phone},
  * {city}…): only these may appear between braces, and the admin offers them.
  */
-export type TextField = Base & { type: "text"; maxLength?: number; multiline?: boolean; pattern?: string; patternHint?: string; tokens?: readonly string[] };
+export type TextField = Base & { type: "text"; maxLength?: number; multiline?: boolean; pattern?: string; patternHint?: string; tokens?: readonly string[];
+  /** P16a: an id made from another field of the same object while the item is new ("Classic Manicure" → "classic-manicure"). */
+  from?: string };
 /** P12d: `allow` = the tags this field may hold (a part of the rich-text allow-list, e.g. ["em", "br"]); the toolbar follows. */
 export type RichTextField = Base & { type: "richText"; allow?: readonly string[] };
 export type ImageField = Base & { type: "image"; alt?: boolean; mobile?: boolean };
@@ -45,12 +47,14 @@ export type TupleField = Base & { type: "tuple"; items: Field[] };
  */
 export type PickChoice = { value: string; label: string; group?: string };
 export type PickField = Base & { type: "pick"; choices: (content: Record<string, unknown>) => readonly PickChoice[] };
+/** P16a: a number (JSON number); `integer` = whole numbers only; `min` / `max` inclusive. */
+export type NumberField = Base & { type: "number"; min?: number; max?: number; integer?: boolean };
 /** P12g: yes / no, stored as true / false (left out while it was never set). */
 export type ToggleField = Base & { type: "toggle" };
 
-export type Field = TextField | RichTextField | ImageField | SelectField | HoursField | ObjectField | ListField | ReferenceField | TupleField | PickField | ToggleField;
+export type Field = TextField | RichTextField | ImageField | SelectField | HoursField | ObjectField | ListField | ReferenceField | TupleField | PickField | ToggleField | NumberField;
 export type FieldType = Field["type"];
-export const FIELD_TYPES: readonly FieldType[] = ["text", "richText", "image", "select", "hours", "object", "list", "reference", "tuple", "pick", "toggle"];
+export const FIELD_TYPES: readonly FieldType[] = ["text", "richText", "image", "select", "hours", "object", "list", "reference", "tuple", "pick", "toggle", "number"];
 
 /**
  * P12d: a site's own rule for a file / collection record — the plugin seam: cross-field checks the field types cannot
@@ -146,6 +150,8 @@ export const f = {
   pick: (options: Options<PickField>): PickField => ({ type: "pick", ...options }),
   /** f.toggle({ label: "Show without “from”" }) — P12g */
   toggle: (options: Options<ToggleField>): ToggleField => ({ type: "toggle", ...options }),
+  /** f.number({ label: "Order", integer: true, min: 1, max: 99 }) — P16a */
+  number: (options: Options<NumberField>): NumberField => ({ type: "number", ...options }),
 };
 
 export { assertCmsConfig, branchProblem, checkCmsConfig, CmsConfigError, countConfig, DEFAULT_CONTENT_DIRS, formatProblem, formatWarnings, MAX_DEPTH, pathProblem } from "./validate.js";

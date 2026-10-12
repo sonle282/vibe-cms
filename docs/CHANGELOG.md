@@ -3,8 +3,13 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## 0.21.0 — unreleased (P12g, P12h)
+## 0.21.0 — unreleased (P12g, P12h, P16a)
 
+- **`f.number`** (P16a): a JSON number — `integer`, `min`, `max`; a number input in the admin; emptied, the value
+  is left out. For an offer's order or a card's stamps.
+- **Text `from`** (P16a): an item's id made from another field of the same object while the item is new
+  (`id: f.text({ label: "ID", from: "name" })`: "Classic Manicure" → `classic-manicure`, `-2` when the list already has
+  it); typing the id stops it; an existing id never changes (prices elsewhere point to it).
 - **Images by name** (`media.names`): for a site whose build makes its image sizes from a manifest, content holds
   names (`"nails/nails-01"`); the admin shows and sends addresses and the API converts both ways; an upload is named
   by where the publish commits it (`media.dir`, which may now be outside public/ with `media.base` = where it is

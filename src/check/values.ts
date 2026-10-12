@@ -98,6 +98,12 @@ export const checkValue = (ctx: Ctx, field: Field, value: unknown, path: string)
     case "hours":
       checkHours(ctx, value, path);
       return;
+    case "number":
+      if (typeof value !== "number" || !Number.isFinite(value)) { add(ctx.errors, path, `expected a number, got ${describe(value)}`, typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value)) ? `write it without quotes: ${Number(value)}` : undefined); return; }
+      if (field.integer && !Number.isInteger(value)) add(ctx.errors, path, `${value} is not a whole number`);
+      if (field.min !== undefined && value < field.min) add(ctx.errors, path, `${value} is less than ${field.min}`);
+      if (field.max !== undefined && value > field.max) add(ctx.errors, path, `${value} is more than ${field.max}`);
+      return;
     case "toggle":
       if (typeof value !== "boolean") add(ctx.errors, path, `expected true or false, got ${describe(value)}`);
       return;
