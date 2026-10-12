@@ -5,14 +5,15 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.13.0 · P9.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
+> Status: **0.14.0 · P11.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
 > fields on the server, CMS API + one-commit GitHub publishing, sign-in, and the editor at `/admin` (lists, forms
 > generated from `cms.config`, a visual rich-text editor, a live preview of the draft on the real page, drafts, review
 > of changes, publish, live status, People, My account), rich text cleaned on the server, images (upload to R2, picker,
-> inline images resized by dragging, published in the same commit). Next: CLI (P11), then the first site
-> ([docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
+> inline images resized by dragging, published in the same commit), and the `vibe-cms` command (setup, migrate, check,
+> export / import, update, reset-owner-password). Next: the first site (P12–P15;
+> [docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
 
-## Install in a site (3 steps, no token)
+## Install in a site (5 steps, no token)
 
 Every version is a GitHub Release with a `vibe-cms-X.Y.Z.tgz` file. A site installs it by its public URL, pinned to
 that version — no `.npmrc`, no `NODE_AUTH_TOKEN`, on your machine or in Cloudflare Workers Builds.
@@ -25,8 +26,8 @@ that version — no `.npmrc`, no `NODE_AUTH_TOKEN`, on your machine or in Cloudf
    ```
 
    `package.json` then holds
-   `"@sonle282/vibe-cms": "https://github.com/sonle282/vibe-cms/releases/download/v0.3.0/vibe-cms-0.3.0.tgz"`.
-   To upgrade, change the URL to the new version (read the CHANGELOG's "Site action" first) and run `npm install`.
+   `"@sonle282/vibe-cms": "https://github.com/sonle282/vibe-cms/releases/download/v0.3.0/vibe-cms-0.3.0.tgz"`
+   (and `package-lock.json` its checksum). To upgrade later: `npx vibe-cms update [version]` (below).
 
 2. **Add it to `astro.config.mjs`** (public pages keep prerendering; only the CMS routes run on demand):
 
@@ -68,8 +69,49 @@ that version — no `.npmrc`, no `NODE_AUTH_TOKEN`, on your machine or in Cloudf
    });
    ```
 
+4. **Give the site its Cloudflare resources** (signed in with `npx wrangler login`; `--site` is the site's short
+   name, every resource starts with it):
+
+   ```bash
+   npx vibe-cms setup --site mysalon
+   ```
+
+   Creates — only if missing — D1 `mysalon-cms`, KV `mysalon-session` and R2 `mysalon-media`, writes the bindings
+   (`CMS_DB`, `SESSION`, `CMS_MEDIA`, `CMS_LOGIN_LIMITER`, `CMS_PUBLISH_LIMITER`) into `wrangler.jsonc` (comments and
+   everything else kept) and applies the migrations. Running it again changes nothing. To try it without an account:
+   `--local` (placeholder ids + the local D1 of `wrangler dev`).
+
+5. **Secrets, then check** — the CLI never handles them:
+
+   ```bash
+   npx wrangler secret put VIBE_GITHUB_TOKEN        # see "CMS API and publishing" below
+   npx wrangler secret put CMS_BOOTSTRAP_USERNAME   # the first owner (remove both after the first sign-in)
+   npx wrangler secret put CMS_BOOTSTRAP_PASSWORD
+   npx vibe-cms check
+   ```
+
 Then `npm run build`: the log shows `config OK: N files, M collections, content checked`, and `/admin` +
-`/api/cms/health` answer in `wrangler dev`.
+`/api/cms/health` answer in `wrangler dev`. CI runs exactly these steps on the demo site from a packed release
+(`npm run install:local`).
+
+## The `vibe-cms` command (P11)
+
+Run in the site's folder (`npx vibe-cms help`). Cloudflare goes through the site's own wrangler and the login of whoever
+runs it; `--account <id>` picks another account. No command asks for, prints or stores a token.
+
+| Command | What it does |
+|---|---|
+| `setup --site <site> [--account <id>] [--local]` | Resources + bindings + migrations, as above. Idempotent; a binding already pointing at another site's database or bucket is refused, never re-pointed. With `--account`: the same on another account (hand-over) — the ids in `wrangler.jsonc` follow |
+| `migrate [--local]` | Applies the package migrations to `CMS_DB` (after an update). They only add tables / columns |
+| `check [--site <site>]` | What the build checks (config + content), plus: the bindings exist and point only at `<site>-*`, migrations are wired, rate limits are there, the package comes from a release URL |
+| `export --out <dir> [--local]` | D1 rows (drafts, audit, people) → `<site>-cms.sql` + `<site>-cms.counts.json` (rows per table, migrations). Keep it private: it holds password hashes. R2 is counted, not copied (copy objects with the bucket's own S3 keys) |
+| `import --file <sql> [--local]` | Into a set-up, **empty** CMS database with the same migrations; compares the rows table by table |
+| `update [version]` | Points `package.json` at that release (default: the latest), runs `npm install`, prints the CHANGELOG's "Site action" of every version in between. Nothing is written if the release does not exist |
+| `reset-owner-password [--username <name>]` | The owner forgot their password: a temporary one, shown once; they must change it at the next sign-in, every session is signed out, one audit row |
+
+Moving a site to another Cloudflare account, in this order (the ids in `wrangler.jsonc` point at the account `setup`
+last ran on): `export --out backup` (old account) → `setup --site <site> --account <new>` →
+`import --file backup/<site>-cms.sql --account <new>` → copy R2 → secrets → deploy (docs/DESIGN.md §E.1b).
 
 ### Cloudflare bindings the adapter adds
 
@@ -156,7 +198,8 @@ needs these bindings / secrets (docs/DESIGN.md §F.1):
 
 Owners manage people on the admin's **People** screen (API: `/api/cms/users`): add someone (their temporary password
 is shown once), change roles, disable / enable, reset a password. New and reset users must choose their own password
-at the first sign-in; anyone can change theirs later on **My account** (click your name).
+at the first sign-in; anyone can change theirs later on **My account** (click your name). An owner who forgot their
+password: `npx vibe-cms reset-owner-password` (a temporary one, shown once).
 
 ## The editor (P7, P8)
 
@@ -202,7 +245,7 @@ public pages.
 
 ```bash
 npm ci
-npm run check    # typecheck + unit tests (incl. the admin on a fake DOM) + pack contents + store on local D1 + API on local D1 with a fake GitHub + sign-in on local D1 / KV / rate limits + build demo + astro check + local smoke + e2e in headless Chrome
+npm run check    # typecheck + unit tests (incl. the admin on a fake DOM) + pack contents + store on local D1 + API on local D1 with a fake GitHub + sign-in on local D1 / KV / rate limits + build demo + astro check + local smoke + e2e in headless Chrome + install from a packed release (CLI)
 ```
 
 `fixtures/demo-site` is an invented salon used by every test — tests never read another site's data. It runs locally

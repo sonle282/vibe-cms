@@ -49,7 +49,7 @@ vibe-cms/
 │  └─ styles/                   # CSS admin (token)
 ├─ migrations/                  # D1 (audit, users, auth_state, draft_index, media_metadata, …)
 ├─ plugins/                     # tuỳ chọn: catalog (kiểm chéo quan hệ), redirects-check
-├─ bin/vibe-cms.mjs             # `setup`, `migrate`, `check`, `export`, `update` (in lệnh / hướng dẫn, không nhập mật khẩu hộ)
+├─ bin/vibe-cms.mjs             # `setup`, `migrate`, `check`, `export` / `import`, `update`, `reset-owner-password` (P11; mã: src/cli; không nhập / in token, secret)
 ├─ fixtures/demo-site/          # site Astro mẫu, nội dung bịa — nền của mọi test
 └─ test/                        # unit + contract + e2e trên fixtures/demo-site
 ```
@@ -368,16 +368,18 @@ GitHub Packages đòi token kể cả với gói public → **không dùng**. Th
 | 3 | Cài gói bằng URL release (§E.0), thêm vào `astro.config`, thêm adapter nếu site static, khai `imageService` | Claude | 1–4 h |
 | 4 | `cms.config.ts` + `data-cms-*` + ô khoá; `vibe-cms check` xanh | Claude | 4–10 h |
 | 5 | `vibe-cms setup --site <site>`: tạo nếu chưa có D1 `<site>-cms`, R2 `<site>-media`, KV `<site>-session`, migration, ghi binding vào `wrangler.jsonc` | SonLe chạy (Claude soạn) | 30 phút |
-| 6 | GitHub: token / app **chỉ cho 1 repo** (contents RW, metadata R, checks R); `wrangler secret put CMS_GITHUB_TOKEN` | SonLe | 15 phút |
+| 6 | GitHub: token / app **chỉ cho 1 repo** (contents RW, metadata R, checks R); `wrangler secret put VIBE_GITHUB_TOKEN` | SonLe | 15 phút |
 | 7 | Secret bootstrap → đăng nhập lần đầu tạo **owner** (1 lần, sau đó khoá) | SonLe | 10 phút |
 | 8 | Owner tạo **editor** ở People (mật khẩu tạm, đổi lần đầu); xoá secret bootstrap | Owner | 5 phút |
 | 9 | Deploy; kiểm production 1 cặp (publish → kiểm → trả lại) + editor sửa ô khoá bị từ chối | Claude + SonLe | 1–2 h |
 
 ### E.1b Bàn giao: chuyển 1 site sang account Cloudflare khác
 
-1. Account mới: `vibe-cms setup --site <site> --account <id>` (idempotent).
-2. **D1:** `wrangler d1 export <site>-cms --remote --output <site>-cms.sql` → `wrangler d1 execute <site>-cms --remote
-   --file <site>-cms.sql` ở account mới; so số dòng từng bảng.
+1. Account cũ: `vibe-cms export --out backup` (P11: chỉ dòng dữ liệu của các bảng `cms_*` + file đếm số dòng / migration;
+   D1 không trả lời truy vấn trong lúc xuất). Làm trước bước 2 vì id trong `wrangler.jsonc` theo account `setup` chạy sau cùng.
+2. Account mới: `vibe-cms setup --site <site> --account <id>` (idempotent; tạo tài nguyên + migration, id đổi theo) →
+   `vibe-cms import --file backup/<site>-cms.sql --account <id>`: chỉ nhập vào D1 rỗng có cùng migration, rồi so số dòng
+   từng bảng với file đếm.
 3. **R2:** chép mọi object `<site>-media` (khoá R2 chỉ đọc bên nguồn, chỉ ghi bên đích); so số object + byte + checksum mẫu.
 4. **KV:** không chuyển (chỉ có phiên) — đăng nhập lại sau. Nháp nằm trong D1 nên đi theo bước 2.
 5. Đặt lại secret; đổi custom domain; kiểm HTML public + 1 cặp publish; xoá tài nguyên cũ chỉ khi chủ cho phép rõ.
@@ -460,7 +462,7 @@ vai trò D1 — đã xét ở P6 Bước 0, không chọn.)
 | Vai trò | Đọc lại từ D1 **mỗi request** → khoá / đổi vai trò có hiệu lực ngay |
 | Chống dò | Rate limit binding `CMS_LOGIN_LIMITER` 10 / 60 s theo (username + IP), và theo người dùng khi đổi mật khẩu (kiểm mật khẩu hiện tại — P6b); publish `CMS_PUBLISH_LIMITER` 20 / 60 s theo người dùng; **bản build production thiếu limiter → 503**; lỗi đăng nhập luôn một câu "Username or password is incorrect."; audit `login` / `login_failed` |
 | Owner đầu tiên | Secret `CMS_BOOTSTRAP_USERNAME` + `CMS_BOOTSTRAP_PASSWORD` (so mật khẩu thời gian hằng): lần đăng nhập đầu khi chưa có ai → tạo owner, đánh dấu `bootstrap_completed` (dùng 1 lần, kể cả khi bảng users bị xoá sau đó) |
-| Owner quên mật khẩu | P11: lệnh CLI đặt mật khẩu tạm cho owner (không sửa D1 bằng tay) |
+| Owner quên mật khẩu | P11: `npx vibe-cms reset-owner-password [--username]` — mật khẩu tạm 20 ký tự in 1 lần, phải đổi khi đăng nhập, `session_version` + 1 (đăng xuất mọi nơi), audit `user_password_reset` (`{"by":"cli"}`); không sửa D1 bằng tay; owner bị khoá → từ chối |
 | Danh tính dev | Giữ như P5: chỉ `import.meta.env.DEV` + localhost + `VIBE_CMS_DEV_USER` |
 
 ### Bảng users: CMS cũ → Vibe (migration 0004, `cms_users`)
@@ -552,7 +554,7 @@ thay đổi lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tà
 | **P8d** | Trình soạn thảo richText trực quan (§C.6): thanh định dạng; chèn / xoá ảnh trong bài, kéo đổi cỡ giữ tỉ lệ (`width`), alt; dán chỉ giữ chữ; ảnh từ bộ chọn của P10 | sửa bài blog demo có chèn, xoá, đổi cỡ ảnh mà không gõ HTML | test DOM + e2e (kéo đổi cỡ) |
 | **P9** | Bridge trên iframe cùng origin (§D: chạy trong admin, không script trên trang), `data-cms-*` + selector, SECTION_MAP, khung 2 cấp, không render khi gõ | preview demo chọn / hover / focus đúng, HTML public không đổi | test bridge + đo khi gõ |
 | **P10** | Ảnh: upload R2 staging, sheet chọn ảnh, alt (§C.5) | đổi ảnh demo + publish | test upload pipeline |
-| **P11** | CLI `setup` (idempotent, `--account`) / `migrate` / `check` / `export` / `update` / `reset-owner-password` (đặt mật khẩu tạm cho owner quên mật khẩu, không sửa D1 tay) + tài liệu cài | cài demo từ đầu theo tài liệu **bằng URL release, không token**; `setup` lần 2 = không đổi gì; `update` đổi URL sang bản mới | chạy local (miniflare); xuất / nhập D1 demo khớp số dòng |
+| **P11** | CLI `setup` (idempotent, `--account`) / `migrate` / `check` / `export` + `import` / `update` / `reset-owner-password` (đặt mật khẩu tạm cho owner quên mật khẩu, không sửa D1 tay) + tài liệu cài | cài demo từ đầu theo tài liệu **bằng URL release, không token**; `setup` lần 2 = không đổi gì; `update` đổi URL sang bản mới | chạy local (miniflare); xuất / nhập D1 demo khớp số dòng |
 | P12–P15 | Site pilot 1: tách nội dung → JSON; adapter cho route gói; cài gói + config + ô khoá; setup + kiểm production | **P15: Workers Builds của site build xanh không có biến môi trường token nào** (gói cài từ URL release) + 1 cặp publish + **lưu và đọc lại 1 nháp > 100 KB trên D1 THẬT** | so HTML public; Workers Builds log |
 | P16–P18 | Site 2: như trên | như P15 | như P15 |
 | P19 | Plugin catalog + redirects-check | test plugin trên fixture catalog nhỏ | test plugin |
