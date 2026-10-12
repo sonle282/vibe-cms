@@ -3,7 +3,7 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## 0.20.0 — unreleased (U1–U4: the Mr Spa CMS design system)
+## 0.20.0 — 2026-10-12 (U1–U4: the Mr Spa CMS design system)
 
 - **The Mr Spa CMS screens** (U4):
   - **Pages**: one row per page — its name, its address on the website, Live / Draft saved — with "Find a page" and
