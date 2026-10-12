@@ -136,7 +136,7 @@ All problems are listed at once, each with its place and a fix; warnings are pri
 | Paths | relative, `/` separators, no `..`, not absolute, inside `src/data/` or `src/content/` (add more with `contentDirs`); one entry per path; files are `.json` — **YAML is not supported**; `preview` starts with `/` and its `{placeholders}` are fields of the entry |
 | Collections | `store.kind` is `"json-array"` (needs `path` to a `.json` file + `idField`) or `"markdown-dir"` (needs `dir` + `slugField`); the id field, if declared, is text; `order.by` is a field; `status.live` ≠ `status.draft` and both are options of a `status` select; `fixed` is true / false; `icon` (its place on the admin rail) is one of `list` (default), `box`, `grid`, `pencil`, `image`, `calendar`, `star`, `tag`, `users`, `file`; `access` (files too) only `"owner"` |
 | Every field | known type; `label` required; no unknown options; `required` is true / false; `locked` only `"owner"` |
-| Per type | `text.maxLength` ≥ 1; `select.options` non-empty and unique; `list.of` required (checked too), `min` ≤ `max`, `fixed` true / false (with `min` / `max` = warning); `object.fields` non-empty; `reference.to` names an existing collection (`ordered` without `multiple` = warning); `hours` takes no options; object / list nesting at most **4** levels |
+| Per type | `text.maxLength` ≥ 1; `select.options` non-empty and unique; `list.of` required (checked too), `min` ≤ `max`, `fixed` true / false (with `min` / `max` = warning); `object.fields` non-empty; `reference.to` names an existing collection (`ordered` without `multiple` = warning); `hours` takes no options; object / list nesting at most **8** levels |
 | Content | every declared file / folder exists and parses (JSON; Markdown front matter); json-array files hold a list of records with unique ids; each value matches its field — text is a string (`maxLength`), select is one of the options, hours rows are `{ days: [0–6], open: "HH:MM", close: "HH:MM" }` or `{ days, closed: true }` (each day once, close after open), lists respect `min` / `max`, references point to existing ids, images are a path or `{ src, alt }`; missing **required** values are errors; properties the config does not declare are **warnings** |
 
 Example — a real build of the demo site with a price written as a number, an unknown category and an extra property
@@ -225,6 +225,13 @@ with addresses as on any site; the API turns them into names on save and back on
 and the files hold names. An upload is named by where it is committed, from `root`: `uploads/2026/10/chair-1a2b3c4d`.
 The library lists the manifest (`exclude` hides logos and the like). The build and every save refuse a name that is
 neither in the manifest nor an upload.
+
+## Numbers and ids made from a name (P16a)
+
+```ts
+priority: f.number({ label: "Order", integer: true, min: 1, max: 99 }),   // a JSON number
+id: f.text({ label: "ID", from: "name", pattern: "[a-z0-9]+(?:-[a-z0-9]+)*" }),  // made from "name" while the item is new
+```
 
 ## History (P12c)
 

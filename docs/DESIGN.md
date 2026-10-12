@@ -334,6 +334,9 @@ nên Ctrl+Z / Ctrl+Y vẫn chạy, dán chỉ giữ chữ), thêm phần ảnh m
   (mọi phần tử list), `pair[1]` (chỗ của tuple)); khi lưu nháp, lựa chọn tính từ **nháp** (thêm 1 dòng menu rồi trỏ tới
   ngay được). Admin: ô chọn (nhóm theo `group`), giá trị không còn trong danh sách được giữ + ghi "(not in the list)";
   review hiện tên dòng thay vì id. `toggle` = true / false; bỏ tick 1 giá trị chưa từng có → bỏ hẳn key (JSON không đổi).
+- **P16a — `f.number` + text `from`:** `number` = số JSON (`integer`, `min`, `max`; ô số; xoá trống = bỏ key). `from` = id của 1
+  phần tử mới được tạo từ field cùng object khi đang gõ tên (slug, thêm `-2` nếu trùng trong list); gõ vào id thì thôi
+  theo; id đã có không bao giờ đổi (giá ở chỗ khác trỏ tới nó). Tìm ra khi viết cms.config cho Innovate (P16).
 - **P12h — ảnh theo tên (`media.names`):** nội dung giữ **tên** trong manifest của site (`"nails/nails-01"`), build của
   site tạo các kích thước. Admin vẫn làm việc với địa chỉ: API đổi tên → địa chỉ khi đọc (cỡ lớn nhất ≤ `width`, mẫu
   `url` = `"{path}-{width}.webp"`; ảnh upload chưa build → tìm file trong R2) và địa chỉ → tên khi lưu (mọi cỡ của 1 ảnh,

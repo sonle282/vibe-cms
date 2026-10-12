@@ -430,7 +430,9 @@ try {
   check("published post: front matter + body", /title: Welcome!/.test(published["src/content/posts/welcome.md"]) && published["src/content/posts/welcome.md"].endsWith(postBody));
   check("P8d: the image in the post body is in the same commit", github.bytes(`public${postImageSrc}`)?.subarray(8, 12).toString("latin1") === "WEBP");
   check("commit message names the owner's internal id, no email", /usr_[a-z2-7]{16}/.test(github.commit().message) && !github.commit().message.includes("@"));
-  check("after publishing: 'Publishing…' until the site serves it; no drafts left", /Publishing… started/.test(await page.locator(".vc-live").innerText()) && await page.locator(".vc-badge").isHidden());
+  // The line and the count follow the publish answer and the drafts reload: wait for them (a slow machine draws later).
+  const publishedShown = await page.waitForFunction(() => /Publishing… started/.test(document.querySelector(".vc-live")?.textContent ?? "") && (document.querySelector(".vc-badge")?.hidden ?? true), null, { timeout: 10_000 }).then(() => true, () => false);
+  check("after publishing: 'Publishing…' until the site serves it; no drafts left", publishedShown, { live: await page.locator(".vc-live").innerText().catch(() => null), badge: await page.locator(".vc-badge").textContent().catch(() => null) });
 
   // ---------------------------------------------------------------- P12c: History of the salon info (owner), from the fake GitHub's commits
   await open("#/files/site");

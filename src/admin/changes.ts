@@ -82,6 +82,7 @@ export const summarizeChanges = ({ fields, before, after, references = {}, newRe
       case "text": case "select": return short(String(value));
       case "pick": return short(typeof value === "string" ? choiceLabels?.[value] ?? value : String(value));
       case "toggle": return value === true ? "Yes" : value === false ? "No" : "";
+      case "number": return typeof value === "number" ? String(value) : short(String(value));
       case "richText": return short(plainText(String(value)));
       case "image": return typeof value === "string" ? value : isRecord(value) ? String(value.src ?? "") : "";
       case "hours": return formatHours(value);

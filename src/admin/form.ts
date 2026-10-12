@@ -12,7 +12,7 @@ import type { Field, ImageField, ListField, ReferenceField, Section } from "../c
 import type { Role } from "../locks/index.js";
 import { clear, h, icon, uid, type Child } from "./dom.js";
 import { createRichEditor, type RichEditor, type RichEditorOptions } from "./rich-editor.js";
-import { clone, emptyValue, getAt, holdsLockedValue, isRecord, keyPath, pathText, setAt, type Path } from "./value.js";
+import { clone, emptyValue, getAt, holdsLockedValue, isRecord, keyPath, pathText, setAt, slugify, type Path } from "./value.js";
 import { pickPlace, type PickChoices } from "../check/picks.js";
 
 export type ReferenceOption = { id: string; label: string };
@@ -72,7 +72,26 @@ export const createForm = (options: FormOptions): Form => {
   /** path text → the field's wrapper, error line and a way to show a new value. */
   const registry = new Map<string, { wrapper: HTMLElement; error: HTMLElement; inputs: () => HTMLElement[]; show?: (value: unknown) => void }>();
   const changed = (path: Path) => options.onChange?.(clone(state), path);
-  const set = (path: Path, value: unknown) => { setAt(state, path, value); changed(path); };
+  // P16a: ids made from a name while the item is new — by the source field's place, what to fill and whether it still follows.
+  const following = new Map<string, { target: Path; show: (value: unknown) => void; on: boolean }>();
+  const set = (path: Path, value: unknown) => {
+    setAt(state, path, value);
+    changed(path);
+    const follow = following.get(pathText(path));
+    if (follow?.on && typeof value === "string") {
+      // Unique among the other items of the same list ("classic-manicure-2").
+      const key = follow.target[follow.target.length - 1];
+      const list = getAt(state, follow.target.slice(0, -2));
+      const index = follow.target[follow.target.length - 2];
+      const taken = new Set(Array.isArray(list) ? list.filter((_, other) => other !== index).map((item) => (isRecord(item) ? item[String(key)] : undefined)).filter((id): id is string => typeof id === "string" && id !== "") : []);
+      const base = slugify(value);
+      let id = base; let suffix = 2;
+      while (base && taken.has(id)) { id = `${base}-${suffix}`; suffix += 1; }
+      setAt(state, follow.target, id || undefined);
+      follow.show(id);
+      changed(follow.target);
+    }
+  };
 
   // ---------------------------------------------------------------- shared pieces
 
@@ -141,8 +160,11 @@ export const createForm = (options: FormOptions): Form => {
     const counter = max ? h(doc, "span", { class: "vc-counter", "aria-live": "polite" }) : null;
     const count = () => { if (counter && max) { counter.textContent = `${input.value.length} / ${max}`; counter.classList.toggle("vc-over", input.value.length > max); } };
     count();
-    input.addEventListener("input", () => { count(); set(path, input.value === "" && wasAbsent ? undefined : input.value); });
     const show = (value: unknown) => { input.value = typeof value === "string" ? value : ""; count(); };
+    // P16a: while this id is empty (a new item), it follows the field it is made from; typing in it stops that.
+    const follow = field.from && !input.value ? { target: path, show, on: true } : undefined;
+    if (follow && field.from) following.set(pathText([...path.slice(0, -1), ...keyPath(field.from)]), follow);
+    input.addEventListener("input", () => { if (follow) follow.on = false; count(); set(path, input.value === "" && wasAbsent ? undefined : input.value); });
     return { control: counter ? h(doc, "div", { class: "vc-with-counter" }, input, counter) : input, id, show };
   };
 
@@ -179,6 +201,16 @@ export const createForm = (options: FormOptions): Form => {
     select.value = typeof current === "string" ? current : "";
     select.addEventListener("change", () => set(path, select.value === "" && wasAbsent ? undefined : select.value));
     return { control: select, id, show: (value: unknown) => { select.value = typeof value === "string" ? value : ""; } };
+  };
+
+  // P16a: number — a number input; empty = no value (left out).
+  const numberInput = (field: Extract<Field, { type: "number" }>, path: Path, disabled: boolean) => {
+    const id = uid("f");
+    const current = getAt(state, path);
+    const input = h(doc, "input", { id, type: "number", class: "vc-input vc-number", disabled, inputmode: field.integer ? "numeric" : "decimal", step: field.integer ? "1" : "any", ...(field.min !== undefined ? { min: String(field.min) } : {}), ...(field.max !== undefined ? { max: String(field.max) } : {}) });
+    input.value = typeof current === "number" ? String(current) : current === undefined || current === null ? "" : String(current);
+    input.addEventListener("input", () => { const text = input.value.trim(); set(path, text === "" ? undefined : Number.isFinite(Number(text)) ? Number(text) : text); });
+    return { control: input, id, show: (value: unknown) => { input.value = typeof value === "number" ? String(value) : ""; } };
   };
 
   // P12g: toggle — a checkbox; unticking a value that was never set leaves it out again.
@@ -482,6 +514,10 @@ export const createForm = (options: FormOptions): Form => {
       }
       case "pick": {
         const { control, id, show } = pickInput(field, path, disabled);
+        return wrap({ ...common, group: false, control, inputId: id, show });
+      }
+      case "number": {
+        const { control, id, show } = numberInput(field, path, disabled);
         return wrap({ ...common, group: false, control, inputId: id, show });
       }
       case "toggle": {
