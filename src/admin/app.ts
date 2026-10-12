@@ -285,6 +285,7 @@ export const startAdmin = (options: AdminOptions) => {
       if (field.type === "reference") out.add(field.to);
       else if (field.type === "object") Object.values(field.fields).forEach(walk);
       else if (field.type === "list") walk(field.of);
+      else if (field.type === "tuple") field.items.forEach(walk);
     };
     Object.values(fields).forEach(walk);
     return out;
@@ -320,6 +321,7 @@ export const startAdmin = (options: AdminOptions) => {
     for (let length = 1; length <= path.length; length += 1) {
       const step = path[length - 1];
       const found = fieldAt(fields, path.slice(0, length));
+      if (typeof step === "number" && fieldAt(fields, path.slice(0, length - 1))?.field.type === "tuple") { const place = (fieldAt(fields, path.slice(0, length - 1))!.field as Extract<Field, { type: "tuple" }>).items[step]; if (place) labels.push(place.label); continue; }
       if (typeof step === "number") { const list = fieldAt(fields, path.slice(0, length - 1))?.field; labels.push(`${list?.type === "list" ? list.itemLabel ?? "Item" : "Item"} ${step + 1}`); continue; }
       if (found && !found.rest.length && found.field.label && labels[labels.length - 1] !== found.field.label) labels.push(found.field.label);
     }

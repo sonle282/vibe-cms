@@ -4,6 +4,7 @@
  * and says how to fix it. Warnings never stop the build.
  */
 import { FIELD_TYPES, type CmsConfig } from "./index.js";
+import { RICH_TEXT_TAGS } from "../check/rich-text-allow.js";
 
 export type Problem = { path: string; message: string; hint?: string };
 export type CheckResult = { errors: Problem[]; warnings: Problem[] };
@@ -38,14 +39,15 @@ const GITHUB_REPO = /^[A-Za-z0-9._-]{1,100}$/;
 
 const BASE_OPTIONS = ["type", "label", "help", "required", "locked", "bind"];
 const FIELD_OPTIONS: Record<string, string[]> = {
-  text: ["maxLength", "multiline"],
-  richText: [],
+  text: ["maxLength", "multiline", "pattern", "patternHint", "tokens"],
+  richText: ["allow"],
   image: ["alt", "mobile"],
   select: ["options"],
   hours: [],
   object: ["fields"],
   list: ["of", "ordered", "min", "max", "itemLabel", "fixed"],
   reference: ["to", "multiple", "ordered"],
+  tuple: ["items"],
 };
 const TOP_LEVEL = ["configVersion", "site", "repo", "roles", "contentDirs", "files", "collections", "media"];
 
@@ -80,6 +82,10 @@ const warn = (context: Context, path: string, message: string, hint?: string) =>
 const checkBoolean = (context: Context, field: Record<string, unknown>, name: string, at: string) => {
   if (field[name] !== undefined && typeof field[name] !== "boolean") err(context, `${at}.${name}`, `must be true or false (got ${show(field[name])})`);
 };
+/** P12d: rules = the site's own check, a function (value, content) => problems. */
+const checkRules = (context: Context, entry: Record<string, unknown>, at: string) => {
+  if (entry.rules !== undefined && typeof entry.rules !== "function") err(context, `${at}.rules`, "must be a function (value, content) => problems", "rules: (value) => value.a && value.b ? [] : [{ path: \"a\", message: \"…\" }]");
+};
 /** P12b: access: "owner" — the whole file / collection is for owners only. */
 const checkAccess = (context: Context, entry: Record<string, unknown>, at: string) => {
   if (entry.access !== undefined && entry.access !== "owner") err(context, `${at}.access`, `only "owner" is allowed (got ${show(entry.access)})`, 'write access: "owner" or remove it');
@@ -105,6 +111,21 @@ export const checkField = (context: Context, field: unknown, at: string, depth: 
     case "text":
       checkCount(context, field, "maxLength", at, 1);
       checkBoolean(context, field, "multiline", at);
+      if (field.pattern !== undefined) {
+        if (typeof field.pattern !== "string" || !field.pattern) err(context, `${at}.pattern`, "must be a regular expression as text", 'e.g. pattern: "\\\\d{2}:\\\\d{2}" (a time like 09:30)');
+        else { try { new RegExp(field.pattern, "u"); } catch (error) { err(context, `${at}.pattern`, `is not a valid regular expression: ${(error as Error).message}`); } }
+      }
+      if (field.patternHint !== undefined && (!filled(field.patternHint) || field.pattern === undefined)) err(context, `${at}.patternHint`, field.pattern === undefined ? "needs a pattern" : "must be non-empty text", 'e.g. patternHint: "a time like 09:30"');
+      if (field.tokens !== undefined) {
+        if (!Array.isArray(field.tokens) || !field.tokens.length) err(context, `${at}.tokens`, "must be a non-empty list of words", 'e.g. tokens: ["phone", "city"]');
+        else field.tokens.forEach((token, index) => { if (typeof token !== "string" || !/^[A-Za-z][A-Za-z0-9_]*$/.test(token)) err(context, `${at}.tokens[${index}]`, `must be a word (letters, digits, _), got ${show(token)}`, "write it without the braces: phone, not {phone}"); });
+      }
+      break;
+    case "richText":
+      if (field.allow !== undefined) {
+        if (!Array.isArray(field.allow)) err(context, `${at}.allow`, "must be a list of tags", 'e.g. allow: ["em", "br"]');
+        else field.allow.forEach((tag, index) => { if (typeof tag !== "string" || !RICH_TEXT_TAGS.includes(tag)) err(context, `${at}.allow[${index}]`, `${show(tag)} is not a rich-text tag the CMS keeps`, `use some of ${RICH_TEXT_TAGS.join(", ")}`); });
+      }
       break;
     case "image":
       checkBoolean(context, field, "alt", at);
@@ -133,6 +154,11 @@ export const checkField = (context: Context, field: unknown, at: string, depth: 
       checkCount(context, field, "max", at, 1);
       if (Number.isInteger(field.min) && Number.isInteger(field.max) && (field.min as number) > (field.max as number)) err(context, `${at}.min`, `is bigger than max (${field.min} > ${field.max})`);
       if (field.itemLabel !== undefined && !filled(field.itemLabel)) err(context, `${at}.itemLabel`, "must be non-empty text", 'e.g. itemLabel: "Extra"');
+      break;
+    case "tuple":
+      if (depth > MAX_DEPTH) { err(context, at, `nested too deep (more than ${MAX_DEPTH} levels of object / list)`, "flatten it or move part of it into a collection with a reference"); break; }
+      if (!Array.isArray(field.items) || field.items.length < 2) { err(context, `${at}.items`, "required — at least two fields, one per place", 'e.g. f.tuple([f.text({ label: "Service" }), f.text({ label: "Price" })], { label: "Service and price" })'); break; }
+      field.items.forEach((item, index) => checkField(context, item, `${at}.items[${index}]`, depth + 1));
       break;
     case "reference":
       if (!filled(field.to)) err(context, `${at}.to`, "required — the key of the collection it points to", 'e.g. to: "services"');
@@ -246,7 +272,8 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     config.files.forEach((entry, index) => {
       const at = `files[${index}]`;
       if (!isRecord(entry)) { err(context, at, "must be an object", '{ key, label, path, format: "json", fields }'); return; }
-      for (const key of Object.keys(entry)) if (!["key", "label", "path", "format", "preview", "sections", "access", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, path, format, preview, sections, access, fields");
+      for (const key of Object.keys(entry)) if (!["key", "label", "path", "format", "preview", "sections", "access", "rules", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, path, format, preview, sections, access, rules, fields");
+      checkRules(context, entry, at);
       checkAccess(context, entry, at);
       if (!filled(entry.key)) err(context, `${at}.key`, "required — a short id", 'e.g. "site"');
       else if (!RESOURCE_KEY.test(entry.key)) err(context, `${at}.key`, `${show(entry.key)} is not a valid key`, 'lowercase letters, digits and "-", starting with a letter');
@@ -266,7 +293,8 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     collections.forEach((entry, index) => {
       const at = `collections[${index}]`;
       if (!isRecord(entry)) { err(context, at, "must be an object", "{ key, label, itemLabel, store, fields }"); return; }
-      for (const key of Object.keys(entry)) if (!["key", "label", "itemLabel", "store", "status", "preview", "order", "access", "fixed", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, itemLabel, store, status, preview, order, access, fixed, fields");
+      for (const key of Object.keys(entry)) if (!["key", "label", "itemLabel", "store", "status", "preview", "order", "access", "fixed", "rules", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, itemLabel, store, status, preview, order, access, fixed, rules, fields");
+      checkRules(context, entry, at);
       checkAccess(context, entry, at);
       checkBoolean(context, entry, "fixed", at);
       if (!filled(entry.key)) err(context, `${at}.key`, "required — a short id", 'e.g. "services"');

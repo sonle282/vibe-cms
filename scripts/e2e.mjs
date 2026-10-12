@@ -180,6 +180,11 @@ try {
   await open("#/collections/services/items/spa-pedicure");
   check("record id is shown but fixed", await input("id").isDisabled());
   await input("name").fill("Spa Pedicure Deluxe");
+  // P12d: the demo's own rule (cms.config.ts `rules`) runs in the built Worker: a price without "$" is refused, with its message.
+  await input("price").fill("40");
+  await page.getByRole("button", { name: "Save draft" }).click();
+  const ruleShown = await page.waitForFunction(() => /a price starts with \$/.test(document.querySelector(".vc-form")?.textContent ?? ""), null, { timeout: 10_000 }).then(() => true, () => false);
+  check("rules: the site's own rule refuses a price without $ (in the Worker), next to the field", ruleShown && /a price starts with \$/.test(await field("price").innerText()), await field("price").innerText());
   await input("price").fill("$40");
   await input("category").selectOption("Nails");
   await button("extras", "Move Extra 2 up").click();

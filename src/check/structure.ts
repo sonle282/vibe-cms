@@ -14,6 +14,7 @@ const idOf = (item: unknown) => (isRecord(item) && typeof item.id === "string" &
 const compareField = (out: Problem[], field: Field, before: unknown, after: unknown, path: string) => {
   if (before === undefined) return;
   if (field.type === "object") { compareTree(out, toTree(field.fields), record(before), record(after), path); return; }
+  if (field.type === "tuple") { field.items.forEach((item, index) => compareField(out, item, Array.isArray(before) ? before[index] : undefined, Array.isArray(after) ? after[index] : undefined, `${path}[${index}]`)); return; }
   if (field.type !== "list") return;
   const old = Array.isArray(before) ? before : [];
   const next = Array.isArray(after) ? after : [];

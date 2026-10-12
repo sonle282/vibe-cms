@@ -30,6 +30,8 @@ export type RichEditorOptions = {
   pickImage?: (current: string, done: (image: PickedImage) => void) => void;
   /** Tests: how the Markdown converter is loaded (dynamic import by default). */
   loadMarkdown?: () => Promise<MarkdownModule>;
+  /** P12d: the tags this field may hold; tools that need other tags are not shown. */
+  allow?: readonly string[];
 };
 
 export type RichEditor = {
@@ -77,13 +79,13 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
   const inert = (html: string) => {
     const box = doc.implementation.createHTMLDocument("").createElement("div");
     box.innerHTML = html;
-    return cleanRichDom(box, { markdown });
+    return cleanRichDom(box, { markdown, allow: options.allow });
   };
   const toHtml = (value: string) => (markdown && md ? md.markdownToHtml(value) : value);
 
   const serialize = () => {
     const copy = area.cloneNode(true) as HTMLElement;
-    normalizeBlocks(cleanRichDom(copy, { markdown }), { wrapLoose: markdown || paragraphs });
+    normalizeBlocks(cleanRichDom(copy, { markdown, allow: options.allow }), { wrapLoose: (markdown || paragraphs) && (!options.allow || options.allow.includes("p")) });
     if (isEmptyRich(copy)) return "";
     if (markdown) return md && style ? md.htmlToMarkdown(copy, style) : current;
     return copy.innerHTML;
@@ -153,6 +155,9 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
   const block = (tag: string) => () => exec("formatBlock", `<${tag}>`);
   const bold = tool("bold", "B", "Bold", () => exec("bold"), { "aria-pressed": "false" });
   const italic = tool("italic", "I", "Italic", () => exec("italic"), { "aria-pressed": "false" });
+  /** P12d: the tags each tool writes — a tool is shown only when the field allows all of them. */
+  const NEEDS: Record<string, string[]> = { paragraph: ["p"], heading: ["h2"], subheading: ["h3"], bold: ["strong"], italic: ["em"], bullets: ["ul", "li"], numbers: ["ol", "li"], quote: ["blockquote"], link: ["a"], unlink: ["a"], image: ["img"] };
+  const allowed = (button: HTMLButtonElement) => !options.allow || (NEEDS[button.dataset.command ?? ""] ?? []).every((tag) => options.allow!.includes(tag));
   const formatting = [
     tool("paragraph", "¶", "Paragraph", block("p")),
     tool("heading", "H2", "Heading", block("h2")),
@@ -164,7 +169,7 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
     tool("link", "Link", "Add a link", () => openLink()),
     tool("unlink", "Unlink", "Remove the link", () => exec("unlink")),
     ...(options.pickImage ? [tool("image", "Image", "Insert an image", () => insertImage())] : []),
-  ];
+  ].filter(allowed);
   const toggle = h(doc, "button", { type: "button", class: "vc-tool vc-tool-source", "aria-pressed": "false", disabled, onclick: () => (mode === "source" ? toVisual() : toSource()) }, `Edit ${sourceName}`);
   const toolbar = h(doc, "div", { class: "vc-rich-toolbar", role: "toolbar", "aria-label": `${label}: formatting`, "aria-controls": id }, ...formatting, h(doc, "span", { class: "vc-tool-gap" }), toggle);
 

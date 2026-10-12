@@ -44,7 +44,7 @@ export const isBlank = (value: unknown): boolean => {
 const sameLocked = (a: unknown, b: unknown) => (isBlank(a) && isBlank(b)) || sameValue(a, b);
 
 const hasLocks = (field: Field): boolean =>
-  field.locked === "owner" || (field.type === "object" && Object.values(field.fields).some(hasLocks)) || (field.type === "list" && hasLocks(field.of));
+  field.locked === "owner" || (field.type === "object" && Object.values(field.fields).some(hasLocks)) || (field.type === "list" && hasLocks(field.of)) || (field.type === "tuple" && field.items.some(hasLocks));
 const treeHasLocks = (tree: FieldTree): boolean => [...tree.values()].some((node) => (node instanceof Map ? treeHasLocks(node) : hasLocks(node)));
 
 type Found = { path: string; labels: string[]; label: string };
@@ -65,6 +65,7 @@ const filledField = (field: Field, value: unknown, path: string, labels: string[
   if (field.locked === "owner") { if (!isBlank(value)) out.push({ path, labels, label: field.label }); return; }
   if (field.type === "object" && isRecord(value)) filledTree(toTree(field.fields), value, path, labels, out);
   if (field.type === "list" && Array.isArray(value)) value.forEach((item, index) => filledField(field.of, item, `${path}[${index}]`, labels, out));
+  if (field.type === "tuple" && Array.isArray(value)) field.items.forEach((item, index) => filledField(item, value[index], `${path}[${index}]`, [...labels, item.label], out));
 };
 const collect = (field: Field, value: unknown, path: string, labels: string[]) => { const out: Found[] = []; filledField(field, value, path, labels, out); return out; };
 const filledTree = (tree: FieldTree, value: Record<string, unknown> | undefined, path: string, labels: string[], out: Found[]) => {
@@ -88,6 +89,7 @@ const compareField = (ctx: Ctx, field: Field, before: unknown, after: unknown, p
   if (field.locked === "owner") { if (!sameLocked(before, after)) violation(ctx, { path, labels, label: field.label }, "changed"); return; }
   if (!hasLocks(field)) return;
   if (field.type === "object") compareTree(ctx, toTree(field.fields), isRecord(before) ? before : undefined, isRecord(after) ? after : undefined, path, labels);
+  else if (field.type === "tuple") field.items.forEach((item, index) => compareField(ctx, item, Array.isArray(before) ? before[index] : undefined, Array.isArray(after) ? after[index] : undefined, `${path}[${index}]`, [...labels, item.label]));
   else if (field.type === "list") compareList(ctx, field.of, Array.isArray(before) ? before : [], Array.isArray(after) ? after : [], path, labels, field.itemLabel ? article(field.itemLabel) : `an item of ${field.label}`);
 };
 

@@ -108,6 +108,7 @@ export const holdsLockedValue = (field: Field, value: unknown): boolean => {
   if (field.locked) return !blank(value);
   if (field.type === "object" && isRecord(value)) return Object.entries(field.fields).some(([key, child]) => holdsLockedValue(child, getAt(value, keyPath(key))));
   if (field.type === "list" && Array.isArray(value)) return value.some((item) => holdsLockedValue(field.of, item));
+  if (field.type === "tuple" && Array.isArray(value)) return field.items.some((item, index) => holdsLockedValue(item, value[index]));
   return false;
 };
 
@@ -116,6 +117,7 @@ export const emptyValue = (field: Field): unknown => {
   switch (field.type) {
     case "object": return {};
     case "list": case "hours": return [];
+    case "tuple": return field.items.map(emptyValue);
     case "reference": return field.multiple ? [] : "";
     default: return "";
   }

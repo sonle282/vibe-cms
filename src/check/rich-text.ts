@@ -28,6 +28,15 @@ export const RICH_TEXT_SCHEMA: Schema = {
   clobber: [],
   clobberPrefix: "",
 };
+/** P12d: a field's own allow-list (a part of RICH_TEXT_TAGS) — same rules, fewer tags. One schema per list. */
+const schemas = new Map<string, Schema>();
+export const schemaFor = (allow?: readonly string[]): Schema => {
+  if (!allow) return RICH_TEXT_SCHEMA;
+  const key = [...allow].sort().join(",");
+  let schema = schemas.get(key);
+  if (!schema) { schema = { ...RICH_TEXT_SCHEMA, tagNames: RICH_TEXT_TAGS.filter((tag) => allow.includes(tag)) }; schemas.set(key, schema); }
+  return schema;
+};
 /** Largest rich-text value (characters), as on the first site. */
 export const RICH_TEXT_MAX_CHARS = 250_000;
 
@@ -62,10 +71,10 @@ const UNFINISHED_TAG = /<[A-Za-z!/?][^>]*$/;
  * Clean one HTML string. `changed`: the stored value differs from the input; `removed`: what was unsafe (empty when only
  * the formatting changed, e.g. "<BR/>" → "<br>"). With `markdown`, the input is kept unless something unsafe was removed.
  */
-export const sanitizeRichText = (value: string, { markdown = false }: { markdown?: boolean } = {}): CleanResult => {
+export const sanitizeRichText = (value: string, { markdown = false, allow }: { markdown?: boolean; allow?: readonly string[] } = {}): CleanResult => {
   if (!value || !/[<&]/.test(value)) return { html: value, changed: false, removed: [] };
   const tree = fromHtml(value, { fragment: true }) as unknown as HastNode;
-  const clean = sanitize(tree as never, RICH_TEXT_SCHEMA) as unknown as HastNode;
+  const clean = sanitize(tree as never, schemaFor(allow)) as unknown as HastNode;
   const cleaned = toHtml(clean as never, { characterReferences: { useNamedReferences: true } });
   const removed = minus(inventory(tree), inventory(clean)).map((entry) => (entry.includes("[") ? entry : `<${entry}>`));
   if (UNFINISHED_TAG.test(value)) removed.push("an unfinished tag at the end");
@@ -89,17 +98,18 @@ export const sanitizeRecord = ({ fields, record, before, markdownBody = false }:
   const tooLong: string[] = [];
   const at = (base: string, key: string | number) => (typeof key === "number" ? `${base}[${key}]` : /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ? (base ? `${base}.${key}` : key) : `${base}[${JSON.stringify(key)}]`);
   const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
-  const cleanString = (value: string, path: string, markdown = false) => {
+  const cleanString = (value: string, path: string, markdown = false, allow?: readonly string[]) => {
     if (known.has(value)) return value;
     if (value.length > RICH_TEXT_MAX_CHARS) { tooLong.push(path); return value; }
-    const result = sanitizeRichText(value, { markdown });
+    const result = sanitizeRichText(value, { markdown, allow });
     if (result.changed) cleaned.push({ path, removed: result.removed });
     return result.html;
   };
   const visitField = (field: Field, value: unknown, path: string): unknown => {
-    if (field.type === "richText") return typeof value === "string" ? cleanString(value, path) : value;
+    if (field.type === "richText") return typeof value === "string" ? cleanString(value, path, false, field.allow) : value;
     if (field.type === "object" && isRecord(value)) return visitTree(toTree(field.fields), value, path);
     if (field.type === "list" && Array.isArray(value)) return value.map((item, index) => visitField(field.of, item, at(path, index)));
+    if (field.type === "tuple" && Array.isArray(value)) return value.map((item, index) => (field.items[index] ? visitField(field.items[index], item, at(path, index)) : item));
     return value;
   };
   const visitTree = (tree: FieldTree, value: Record<string, unknown>, path: string): Record<string, unknown> => {

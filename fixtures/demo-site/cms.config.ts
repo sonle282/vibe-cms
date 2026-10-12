@@ -48,6 +48,8 @@ export default defineCmsConfig({
       itemLabel: "Service",
       store: { kind: "json-array", path: "src/data/services.json", idField: "id" },
       preview: "/services/",
+      // P12d: the site's own rule (the plugin seam) — runs at build, on save and at publish: a price starts with "$".
+      rules: (service) => (typeof service.price === "string" && service.price && !service.price.startsWith("$") ? [{ path: "price", message: "a price starts with $", hint: "e.g. $25 or $5+" }] : []),
       fields: {
         name: f.text({ label: "Name", required: true }),
         price: f.text({ label: "Price", locked: "owner" }),

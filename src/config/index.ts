@@ -19,8 +19,14 @@ type Base = {
   bind?: string;
 };
 
-export type TextField = Base & { type: "text"; maxLength?: number; multiline?: boolean };
-export type RichTextField = Base & { type: "richText" };
+/**
+ * P12d: `pattern` = a regular expression the whole value must match (in cms.config.ts: "\\d{2}:\\d{2}"), `patternHint` = what to
+ * tell people when it does not ("a time like 09:30"); `tokens` = the {words} the site's code fills in ({phone},
+ * {city}…): only these may appear between braces, and the admin offers them.
+ */
+export type TextField = Base & { type: "text"; maxLength?: number; multiline?: boolean; pattern?: string; patternHint?: string; tokens?: readonly string[] };
+/** P12d: `allow` = the tags this field may hold (a part of the rich-text allow-list, e.g. ["em", "br"]); the toolbar follows. */
+export type RichTextField = Base & { type: "richText"; allow?: readonly string[] };
 export type ImageField = Base & { type: "image"; alt?: boolean; mobile?: boolean };
 export type SelectField = Base & { type: "select"; options: readonly string[] };
 /** Content: [{ days: [1, 2, 3, 4, 5], label?, open: "09:00", close: "19:00" }, { days: [0], closed: true }] (0 = Sunday). */
@@ -29,10 +35,22 @@ export type ObjectField = Base & { type: "object"; fields: Record<string, Field>
 /** P12b: fixed = the site's code owns the shape — nobody (owner included) adds, removes or moves items; values inside stay editable. */
 export type ListField = Base & { type: "list"; of: Field; ordered?: boolean; min?: number; max?: number; itemLabel?: string; fixed?: boolean };
 export type ReferenceField = Base & { type: "reference"; to: string; multiple?: boolean; ordered?: boolean };
+/** P12d: a fixed-length list stored as a JSON array, one field per place — e.g. ["Manicure", "$17"] = [name, price]. */
+export type TupleField = Base & { type: "tuple"; items: Field[] };
 
-export type Field = TextField | RichTextField | ImageField | SelectField | HoursField | ObjectField | ListField | ReferenceField;
+export type Field = TextField | RichTextField | ImageField | SelectField | HoursField | ObjectField | ListField | ReferenceField | TupleField;
 export type FieldType = Field["type"];
-export const FIELD_TYPES: readonly FieldType[] = ["text", "richText", "image", "select", "hours", "object", "list", "reference"];
+export const FIELD_TYPES: readonly FieldType[] = ["text", "richText", "image", "select", "hours", "object", "list", "reference", "tuple"];
+
+/**
+ * P12d: a site's own rule for a file / collection record — the plugin seam: cross-field checks the field types cannot
+ * say (a price that must point at an existing package, one of two fields filled…). Runs at build (content check), when
+ * a draft is saved and again at publish (in the Worker). `content` reads the site's other content as it is live.
+ * Return problems ({ path, message, hint?, warning? }); none = fine. Keep it pure: no network, no clock.
+ */
+export type RuleContext = { file: (key: string) => unknown; items: (key: string) => Array<Record<string, unknown>> };
+export type RuleProblem = { path: string; message: string; hint?: string; warning?: boolean };
+export type ContentRule = (value: Record<string, unknown>, content: RuleContext) => RuleProblem[] | undefined;
 
 export type Section = { key: string; label: string; fields: string[] };
 
@@ -45,6 +63,7 @@ export type CmsFile = {
   preview?: string;
   sections?: Section[];
   access?: Access;
+  rules?: ContentRule;
   fields: Record<string, Field>;
 };
 
@@ -60,6 +79,8 @@ export type CmsCollection = {
   access?: Access;
   /** P12b: no record is added (the site's code expects exactly these); the records stay editable. */
   fixed?: boolean;
+  /** P12d: the site's own check of one record (see ContentRule). */
+  rules?: ContentRule;
   fields: Record<string, Field>;
 };
 
@@ -96,6 +117,8 @@ export const f = {
   object: (options: Options<ObjectField>): ObjectField => ({ type: "object", ...options }),
   list: (of: Field, options: Omit<Options<ListField>, "of">): ListField => ({ type: "list", of, ...options }),
   reference: (options: Options<ReferenceField>): ReferenceField => ({ type: "reference", ...options }),
+  /** f.tuple([f.text({ label: "Service" }), f.text({ label: "Price", locked: "owner" })], { label: "Service and price" }) */
+  tuple: (items: Field[], options: Omit<Options<TupleField>, "items">): TupleField => ({ type: "tuple", items, ...options }),
 };
 
 export { assertCmsConfig, branchProblem, checkCmsConfig, CmsConfigError, countConfig, DEFAULT_CONTENT_DIRS, formatProblem, formatWarnings, MAX_DEPTH, pathProblem } from "./validate.js";

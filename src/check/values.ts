@@ -23,6 +23,15 @@ export const describe = (value: unknown) => {
 export const at = (base: string, key: string) => (/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ? (base ? `${base}.${key}` : key) : `${base}[${JSON.stringify(key)}]`);
 const empty = (value: unknown) => value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+/** P12d: {word} placeholders the site's code fills in. */
+export const TOKEN = /\{([A-Za-z][A-Za-z0-9_]*)\}/g;
+const patterns = new Map<string, RegExp>();
+/** A text field's pattern, matched against the whole value. */
+export const patternOf = (pattern: string) => {
+  let found = patterns.get(pattern);
+  if (!found) { found = new RegExp(`^(?:${pattern})$`, "u"); patterns.set(pattern, found); }
+  return found;
+};
 
 
 export const checkRecord = (ctx: Ctx, record: Record<string, unknown>, tree: Tree, path: string, system: string[] = []) => {
@@ -62,6 +71,9 @@ export const checkValue = (ctx: Ctx, field: Field, value: unknown, path: string)
       if (typeof value !== "string") { add(ctx.errors, path, `expected text, got ${describe(value)}`, typeof value === "number" || typeof value === "boolean" ? `write it in quotes: "${value}"` : "write it as text in quotes"); return; }
       if (field.maxLength && value.length > field.maxLength) add(ctx.errors, path, `is ${value.length} characters, longer than maxLength ${field.maxLength}`, "shorten it or raise maxLength");
       if (!field.multiline && value.includes("\n")) add(ctx.warnings, path, "has a line break but the field is single-line", "remove the line break or set multiline: true");
+      // P12d: the whole value must match the pattern; only the site's own {tokens} may appear between braces.
+      if (field.pattern && !patternOf(field.pattern).test(value)) add(ctx.errors, path, `${describe(value)} is not ${field.patternHint ?? `in the form ${field.pattern}`}`, field.patternHint ? `write ${field.patternHint}` : "change it to match the pattern");
+      if (field.tokens) for (const match of value.matchAll(TOKEN)) if (!field.tokens.includes(match[1])) add(ctx.errors, path, `{${match[1]}} is not filled in by the website`, `use ${field.tokens.map((token) => `{${token}}`).join(", ")}`);
       return;
     case "richText":
       if (typeof value !== "string") add(ctx.errors, path, `expected rich text (a string), got ${describe(value)}`);
@@ -88,6 +100,10 @@ export const checkValue = (ctx: Ctx, field: Field, value: unknown, path: string)
       if (field.min !== undefined && value.length < field.min) add(ctx.errors, path, `has ${value.length} items, fewer than min ${field.min}`);
       if (field.max !== undefined && value.length > field.max) add(ctx.errors, path, `has ${value.length} items, more than max ${field.max}`);
       value.forEach((item, index) => checkValue(ctx, field.of, item, `${path}[${index}]`));
+      return;
+    case "tuple":
+      if (!Array.isArray(value) || value.length !== field.items.length) { add(ctx.errors, path, `expected ${field.items.length} values in a list [${field.items.map((item) => item.label).join(", ")}], got ${describe(value)}${Array.isArray(value) ? ` of ${value.length}` : ""}`); return; }
+      field.items.forEach((item, index) => checkValue(ctx, item, value[index], `${path}[${index}]`));
       return;
     case "reference": {
       const ids = ctx.ids.get(field.to);

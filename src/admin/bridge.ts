@@ -96,6 +96,7 @@ export const fieldAt = (fields: Record<string, Field>, path: Path): { field: Fie
     if (!field) return undefined;
     if (field.type === "object") { set = field.fields; if (index >= path.length) break; continue; }
     if (field.type === "list" && typeof path[index] === "number") { field = field.of; index += 1; if (field.type === "object") set = field.fields; continue; }
+    if (field.type === "tuple" && typeof path[index] === "number" && field.items[path[index] as number]) { field = field.items[path[index] as number]; index += 1; if (field.type === "object") set = field.fields; continue; }
     break;
   }
   return field ? { field, rest: path.slice(index) } : undefined;
