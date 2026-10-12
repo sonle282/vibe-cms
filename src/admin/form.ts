@@ -13,6 +13,7 @@ import type { Role } from "../locks/index.js";
 import { clear, h, icon, uid, type Child } from "./dom.js";
 import { createRichEditor, type RichEditor, type RichEditorOptions } from "./rich-editor.js";
 import { clone, emptyValue, getAt, holdsLockedValue, isRecord, keyPath, pathText, setAt, type Path } from "./value.js";
+import { pickPlace, type PickChoices } from "../check/picks.js";
 
 export type ReferenceOption = { id: string; label: string };
 export type ReferenceTarget = { label: string; itemLabel: string; items: ReferenceOption[] };
@@ -35,6 +36,8 @@ export type FormOptions = {
   pickImage?: (current: string, done: (image: { src: string; width?: number; height?: number }) => void, label?: string) => void;
   /** U3: a short message for the person (a toast), with at most one action (e.g. Undo after replacing an image). */
   notify?: (text: string, action?: { label: string; run: () => void }) => void;
+  /** P12g: the choices of the pick fields, by place ("highlights[].of"), as the server computed them from the content. */
+  choices?: PickChoices;
   /** P8d: top-level keys whose rich text is Markdown (a Markdown record's body); the rest is HTML. */
   markdown?: string[];
   /** P8d tests: how the visual editor loads its Markdown converter. */
@@ -154,6 +157,38 @@ export const createForm = (options: FormOptions): Form => {
     select.value = typeof current === "string" ? current : "";
     select.addEventListener("change", () => set(path, select.value === "" && wasAbsent ? undefined : select.value));
     return { control: select, id, show: (value: unknown) => { select.value = typeof value === "string" ? value : ""; } };
+  };
+
+  // P12g: pick — one of the choices the site lists from this content (grouped); a value no longer listed is kept and says so.
+  const pickInput = (field: Extract<Field, { type: "pick" }>, path: Path, disabled: boolean) => {
+    const id = uid("f");
+    const current = getAt(state, path);
+    const wasAbsent = current === undefined;
+    const place = pickPlace(options.fields, path);
+    const choices = (place && options.choices?.[place]) || [];
+    const select = h(doc, "select", { id, class: "vc-input", disabled });
+    select.append(h(doc, "option", { value: "" }, field.required ? "Choose…" : "— None —"));
+    const groups = new Map<string, HTMLElement>();
+    for (const choice of choices) {
+      const option = h(doc, "option", { value: choice.value }, choice.label);
+      if (!choice.group) { select.append(option); continue; }
+      if (!groups.has(choice.group)) { const group = h(doc, "optgroup", { label: choice.group }); groups.set(choice.group, group); select.append(group); }
+      groups.get(choice.group)!.append(option);
+    }
+    if (typeof current === "string" && current && !choices.some((choice) => choice.value === current)) select.append(h(doc, "option", { value: current }, `${current} (not in the list)`));
+    select.value = typeof current === "string" ? current : "";
+    select.addEventListener("change", () => set(path, select.value === "" && wasAbsent ? undefined : select.value));
+    return { control: select, id, show: (value: unknown) => { select.value = typeof value === "string" ? value : ""; } };
+  };
+
+  // P12g: toggle — a checkbox; unticking a value that was never set leaves it out again.
+  const toggleInput = (field: Extract<Field, { type: "toggle" }>, path: Path, disabled: boolean) => {
+    const id = uid("f");
+    const wasAbsent = getAt(state, path) === undefined;
+    const box = h(doc, "input", { id, type: "checkbox", class: "vc-toggle-box", disabled });
+    box.checked = getAt(state, path) === true;
+    box.addEventListener("change", () => set(path, box.checked ? true : wasAbsent ? undefined : false));
+    return { control: h(doc, "span", { class: "vc-check" }, box, h(doc, "label", { for: id }, field.help ?? "Yes")), id, show: (value: unknown) => { box.checked = value === true; } };
   };
 
   const imageInput = (field: ImageField, path: Path, disabled: boolean) => {
@@ -444,6 +479,14 @@ export const createForm = (options: FormOptions): Form => {
       case "select": {
         const { control, id, show } = selectInput(field, path, disabled);
         return wrap({ ...common, group: false, control, inputId: id, show });
+      }
+      case "pick": {
+        const { control, id, show } = pickInput(field, path, disabled);
+        return wrap({ ...common, group: false, control, inputId: id, show });
+      }
+      case "toggle": {
+        const { control, show } = toggleInput(field, path, disabled);
+        return wrap({ ...common, field: { ...shown, help: undefined }, group: false, control, show });
       }
       case "image": return wrap({ ...common, group: true, control: imageInput(field, path, disabled).control });
       case "hours": return wrap({ ...common, group: true, control: hoursInput(path, disabled).control });

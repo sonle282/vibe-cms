@@ -48,6 +48,8 @@ const FIELD_OPTIONS: Record<string, string[]> = {
   list: ["of", "ordered", "min", "max", "itemLabel", "fixed"],
   reference: ["to", "multiple", "ordered"],
   tuple: ["items"],
+  pick: ["choices"],
+  toggle: [],
 };
 const TOP_LEVEL = ["configVersion", "site", "repo", "roles", "contentDirs", "files", "collections", "media"];
 
@@ -159,6 +161,9 @@ export const checkField = (context: Context, field: unknown, at: string, depth: 
       if (depth > MAX_DEPTH) { err(context, at, `nested too deep (more than ${MAX_DEPTH} levels of object / list)`, "flatten it or move part of it into a collection with a reference"); break; }
       if (!Array.isArray(field.items) || field.items.length < 2) { err(context, `${at}.items`, "required — at least two fields, one per place", 'e.g. f.tuple([f.text({ label: "Service" }), f.text({ label: "Price" })], { label: "Service and price" })'); break; }
       field.items.forEach((item, index) => checkField(context, item, `${at}.items[${index}]`, depth + 1));
+      break;
+    case "pick":
+      if (typeof field.choices !== "function") err(context, `${at}.choices`, "required — a function that lists the choices from the record's content", "e.g. choices: (content) => content.menu.map((line) => ({ value: line.id, label: line.name }))");
       break;
     case "reference":
       if (!filled(field.to)) err(context, `${at}.to`, "required — the key of the collection it points to", 'e.g. to: "services"');

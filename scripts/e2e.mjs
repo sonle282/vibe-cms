@@ -157,6 +157,11 @@ try {
   await input("footerLinks[1].links[0].href").fill("/privacy/");
   await input("seo.title").fill("Demo Salon");
   await input("seo.description").fill("Invented salon.\nSecond line.");
+  // P12g: the banner price points to a package of the same file (pick, choices from the content) + a toggle.
+  check("pick: the choices are the packages of this file, by name and price", assertEqual(await field("fromPrice.of").locator("option").allTextContents(), ["Choose…", "Express visit · $30", "Deluxe visit · $75"]));
+  await input("packages[1].name").fill("Deluxe hour");
+  await field("fromPrice.of").locator("select").selectOption("deluxe");
+  await field("fromPrice.plain").locator("input[type=checkbox]").check();
   const footerShown = await preview.locator("footer section:not([hidden])").evaluateAll((groups) => groups.map((group) => [group.querySelector("h2").textContent, [...group.querySelectorAll("li:not([hidden]) a")].map((a) => `${a.textContent} ${a.getAttribute("href")}`)]));
   check("preview: rich text, image and list items (added, moved, removed) follow the form", assertEqual(footerShown, [["Visit us", ["Blog /blog/", "Team /team/"]], ["Legal", ["Privacy /privacy/"]]]) && (await preview.locator('[data-cms-field="site.hero.text"]').innerHTML()) === "<p>Everything here is <em>invented</em>.</p>" && (await preview.locator("img[data-cms-field]").getAttribute("src")) === "/images/team-sam.svg" && (await preview.locator('[data-cms-field="site.highlights"] li').allTextContents()).join(", ") === "Classic Manicure, Nail Art", footerShown);
   await shot("p9-preview");
@@ -176,6 +181,8 @@ try {
       { title: "Legal", links: [{ label: "Privacy", href: "/privacy/" }] },
     ],
     seo: { title: "Demo Salon", description: "Invented salon.\nSecond line." },
+    packages: [siteBefore.packages[0], { ...siteBefore.packages[1], name: "Deluxe hour" }],
+    fromPrice: { of: "deluxe", plain: true },
   };
   const siteDraft = await api("/api/cms/files/site");
   check("salon info: every field edited in the form is in the saved draft (P5 API)", JSON.stringify(siteDraft.draft?.content) && assertEqual(siteDraft.draft.content, siteExpected), { draft: siteDraft.draft?.content, expected: siteExpected });

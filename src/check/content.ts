@@ -77,6 +77,7 @@ export const checkContent = (config: CmsConfig, root: string): CheckResult => {
     if (data === undefined) return;
     if (!isRecord(data)) { add(ctx.errors, file.path, `expected an object ({ … }), got ${describe(data)}`); return; }
     fileData.set(file.key, data);
+    ctx.root = data; ctx.picks = undefined; // P12g: pick choices come from this record
     checkRecord(ctx, data, toTree(file.fields), file.path);
     unsafeHtml(ctx, file.fields, data, file.path);
   });
@@ -85,6 +86,7 @@ export const checkContent = (config: CmsConfig, root: string): CheckResult => {
     const { collection } = entry;
     const system = [collection.store.kind === "json-array" ? collection.store.idField : collection.store.slugField, ...(collection.status ? [collection.status.field] : []), ...(collection.store.kind === "markdown-dir" ? ["body"] : [])];
     for (const record of entry.records) {
+      ctx.root = isRecord(record.data) ? record.data : undefined; ctx.picks = undefined;
       checkRecord(ctx, record.data, toTree(collection.fields), record.path, system);
       unsafeHtml(ctx, collection.fields, record.data, record.path, collection.store.kind === "markdown-dir");
       if (collection.status && !collection.fields[collection.status.field]) {

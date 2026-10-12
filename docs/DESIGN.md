@@ -328,7 +328,13 @@ nên Ctrl+Z / Ctrl+Y vẫn chạy, dán chỉ giữ chữ), thêm phần ảnh m
   chạy lúc build (`checkContent`), khi lưu nháp và lại khi publish (Worker). `content` đọc nội dung khác **đang live**
   (không gồm các nháp đang publish cùng). Lỗi hiện cạnh field; `warning` không chặn; hàm ném lỗi = 1 lỗi có tên, không sập.
   Hàm sống trong `cms.config.ts` → Worker nhận qua module ảo; boot của admin (JSON) không mang hàm.
-- **Hoãn sang P12g (trước Innovate):** field "chữ hoặc tham chiếu" (giá `{ "of": … }`) và ảnh theo tên trong manifest.
+- **P12g — `f.pick` + `f.toggle`:** `pick` = 1 giá trị chữ chọn trong danh sách do site tính **từ chính nội dung của bản ghi**
+  (`choices: (content) => [{ value, label, group? }]`) — giá gõ 1 lần trong menu, chỗ khác trỏ tới: `{ "of": "packages/x" }`.
+  Hàm chạy ở server (build, lưu, publish, view của editor → `choices` theo **chỗ**: `fromPrice.of`, `highlights[].of`
+  (mọi phần tử list), `pair[1]` (chỗ của tuple)); khi lưu nháp, lựa chọn tính từ **nháp** (thêm 1 dòng menu rồi trỏ tới
+  ngay được). Admin: ô chọn (nhóm theo `group`), giá trị không còn trong danh sách được giữ + ghi "(not in the list)";
+  review hiện tên dòng thay vì id. `toggle` = true / false; bỏ tick 1 giá trị chưa từng có → bỏ hẳn key (JSON không đổi).
+- **P12h (tiếp theo):** ảnh lưu theo tên trong manifest của site + kích thước do build tạo.
 
 ## C.8 History + Restore as draft (P12c)
 

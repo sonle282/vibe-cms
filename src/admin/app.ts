@@ -15,6 +15,7 @@
  * first; nothing is published without the review screen.
  */
 import type { Field } from "../config/index.js";
+import type { PickChoices } from "../check/picks.js";
 import { checkRecordValues } from "../check/values.js";
 import { createClient, humanMessage, type ApiFail, type Client, type Fetch } from "./api.js";
 import type { AdminBoot, BootCollection, BootFile } from "./boot.js";
@@ -76,7 +77,9 @@ const PENDING_KEY = "vibe-cms:publishing";
 
 type Screen = { title: string; crumbs: Array<[string, string?]>; dirty?: () => number; save?: () => Promise<void>; leave?: () => void };
 
-type FileView = { resource: string; label: string; content: unknown; version: string; draft: null | { content: unknown; revision: number; sourceVersion: string; stale: boolean; updatedAt: string } };
+type FileView = { resource: string; label: string; content: unknown; version: string; draft: null | { content: unknown; revision: number; sourceVersion: string; stale: boolean; updatedAt: string }; choices?: PickChoices };
+/** P12g: pick values in plain words in the review ("packages/the-essential-reset" → "The Essential Reset"). */
+const choiceLabelsOf = (choices: PickChoices | undefined) => Object.fromEntries(Object.values(choices ?? {}).flat().map((choice) => [choice.value, choice.label]));
 type ListView = { key: string; label: string; itemLabel: string; items: Array<{ id: string; resource: string; label: string; version: string | null; hasDraft: boolean; isNew?: boolean; image?: string }> };
 type ContentView = { files: Array<{ key: string; label: string; hasDraft: boolean }>; collections: Array<{ key: string; label: string; itemLabel: string; count: number; drafts: number }> };
 
@@ -500,7 +503,7 @@ export const startAdmin = (options: AdminOptions) => {
     };
 
     const form: Form = createForm({
-      doc, fields, sections: input.kind === "file" ? input.file.sections : undefined, value: saved, role: user.role, references, readOnly, pickImage, notify: (text, action) => say(text, "info", action),
+      doc, fields, sections: input.kind === "file" ? input.file.sections : undefined, value: saved, role: user.role, references, readOnly, pickImage, choices: view?.choices, notify: (text, action) => say(text, "info", action),
       markdown: collection?.markdown && !("body" in collection.fields) ? ["body"] : [],
       onChange: (value, path) => {
         if (collection && isNew && path.length === 1 && path[0] === collection.idField && !autoId) idTouched = true;
@@ -619,7 +622,7 @@ export const startAdmin = (options: AdminOptions) => {
       if (publish.disabled || dirty()) return;
       const labels: ReferenceLabels = Object.fromEntries(Object.entries(references).map(([key, target]) => [key, Object.fromEntries(target.items.map((item) => [item.id, item.label]))]));
       const live = view?.content ?? undefined;
-      const changes = summarizeChanges({ fields, before: live, after: saved, references: labels, ...(collection && !live ? { newRecord: { itemLabel: collection.itemLabel, title: titleText() } } : {}) });
+      const changes = summarizeChanges({ fields, before: live, after: saved, references: labels, choiceLabels: choiceLabelsOf(view?.choices), ...(collection && !live ? { newRecord: { itemLabel: collection.itemLabel, title: titleText() } } : {}) });
       openPublishDialog({ resource: resourceOf(), title: titleText(), changes, onFailed: refresh, onDone: () => { dirtyGuard = false; pending = route(); dirtyGuard = true; } });
     };
 
@@ -720,7 +723,7 @@ export const startAdmin = (options: AdminOptions) => {
       const fields = fieldsOfDraft(row);
       const collection = row.kind === "item" ? collectionOf(row.key) : undefined;
       const changes = view.ok && fields && view.data.draft
-        ? summarizeChanges({ fields, before: view.data.content ?? undefined, after: view.data.draft.content, references: labels, ...(collection && row.isNew ? { newRecord: { itemLabel: collection.itemLabel, title: row.label } } : {}) })
+        ? summarizeChanges({ fields, before: view.data.content ?? undefined, after: view.data.draft.content, references: labels, choiceLabels: choiceLabelsOf(view.data.choices), ...(collection && row.isNew ? { newRecord: { itemLabel: collection.itemLabel, title: row.label } } : {}) })
         : [];
       return { row, view, changes };
     });

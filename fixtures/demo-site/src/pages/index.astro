@@ -3,6 +3,9 @@ import Base from "../layouts/Base.astro";
 import site from "../data/site.json";
 import services from "../data/services.json";
 const name = (id: string) => services.find((service) => service.id === id)?.name ?? id;
+// P12g: the banner's price is the price of the package it points to.
+const banner = site.packages.find((entry) => entry.id === site.fromPrice.of);
+const plain = "plain" in site.fromPrice && site.fromPrice.plain === true;
 ---
 <Base title="Home">
   <section data-cms-section="home">
@@ -10,6 +13,8 @@ const name = (id: string) => services.find((service) => service.id === id)?.name
     <div data-cms-field="site.hero.text" set:html={site.hero.text} />
     <img data-cms-field="site.hero.image" src={site.hero.image.src} alt={site.hero.image.alt} width="240" />
     <p data-cms-field="site.tagline">{site.tagline}</p>
+    <p class="price">{plain ? "" : "From "}{banner?.price}</p>
+    <ul>{site.packages.map((entry) => <li>{entry.name}: {entry.price}</li>)}</ul>
     <h2>Featured</h2>
     <ul data-cms-field="site.highlights">{site.highlights.map((id) => <li>{name(id)}</li>)}</ul>
   </section>
