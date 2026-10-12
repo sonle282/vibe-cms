@@ -128,7 +128,7 @@ test("admin: History from the editor (owners), compare in plain words, restore o
   const h = await harness();
   try {
     await h.publishChange("/files/site", "file:site", { ...site, tagline: "A new tagline" });
-    const window = new Window({ url: "http://localhost/admin" });
+    const window = new Window({ url: "http://localhost/admin", settings: { disableIframePageLoading: true } });
     const root = window.document.createElement("div");
     window.document.body.append(root);
     const fetch = async (url, init = {}) => {
@@ -138,10 +138,10 @@ test("admin: History from the editor (owners), compare in plain words, restore o
     };
     const app = startAdmin({ root, boot: adminBoot(config, { id: "usr_owner", username: "olivia", displayName: "Olivia", role: "owner" }), fetch, window, confirm: () => true, storage: null });
     await app.ready;
-    const go = async (hash) => { window.location.hash = hash; await new Promise((resolve) => setTimeout(resolve, 0)); await app.idle(); };
-    await go("#/files/site");
+    const go = async (path) => { await app.go(path); await new Promise((resolve) => setTimeout(resolve, 0)); await app.idle(); };
+    await go("/admin/pages/site");
     const link = root.querySelector('[data-action="history"]');
-    assert.equal(link?.getAttribute("href"), "#/history/file%3Asite");
+    assert.equal(link?.getAttribute("href"), "/admin/history/file%3Asite");
     await go(link.getAttribute("href"));
     const items = [...root.querySelectorAll(".vc-history-item")];
     assert.equal(items.length, 2);
@@ -152,9 +152,9 @@ test("admin: History from the editor (owners), compare in plain words, restore o
     for (let i = 0; i < 50 && items[1].querySelector(".vc-history-changes").hidden; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
     assert.match(items[1].querySelector(".vc-history-changes").textContent, /Restoring it would change:.*Tagline: A new tagline → A made-up salon/);
     [...items[1].querySelectorAll("button")].find((button) => button.textContent === "Restore as draft").click();
-    for (let i = 0; i < 100 && window.location.hash !== "#/files/site"; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+    for (let i = 0; i < 100 && window.location.pathname !== "/admin/pages/site"; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
     await app.idle();
-    assert.equal(window.location.hash, "#/files/site");
+    assert.equal(window.location.pathname, "/admin/pages/site");
     assert.equal((await h.drafts.get("usr_owner", "file:site")).content.tagline, site.tagline, "the old version is the owner's draft");
   } finally { await h.close(); }
 });

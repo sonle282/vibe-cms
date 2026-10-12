@@ -13,8 +13,12 @@ export { ACCEPTED_TYPES, adjustImage, CROP_PRESETS, cropRect, measureImage, open
 export { createRichEditor, type PickedImage, type RichEditor, type RichEditorOptions } from "./rich-editor.js";
 export { cleanRichDom, isEmptyRich, normalizeBlocks } from "./clean.js";
 export { attachBridge, bindingPath, configBinds, fieldAt, resolveBinding, resolveList, type Bridge, type BridgeOptions, type PreviewOwner, type PreviewSelection } from "./bridge.js";
-export { createPreview, framedUrl, previewUrl, type Preview, type PreviewOptions } from "./preview.js";
+export { createPreview, framedUrl, PREVIEW_DEVICES, previewScale, previewUrl, type Preview, type PreviewDevice, type PreviewOptions } from "./preview.js";
 // U3: the dialog and the toast of the Mr Spa CMS.
 export { confirmDialog, openDialog, type ConfirmOptions, type DialogButton, type DialogOptions, type OpenDialog } from "./dialog.js";
 export { createToast, type Tone, type ToastAction } from "./toast.js";
+// M1: the addresses, the save state and the tooltip of the Mr Spa CMS.
+export { ADMIN_BASE, adminHref, legacyHashPath, parseAdminPath, type AdminRoute } from "./routes.js";
+export { applyLeafChanges, deriveSaveState, publishBlockReason, unsavedLeafChanges, type LeafChange, type PublishedState, type SaveState, type SaveStateInput } from "./save-state.js";
+export { createTooltipScheduler, installTooltips, tooltipText, TOOLTIP_DELAY_MS } from "./tooltip.js";
 export { clone, countChanges, emptyValue, getAt, holdsLockedValue, ID_PATTERN, keyPath, parsePathText, pathText, same, setAt, slugify, type Path } from "./value.js";

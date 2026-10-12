@@ -60,14 +60,15 @@ try {
     if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
     return field(path).locator("textarea.vc-rich-source");
   };
-  const saveState = () => page.locator(".vc-save-state").textContent();
+  const saveState = () => page.locator(".vc-state-long").textContent();
   // E2E_SCREENSHOTS=<folder>: keep pictures of the image sheet, the review and published screens (local look only; CI leaves it unset).
   const shot = async (name) => { if (process.env.E2E_SCREENSHOTS) await page.screenshot({ path: join(process.env.E2E_SCREENSHOTS, `${name}.png`) }); };
   const api = (path) => page.evaluate(async (url) => (await fetch(url)).json(), path);
-  const open = async (hash) => { await page.goto(`${base}/admin${hash}`); await page.locator(".vc-form, .vc-table, .vc-rows, .vc-empty-state").first().waitFor(); };
+  const open = async (path) => { await page.goto(`${base}${path}`); await page.locator(".vc-form, .vc-table, .vc-rows, .vc-empty-state").first().waitFor(); };
   const save = async () => {
     await page.getByRole("button", { name: "Save draft" }).click();
-    await page.waitForFunction(() => document.querySelector(".vc-save-state")?.textContent === "Draft saved · not live yet", null, { timeout: 10_000 });
+    // M1 (Mr Spa): a record already on the website says only its changes are not live yet.
+    await page.waitForFunction(() => /^Draft saved · (changes )?not live yet$/.test(document.querySelector(".vc-state-long")?.textContent ?? ""), null, { timeout: 10_000 });
   };
   const signIn = async (username, password, newPassword) => {
     await page.goto(`${base}/admin`);
@@ -78,7 +79,7 @@ try {
     await page.fill("#current", password);
     await page.fill("#new", newPassword);
     await page.click("#change button[type=submit]");
-    await page.locator(".vc-rows").waitFor();
+    await page.locator(".vc-top").waitFor();
   };
 
   // ---------------------------------------------------------------- owner: sign in, overview
@@ -92,6 +93,10 @@ try {
   await page.setViewportSize({ width: 800, height: 900 });
   check("small screen: Open on a laptop, the editor hidden", await page.locator(".vc-small-screen").isVisible() && !(await page.locator(".vc-rail").isVisible()) && /Open on a laptop/.test(await page.locator(".vc-small-screen").innerText()));
   await page.setViewportSize({ width: 1280, height: 900 });
+  // M1 (Mr Spa): /admin opens the first page's editor, at its own address.
+  await page.locator(".vc-form").waitFor();
+  check("/admin opens the first page's editor (M1)", new URL(page.url()).pathname === "/admin/pages/site", page.url());
+  await open("/admin/pages");
   const navText = await page.locator(".vc-rail").innerText();
   check("shell: the rail has Pages, every collection and Drafts", ["Pages", "Services", "Team", "Blog", "Drafts"].every((label) => navText.includes(label)), navText);
   check("shell: Pages lists every file, with its address and status", /Salon info\s+demo\.example\/\s+Live/.test(await page.locator(".vc-rows").innerText()) && (await page.locator(".vc-count").textContent()) === "1 page", await page.locator(".vc-rows").innerText());
@@ -99,10 +104,12 @@ try {
 
   // ---------------------------------------------------------------- owner: every field of the salon info
   const siteBefore = data("src/data/site.json");
-  await open("#/files/site");
+  await open("/admin/pages/site");
   // P9: the page is shown next to the form (wide window), and stays the same page while typing (no reload).
   await previewReady();
-  check("preview: the home page next to the form, with how many places show the salon info", /Showing your changes on the page \(1\d places\)/.test(await page.locator(".vc-preview-status").textContent()), await page.locator(".vc-preview-status").textContent());
+  check("preview: the home page on the canvas, with how many places show the salon info", Number(await page.locator(".vc-preview").getAttribute("data-places")) >= 10, await page.locator(".vc-preview").getAttribute("data-places"));
+  const fit = await page.evaluate(() => { const frame = document.querySelector(".vc-preview-frame"); const stage = document.querySelector(".vc-preview-stage").getBoundingClientRect(); const canvas = document.querySelector(".vc-preview").getBoundingClientRect(); return { width: frame.style.width, scale: Number(document.querySelector(".vc-preview").dataset.scale), stage: Math.round(stage.width), canvas: Math.round(canvas.width) }; });
+  check("preview (M1): a 1280 px Laptop page scaled to fit the canvas inside its 24 px padding", fit.width === "1280px" && fit.scale < 1 && Math.abs(fit.stage - (fit.canvas - 48)) <= 2, fit);
   const frame = await page.evaluate(() => { const box = (selector) => document.querySelector(selector)?.getBoundingClientRect(); return { rail: box(".vc-rail")?.width, top: box(".vc-top")?.height, inspector: box(".vc-editor-main")?.width, devices: Boolean(document.querySelector(".vc-top-center .vc-devices")), font: getComputedStyle(document.body).fontFamily }; });
   check("shell (U2): rail 64, top bar 56, inspector 360, devices in the top bar, Geist", frame.rail === 64 && frame.top === 56 && frame.inspector === 360 && frame.devices && /Geist/.test(frame.font), frame);
   await previewWindow().evaluate(() => { window.__vibeCmsStayed = true; });
@@ -193,7 +200,7 @@ try {
 
   // ---------------------------------------------------------------- owner: a service (text, locked price, select, ordered list)
   const services = data("src/data/services.json");
-  await open("#/collections/services/items/spa-pedicure");
+  await open("/admin/catalog/services/spa-pedicure");
   check("record id is shown but fixed", await input("id").isDisabled());
   await input("name").fill("Spa Pedicure Deluxe");
   // P12d: the demo's own rule (cms.config.ts `rules`) runs in the built Worker: a price without "$" is refused, with its message.
@@ -213,7 +220,7 @@ try {
   await save();
   // Clicking content of another record on the page opens that record (here: the footer, from the salon info).
   await preview.locator("footer h2").first().click();
-  await page.waitForURL(/#\/files\/site$/);
+  await page.waitForURL(/\/admin\/pages\/site$/);
   await page.locator(".vc-form").waitFor();
   // The field is focused after the form renders (it may be a moment after .vc-form appears): wait for it, up to 5 s.
   const focusedFooter = await page.waitForFunction(() => document.activeElement?.closest("[data-path]")?.getAttribute("data-path") === "footerLinks[0].title", null, { timeout: 5_000 }).then(() => true, () => false);
@@ -222,7 +229,7 @@ try {
   check("service: every field in the draft", assertEqual(spa.draft?.content, { ...services[1], name: "Spa Pedicure Deluxe", price: "$40", category: "Nails", extras: ["Paraffin", "Foot mask"], description: "Warm soak and massage." }), spa.draft);
 
   // A new service: the id follows the name until edited.
-  await open("#/collections/services");
+  await open("/admin/catalog/services");
   await page.getByRole("link", { name: "New service" }).click();
   await page.locator(".vc-form").waitFor();
   await input("name").fill("Gel Removal");
@@ -234,10 +241,10 @@ try {
   await previewReady();
   check("preview: a new service shows in the list as it is typed", (await preview.locator('[data-cms-item="services:gel-removal"]').innerText()) === "Gel Removal — $10 (+ Cuticle oil)" && (await preview.locator('[data-cms-list="services"] > li').count()) === 4);
   await save();
-  await page.waitForURL(/#\/collections\/services\/items\/gel-removal$/);
+  await page.waitForURL(/\/admin\/catalog\/services\/gel-removal$/);
   const gel = await api("/api/cms/collections/services/items/gel-removal");
   check("new service saved as a draft (expectedRevision 0, version new)", assertEqual(gel.draft?.content, { id: "gel-removal", name: "Gel Removal", price: "$10", category: "Nails", extras: ["Cuticle oil"] }) && gel.version === "new", gel);
-  await open("#/collections/services");
+  await open("/admin/catalog/services");
   const listText = await page.locator(".vc-table").innerText();
   check("list: draft badges + new record", /Spa Pedicure[\s\S]*Draft saved/.test(listText) && /gel-removal[\s\S]*New · not published/.test(listText), listText);
   await page.getByRole("searchbox").fill("gel");
@@ -245,7 +252,7 @@ try {
 
   // ---------------------------------------------------------------- owner: team (image, references)
   const team = data("src/data/team.json");
-  await open("#/collections/team/items/alex");
+  await open("/admin/catalog/team/alex");
   await field("photo").getByLabel("Image address").fill("/images/hero.svg");
   await field("photo").getByLabel("Alt text (describes the image)").fill("Alex at work");
   await input("specialty").selectOption("spa-pedicure");
@@ -261,7 +268,7 @@ try {
   check("team: image + alt, one reference, ordered references, rich text", assertEqual(alex.draft?.content, { ...team[0], photo: { src: "/images/hero.svg", alt: "Alex at work" }, specialty: "spa-pedicure", services: ["spa-pedicure", "classic-manicure"], bio: "<p>Still invented.</p>" }), alex.draft);
   // P10: Sam's photo through the image sheet — a large PNG chosen from the computer is made smaller and WebP in the
   // browser, uploaded to the local R2 bucket, picked, and served at its final address until it is published.
-  await open("#/collections/team/items/sam");
+  await open("/admin/catalog/team/sam");
   await field("photo").getByRole("button", { name: "Choose the image for Photo" }).click();
   const sheet = page.getByRole("dialog", { name: "Choose image for Photo" });
   await sheet.locator('.vc-tile[data-src="/images/team-alex.svg"]').waitFor();
@@ -299,7 +306,7 @@ try {
   check("team: an image written as a plain path stays a path", assertEqual(sam.draft?.content, { ...team[1], photo: samPhoto, specialty: "classic-manicure" }), sam.draft);
 
   // ---------------------------------------------------------------- owner: a Markdown post (status, list, body)
-  await open("#/collections/posts/items/welcome");
+  await open("/admin/catalog/posts/welcome");
   await input("title").fill("Welcome!");
   await input("status").selectOption("draft");
   await field("cover").getByLabel("Image address").fill("/images/team-sam.svg");
@@ -365,7 +372,7 @@ try {
   check("editor: Edit Markdown shows the same text", (await (await richSource("body")).inputValue()) === postBody);
 
   // Discard a draft (confirm), then the live content again.
-  await open("#/collections/posts/items/spring-colours");
+  await open("/admin/catalog/posts/spring-colours");
   await input("title").fill("Spring colours");
   await save();
   // U3: the editor's Publish opens the review dialog of this draft (what changes); Cancel leaves it a draft.
@@ -380,18 +387,18 @@ try {
   const discardDialog = page.getByRole("alertdialog", { name: "Discard your draft?" });
   check("discard: asks in the CMS dialog, the red button discards", /The website stays as it is./.test(await discardDialog.innerText()) && await discardDialog.getByRole("button", { name: "Discard draft" }).evaluate((button) => button.classList.contains("vc-danger-fill")));
   await discardDialog.getByRole("button", { name: "Discard draft" }).click();
-  await page.waitForFunction(() => document.querySelector(".vc-save-state")?.textContent === "No changes");
+  await page.waitForFunction(() => document.querySelector(".vc-state-long")?.textContent === "No changes");
   check("discard: the draft is gone, the live title is back", (await api("/api/cms/collections/posts/items/spring-colours")).draft === null && (await input("title").inputValue()) === "Spring colours (draft)");
 
   // Leaving with unsaved changes asks first.
-  await open("#/collections/services/items/classic-manicure");
+  await open("/admin/catalog/services/classic-manicure");
   await input("name").fill("Classic Manicure (changed)");
   await page.locator(".vc-nav-list").getByRole("link", { name: "Team" }).click();
   const leaveDialog = page.getByRole("alertdialog", { name: "Leave without saving?" });
   const asked = await leaveDialog.innerText();
   await leaveDialog.getByRole("button", { name: "Keep editing" }).click();
-  await page.waitForFunction(() => location.hash === "#/collections/services/items/classic-manicure");
-  check("unsaved changes: leaving asks, staying keeps them", /You have 1 unsaved change on /.test(asked) && page.url().endsWith("#/collections/services/items/classic-manicure") && (await input("name").inputValue()) === "Classic Manicure (changed)", { asked, url: page.url() });
+  await page.waitForFunction(() => location.pathname === "/admin/catalog/services/classic-manicure");
+  check("unsaved changes: leaving asks, staying keeps them", /You have 1 unsaved change on /.test(asked) && page.url().endsWith("/admin/catalog/services/classic-manicure") && (await input("name").inputValue()) === "Classic Manicure (changed)", { asked, url: page.url() });
   await page.locator(".vc-nav-list").getByRole("link", { name: "Team" }).click();
   await page.getByRole("alertdialog", { name: "Leave without saving?" }).getByRole("button", { name: "Discard changes" }).click();
   await page.locator(".vc-table").waitFor();
@@ -430,12 +437,14 @@ try {
   check("published post: front matter + body", /title: Welcome!/.test(published["src/content/posts/welcome.md"]) && published["src/content/posts/welcome.md"].endsWith(postBody));
   check("P8d: the image in the post body is in the same commit", github.bytes(`public${postImageSrc}`)?.subarray(8, 12).toString("latin1") === "WEBP");
   check("commit message names the owner's internal id, no email", /usr_[a-z2-7]{16}/.test(github.commit().message) && !github.commit().message.includes("@"));
-  // The line and the count follow the publish answer and the drafts reload: wait for them (a slow machine draws later).
-  const publishedShown = await page.waitForFunction(() => /Publishing… started/.test(document.querySelector(".vc-live")?.textContent ?? "") && (document.querySelector(".vc-badge")?.hidden ?? true), null, { timeout: 10_000 }).then(() => true, () => false);
-  check("after publishing: 'Publishing…' until the site serves it; no drafts left", publishedShown, { live: await page.locator(".vc-live").innerText().catch(() => null), badge: await page.locator(".vc-badge").textContent().catch(() => null) });
+  // The count follows the drafts reload: wait for it (a slow machine draws later).
+  const noDrafts = await page.waitForFunction(() => document.querySelector(".vc-badge")?.hidden ?? true, null, { timeout: 10_000 }).then(() => true, () => false);
+  check("after publishing: no drafts left", noDrafts, { badge: await page.locator(".vc-badge").textContent().catch(() => null) });
 
   // ---------------------------------------------------------------- P12c: History of the salon info (owner), from the fake GitHub's commits
-  await open("#/files/site");
+  await open("/admin/pages/site");
+  // M1 (Mr Spa): the record's save state follows the publish until the site serves it (this Worker is not rebuilt).
+  check("after publishing: the salon info says 'Publishing…' until the site serves it", (await saveState()) === "Publishing… this usually takes a few minutes", await saveState());
   await page.locator('[data-action="history"]').click();
   await page.locator(".vc-history-item").first().waitFor();
   const versions = await page.locator(".vc-history-item").allInnerTexts();
@@ -453,7 +462,7 @@ try {
   check("history: the first version is what the website shows now", /This is what the website shows now/.test(oldest.text), oldest);
 
   // ---------------------------------------------------------------- P8b: the owner adds an editor on the People screen
-  await page.locator(".vc-nav-list").getByRole("link", { name: "People" }).click();
+  await page.locator(".vc-rail-bottom").getByRole("link", { name: "Users" }).click();
   await page.locator("form.vc-people-add").waitFor();
   await page.getByLabel("Username", { exact: true }).fill("editor1");
   await page.getByLabel("Name (optional)").fill("Editor One");
@@ -470,7 +479,7 @@ try {
 
   // ---------------------------------------------------------------- editor: locked fields shown, not editable
   await signIn("editor1", created.temporaryPassword, EDITOR_PASSWORD);
-  await open("#/files/site");
+  await open("/admin/pages/site");
   const lockedDisabled = await Promise.all(["phone", "email", "address.street", "address.city"].map((path) => input(path).isDisabled()));
   check("editor: phone, email, address are shown but disabled", lockedDisabled.every(Boolean) && (await input("phone").inputValue()) === siteBefore.phone, lockedDisabled);
   check("editor: hours disabled (days, times, add row)", await field("hours[0]").getByLabel("Monday").isDisabled() && await field("hours").getByRole("button", { name: "Add a row" }).isDisabled());
@@ -483,9 +492,9 @@ try {
   await (await richSource("hero.text")).fill('<p>Hi</p><img src="x" onerror="alert(1)"><script>alert(2)</script>');
   await save();
   check("rich text: the script and the onerror are removed on save, and the editor is told", (await (await richSource("hero.text")).inputValue()) === '<p>Hi</p><img src="x">' && /removed for safety/.test(await page.locator(".vc-banner").innerText()) && (await api("/api/cms/files/site")).draft?.content.hero.text === '<p>Hi</p><img src="x">');
-  await open("#/collections/services/items/nail-art");
+  await open("/admin/catalog/services/nail-art");
   check("editor: price disabled on a service", await input("price").isDisabled());
-  await open("#/collections/services/new");
+  await open("/admin/catalog/services/new");
   await input("name").fill("Editor Special");
   check("editor: a new service's price stays empty and disabled", await input("price").isDisabled() && (await input("price").inputValue()) === "");
   await save();

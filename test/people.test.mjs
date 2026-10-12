@@ -56,13 +56,13 @@ const setup = async ({ as = "owner", confirm = () => true } = {}) => {
     await browser.login("eddie", "editor-password-1");
     boot = adminBoot(config, { id: created.user.id, username: "eddie", displayName: "eddie", role: "editor" });
   }
-  const window = new Window({ url: "http://localhost/admin" });
+  const window = new Window({ url: "http://localhost/admin", settings: { disableIframePageLoading: true } });
   const root = window.document.createElement("div");
   window.document.body.append(root);
   const asked = [];
   const app = startAdmin({ root, boot, fetch: browser.fetch, window, storage: null, confirm: (message) => { asked.push(message); return confirm(message); } });
   await app.ready;
-  const go = async (hash) => { window.location.hash = hash; await settle(); await app.idle(); };
+  const go = async (path) => { await app.go(path); await settle(); await app.idle(); };
   const rowOf = (username) => root.querySelector(`tr[data-user="${username}"]`);
   const button = (scope, name) => [...scope.querySelectorAll("button")].find((element) => element.getAttribute("aria-label") === name || element.textContent === name);
   return { db, window, root, go, rowOf, button, asked, browserFor, ownerBrowser, toast: () => root.querySelector(".vc-toast").textContent };
@@ -76,9 +76,9 @@ const addPerson = async (h, username, displayName = "", role = "editor") => {
 
 test("People: owners see it in the navigation; the list shows everyone, with no actions on yourself", async () => {
   const h = await setup();
-  const nav = [...h.root.querySelectorAll(".vc-nav-list a")].map((a) => a.textContent.trim());
-  assert.ok(nav.includes("People"));
-  await h.go("#/people");
+  const nav = [...h.root.querySelectorAll(".vc-rail a.vc-rail-item")].map((a) => a.textContent.trim());
+  assert.ok(nav.includes("Users"), "M1: Users at the bottom of the rail (Mr Spa)");
+  await h.go("/admin/users");
   assert.equal(h.root.querySelector("h1").textContent, "People");
   const me = h.rowOf("owner");
   // Last sign-in: today (the setup signed in just now), in the browser's own date format.
@@ -91,7 +91,7 @@ test("People: owners see it in the navigation; the list shows everyone, with no 
 
 test("People: add a person → the temporary password is shown once and really signs them in; problems are explained", async () => {
   const h = await setup();
-  await h.go("#/people");
+  await h.go("/admin/users");
   await addPerson(h, "Editor1", "Eddie Editor");
   await until(() => h.rowOf("editor1"), "the new row");
   const secret = h.root.querySelector(".vc-secret");
@@ -118,7 +118,7 @@ test("People: add a person → the temporary password is shown once and really s
 test("People: change role (asks first), disable (signed out at once) / enable, reset password (old one stops working)", async () => {
   let answer = true;
   const h = await setup({ confirm: () => answer });
-  await h.go("#/people");
+  await h.go("/admin/users");
   await addPerson(h, "eddie", "Ed");
   await until(() => h.rowOf("eddie"), "the new row");
   const password = h.root.querySelector(".vc-secret-value").textContent;
@@ -160,7 +160,7 @@ test("People: change role (asks first), disable (signed out at once) / enable, r
 
 test("People: a refusal from the server is shown on the list (here: another owner made me an editor meanwhile)", async () => {
   const h = await setup();
-  await h.go("#/people");
+  await h.go("/admin/users");
   await addPerson(h, "coowner", "Co Owner", "owner");
   await until(() => h.rowOf("coowner"), "the new owner");
   // The other owner makes me an editor; my page still shows People, and the server refuses my next change.
@@ -178,17 +178,19 @@ test("People: a refusal from the server is shown on the list (here: another owne
   assert.equal(h.rowOf("coowner").querySelector("select").value, "owner", "the list shows what is true");
 });
 
-test("U2 shell: the rail (Pages, collections, Drafts; People + Activity at the bottom) and the account menu", async () => {
+test("U2 / M1 shell: the rail (Pages, collections, Media, Drafts; Users at the bottom) and the account menu", async () => {
   const h = await setup();
   const rail = h.root.querySelector(".vc-rail");
   assert.equal(rail.querySelector(".vc-mark").textContent, config.site.name.trim()[0].toUpperCase());
   const labels = (list) => [...list.querySelectorAll(".vc-rail-label")].map((label) => label.textContent);
-  const [top, bottom] = rail.querySelectorAll(".vc-nav-list");
-  assert.deepEqual(labels(top), ["Pages", ...config.collections.map((collection) => collection.label), "Media", "Drafts"]);
-  assert.deepEqual(labels(bottom), ["People"], "U4: Activity is a tab of People");
+  const top = rail.querySelector(".vc-nav-list");
+  const bottom = rail.querySelector(".vc-rail-bottom");
+  assert.deepEqual(labels(top), ["Pages", ...config.collections.filter((collection) => !collection.under).map((collection) => collection.label), "Media", "Drafts"]);
+  assert.deepEqual(labels(bottom), ["Users"], "U4: Activity is a tab of People & activity");
+  assert.equal(rail.querySelector(".vc-mark").getAttribute("aria-label"), `${config.site.name} CMS`);
   assert.ok(top.querySelectorAll("svg.vc-icon").length >= 3, "every place has its icon");
   // A file opens under Pages: the rail marks Pages, the crumbs read "Pages / <file>".
-  await h.go(`#/files/${config.files[0].key}`);
+  await h.go(`/admin/pages/${config.files[0].key}`);
   assert.equal(rail.querySelector('[aria-current="page"] .vc-rail-label').textContent, "Pages");
   assert.equal(h.root.querySelector(".vc-crumbs").textContent, `Pages/${config.files[0].label}`);
   // The account menu: closed, opens from the avatar, closes with Escape and on the next screen.
@@ -203,22 +205,22 @@ test("U2 shell: the rail (Pages, collections, Drafts; People + Activity at the b
   menu.dispatchEvent(new h.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   assert.equal(menu.hidden, true);
   avatar.click();
-  await h.go("#/people");
+  await h.go("/admin/users");
   assert.equal(menu.hidden, true);
   assert.equal(h.root.querySelector(".vc-crumbs").textContent, "People & activity");
 });
 
 test("People: editors do not see it, and the screen says why", async () => {
   const h = await setup({ as: "editor" });
-  assert.ok(![...h.root.querySelectorAll(".vc-nav-list a")].some((a) => a.textContent.trim() === "People"));
-  await h.go("#/people");
+  assert.ok(![...h.root.querySelectorAll(".vc-rail a.vc-rail-item")].some((a) => a.textContent.trim() === "Users"));
+  await h.go("/admin/users");
   assert.match(h.root.querySelector(".vc-body").textContent, /Only an owner can manage people/);
 });
 
 test("My account: who I am; change my password (checks, wrong current password, success keeps me signed in)", async () => {
   const h = await setup();
-  assert.equal(h.root.querySelector(".vc-user-name").getAttribute("href"), "#/account");
-  await h.go("#/account");
+  assert.equal(h.root.querySelector(".vc-user-name").getAttribute("href"), "/admin/account");
+  await h.go("/admin/account");
   const facts = h.root.querySelector(".vc-account-facts").textContent;
   assert.match(facts, /NameOlivia OwnerUsernameownerRoleOwner/);
   const form = h.root.querySelector("form.vc-account");
@@ -241,7 +243,7 @@ test("My account: who I am; change my password (checks, wrong current password, 
   submit();
   await until(() => /Password changed/.test(h.toast()), "the change");
   assert.equal(form.querySelector("#vc-pw-new").value, "", "the fields are cleared");
-  await h.go("#/people");
+  await h.go("/admin/users");
   assert.equal(h.root.querySelector("h1").textContent, "People", "still signed in here");
   const other = h.browserFor();
   assert.equal((await other.login(OWNER.username, OWNER.password)).error, "invalid_credentials");

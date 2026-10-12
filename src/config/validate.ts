@@ -334,7 +334,13 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     collections.forEach((entry, index) => {
       const at = `collections[${index}]`;
       if (!isRecord(entry)) { err(context, at, "must be an object", "{ key, label, itemLabel, store, fields }"); return; }
-      for (const key of Object.keys(entry)) if (!["key", "label", "itemLabel", "icon", "store", "status", "preview", "order", "access", "fixed", "rules", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, itemLabel, icon, store, status, preview, order, access, fixed, rules, fields");
+      for (const key of Object.keys(entry)) if (!["key", "label", "itemLabel", "icon", "under", "store", "status", "preview", "order", "access", "fixed", "rules", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, itemLabel, icon, under, store, status, preview, order, access, fixed, rules, fields");
+      if (entry.under !== undefined) {
+        const parent = collections.find((other) => isRecord(other) && other.key === entry.under);
+        if (!filled(entry.under) || !isRecord(parent)) err(context, `${at}.under`, `${show(entry.under)} is not a collection of this config`, 'the key of the collection whose tabs it joins, e.g. "products"');
+        else if (parent.key === entry.key) err(context, `${at}.under`, "a collection cannot be a tab of itself", "remove under");
+        else if (parent.under !== undefined) err(context, `${at}.under`, `${show(entry.under)} is itself a tab of ${show(parent.under)}`, `use ${show(parent.under)}: tabs are one level deep`);
+      }
       if (entry.icon !== undefined && !(COLLECTION_ICONS as readonly unknown[]).includes(entry.icon)) err(context, `${at}.icon`, `${show(entry.icon)} is not an icon of the admin`, `use one of ${COLLECTION_ICONS.join(", ")}`);
       checkRules(context, entry, at);
       checkAccess(context, entry, at);

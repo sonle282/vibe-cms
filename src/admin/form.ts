@@ -96,7 +96,7 @@ export const createForm = (options: FormOptions): Form => {
   // ---------------------------------------------------------------- shared pieces
 
   const button = (label: string, name: string, onClick: () => void, disabled: boolean, extra: Record<string, string> = {}) =>
-    h(doc, "button", { type: "button", class: `vc-icon-button vc-${name}`, "aria-label": label, "data-tip": label, disabled, onclick: (event: Event) => { event.preventDefault(); onClick(); }, ...extra }, icon(doc, name));
+    h(doc, "button", { type: "button", class: `vc-icon-button vc-${name}`, "aria-label": label, "data-tooltip": label, disabled, onclick: (event: Event) => { event.preventDefault(); onClick(); }, ...extra }, icon(doc, name));
 
   const labelContent = (field: Field, locked: boolean, text = field.label): Child[] => [
     text,
@@ -274,7 +274,7 @@ export const createForm = (options: FormOptions): Form => {
     };
     const menu = h(doc, "div", { class: "vc-menu vc-image-menu", role: "menu", hidden: true });
     const closeMenu = () => { menu.hidden = true; menuButton.setAttribute("aria-expanded", "false"); };
-    const menuButton = h(doc, "button", { type: "button", class: "vc-icon-button vc-image-more", "aria-haspopup": "menu", "aria-expanded": "false", "aria-label": "More for this image", "data-tip": "More", onclick: (event: Event) => { event.stopPropagation(); menu.hidden = !menu.hidden; menuButton.setAttribute("aria-expanded", String(!menu.hidden)); if (!menu.hidden) menu.querySelector<HTMLElement>("button")?.focus(); } }, h(doc, "span", { "aria-hidden": "true" }, "⋯"));
+    const menuButton = h(doc, "button", { type: "button", class: "vc-icon-button vc-image-more", "aria-haspopup": "menu", "aria-expanded": "false", "aria-label": "More for this image", "data-tooltip": "More", onclick: (event: Event) => { event.stopPropagation(); menu.hidden = !menu.hidden; menuButton.setAttribute("aria-expanded", String(!menu.hidden)); if (!menu.hidden) menu.querySelector<HTMLElement>("button")?.focus(); } }, h(doc, "span", { "aria-hidden": "true" }, "⋯"));
     menu.addEventListener("keydown", (event) => { if (event.key === "Escape") { event.stopPropagation(); closeMenu(); menuButton.focus(); } });
     menu.append(
       h(doc, "button", { type: "button", class: "vc-menu-item", role: "menuitem", "data-image-action": "copy", onclick: async () => {

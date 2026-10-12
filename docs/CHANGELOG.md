@@ -3,6 +3,31 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## Unreleased (M1)
+
+The admin becomes the Mr Spa CMS as it is (docs/DESIGN.md §H; released with M2–M6 as 0.22.0). Nothing to change on a
+site: its config, content and data stay as they are.
+
+- **Addresses by path**: `/admin` opens the first page's editor; every screen has its own address
+  (`/admin/pages/<file>`, `/admin/catalog/<collection>[/new|/<id>]`, `/admin/drafts`, `/admin/media`, `/admin/users`,
+  `/admin/audit`) — a link opens in a new tab, a reload stays. The `#/…` addresses of before still open the same screen.
+  The admin route is now `/admin/[...path]`.
+- **Rail**: the site's mark; Pages, one place per collection, Media, Drafts (its count); Users (owners) and the account
+  menu (two letters of the username) at the bottom. New: a collection's **`under`** shows it as a tab of another
+  (Products · Categories · Collections); icons `package` and `pen-line`.
+- **Top bar**: the breadcrumb's parent is a button back ("Back to Pages"); **Laptop / Tablet / Mobile** in the middle
+  (the page is shown at that size, scaled to fit the canvas; the choice is remembered); the **one save state** ("No
+  changes", "N unsaved changes", "Draft saved · not live yet", "Publishing… this usually takes a few minutes", "Live on
+  <host>", "Still publishing — check again in a few minutes", problems in red; shortened on a narrow bar); icons **View
+  live**, **Version history**, **Discard draft** (a saved draft, or unsaved changes only), **Reload and keep my changes**
+  (a save met a newer version), **Check again** — folded into ⋯ on a narrow bar; **Publish is always there**, off with
+  the reason in its tooltip ("Save a draft before publishing.", "No changes to publish yet."…).
+- **Tooltip**: one tooltip for the admin (400 ms on hover, at once on keyboard focus). **Toast**: no icon, 4 seconds,
+  for image and media actions only — saving and publishing speak through the save state.
+- Gone (not in the Mr Spa CMS): the Preview toggle (the page is always on the canvas), the line under the top bar,
+  Ctrl+S, the "Skip to content" link, the bar over the preview, the form's lead sentence. The admin page's title is
+  "<site> CMS".
+
 ## 0.21.0 — 2026-10-12 (P12g, P12h, P16a)
 
 - **`f.number`** (P16a): a JSON number — `integer`, `min`, `max`; a number input in the admin; emptied, the value

@@ -1,7 +1,7 @@
 /**
  * Vibe CMS — the Astro integration. Loads the site's cms.config.ts and checks it together with the content files it
  * declares (any error stops the build; warnings are printed), exposes the config and the raw content files to the
- * server routes as virtual modules, and adds /admin (placeholder) and /api/cms/health. The site's public pages keep
+ * server routes as virtual modules, and adds /admin/[...path] (the admin) and /api/cms/*. The site's public pages keep
  * prerendering; only the injected routes run on demand (the site uses @astrojs/cloudflare).
  */
 import { existsSync, openSync, readSync, closeSync, readdirSync, lstatSync } from "node:fs";
@@ -91,7 +91,8 @@ export const vibeCms = (options: VibeCmsOptions = {}): AstroIntegration => ({
       const { files, collections } = countConfig(cms);
       logger.info(`config OK: ${files} files, ${collections} collections, content checked (${cms.repo.owner}/${cms.repo.name} → ${cms.repo.branch})`);
       updateConfig({ vite: { plugins: [virtualModules(file, root, contentPaths(cms, root), cms)] } });
-      injectRoute({ pattern: "/admin", entrypoint: "@sonle282/vibe-cms/routes/admin.astro", prerender: false });
+      // M1: one route for every screen of the admin (/admin, /admin/pages/home, /admin/catalog/services/…).
+      injectRoute({ pattern: "/admin/[...path]", entrypoint: "@sonle282/vibe-cms/routes/admin.astro", prerender: false });
       injectRoute({ pattern: "/api/cms/health", entrypoint: "@sonle282/vibe-cms/routes/health.ts", prerender: false });
       injectRoute({ pattern: "/api/cms/[...path]", entrypoint: "@sonle282/vibe-cms/routes/api.ts", prerender: false });
       injectRoute({ pattern: "/api/auth/[...path]", entrypoint: "@sonle282/vibe-cms/routes/auth.ts", prerender: false });

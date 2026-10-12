@@ -5,6 +5,7 @@
  */
 import { clear, h } from "./dom.js";
 import { peopleTabs, type ScreenKit } from "./people.js";
+import { adminHref } from "./routes.js";
 
 export type ActivityEntry = {
   id: number; at: string; userId: string; who: string | null; role: "owner" | "editor" | "anonymous";
@@ -58,7 +59,7 @@ export const activityScreen = async (kit: ScreenKit, stillHere: () => boolean, k
   if (!first.ok) return kit.failed(first, crumbs);
 
   const tabs = h(doc, "nav", { class: "vc-filters", "aria-label": "Show" }, ACTIVITY_FILTERS.map(([key, label]) =>
-    h(doc, "a", { href: key === "all" ? "#/activity" : `#/activity/${key}`, class: "vc-filter", ...(key === filter ? { "aria-current": "page" } : {}) }, label)));
+    h(doc, "a", { href: adminHref.audit(key === "all" ? undefined : key), class: "vc-filter", ...(key === filter ? { "aria-current": "page" } : {}) }, label)));
   const tbody = h(doc, "tbody");
   const more = h(doc, "button", { type: "button", class: "vc-button" }, "Show older");
   const error = h(doc, "p", { class: "vc-error", role: "alert" });
