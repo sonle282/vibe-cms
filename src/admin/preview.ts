@@ -58,15 +58,15 @@ export const createPreview = (options: PreviewOptions): Preview => {
   const status = h(doc, "p", { class: "vc-preview-status", role: "status", "aria-live": "polite" });
   const frame = h(doc, "iframe", { class: "vc-preview-frame", title: `Preview: ${options.title}`, sandbox: "allow-same-origin allow-scripts", referrerpolicy: "same-origin" });
   const stage = h(doc, "div", { class: "vc-preview-stage", "data-device": "desktop" }, frame);
-  const device = (name: "desktop" | "phone", label: string) => h(doc, "button", { type: "button", class: "vc-segment-item", "data-device": name, "aria-pressed": String(name === "desktop"), "aria-label": label, title: label, onclick: () => {
+  const device = (name: "desktop" | "phone", label: string) => h(doc, "button", { type: "button", class: "vc-segment-item", "data-device": name, "aria-pressed": String(name === "desktop"), "aria-label": label, "data-tip": label, onclick: () => {
     stage.dataset.device = name;
     for (const button of buttons) button.setAttribute("aria-pressed", String(button.dataset.device === name));
     win.requestAnimationFrame?.(() => bridge?.clearSelection());
   } }, icon(doc, name === "desktop" ? "laptop" : "phone"));
   const buttons = [device("desktop", "Desktop"), device("phone", "Phone")];
   const devices = h(doc, "div", { class: "vc-segment vc-devices", role: "group", "aria-label": "Preview size" }, ...buttons);
-  const reload = h(doc, "button", { type: "button", class: "vc-icon-button vc-preview-reload", "aria-label": "Reload the preview", title: "Reload the preview", onclick: () => { status.textContent = "Loading the page…"; try { frame.contentWindow?.location.reload(); } catch { if (options.url) frame.setAttribute("src", framedUrl(options.url)); } } }, icon(doc, "reload"));
-  const live = options.url ? h(doc, "a", { class: "vc-icon-button vc-preview-open", href: options.url, target: "_blank", rel: "noopener", "aria-label": "Open live page", title: "Open live page" }, icon(doc, "external")) : null;
+  const reload = h(doc, "button", { type: "button", class: "vc-icon-button vc-preview-reload", "aria-label": "Reload the preview", "data-tip": "Reload", onclick: () => { status.textContent = "Loading the page…"; try { frame.contentWindow?.location.reload(); } catch { if (options.url) frame.setAttribute("src", framedUrl(options.url)); } } }, icon(doc, "reload"));
+  const live = options.url ? h(doc, "a", { class: "vc-icon-button vc-preview-open", href: options.url, target: "_blank", rel: "noopener", "aria-label": "Open live page", "data-tip": "Open live page" }, icon(doc, "external")) : null;
   const element = h(doc, "aside", { class: "vc-preview", "aria-label": "Preview" },
     h(doc, "div", { class: "vc-preview-bar", role: "toolbar", "aria-label": "Preview" }, status, reload, live ?? h(doc, "span")),
     stage);

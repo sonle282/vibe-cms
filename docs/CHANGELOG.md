@@ -3,8 +3,22 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## 0.20.0 — unreleased (U1, U2)
+## 0.20.0 — unreleased (U1, U2, U3)
 
+- **The Mr Spa CMS components** (U3):
+  - **Dialogs instead of the browser's confirm()**: a card over a dimmed page; Escape, Cancel or a click outside
+    changes nothing; the safe choice has focus; a destructive button is red ("Leave without saving?" → Keep editing /
+    Discard changes, "Discard your draft?", disable a person, reset a password, restore a version).
+  - **Publish in the editor** opens the review of that draft — what changes, then "Publish to website"; a problem is
+    shown in the dialog with a link to Review & publish. The Drafts screen still publishes several drafts at once.
+  - **Toasts** at the bottom centre with an icon (info, success, error) and at most one action: "Image replaced ·
+    Undo", "Image removed · Undo".
+  - **Tooltips** on every icon button (Version history, Reload, Open live page, Move up / down, Remove…).
+  - **The image card**: the picture as it is (not cropped), its file name and size; hover / focus shows Replace, a
+    click on the picture replaces it; ⋯ = Copy image link · Remove image; Desktop / Phone when the field has a phone
+    image. The address can still be typed under it.
+  - **The image sheet**: "Choose image for Photo", Library / Upload tabs and search, the current image marked; a click
+    selects, a double-click or **Use image** uses it; Crop / resize is in the footer for the selected image.
 - **The Mr Spa CMS frame** (U2): a 64 px rail — the site's mark, **Pages** (every file, the old Overview), one place
   per collection, **Drafts** with the number waiting; People and Activity (owners) at the bottom, and the avatar with
   the account menu (My account, Sign out). A 56 px top bar: `Pages / Homepage` crumbs, the preview's Desktop / Phone

@@ -8,6 +8,8 @@
 import type { ApiFail, Client } from "./api.js";
 import type { BootUser } from "./boot.js";
 import { clear, h } from "./dom.js";
+import type { ConfirmOptions } from "./dialog.js";
+import type { Tone, ToastAction } from "./toast.js";
 
 type Role = "owner" | "editor";
 export type PublicUser = {
@@ -21,8 +23,9 @@ export type ScreenKit = {
   show: (screen: { title: string; crumbs: Array<[string, string?]> }, content: Node[]) => void;
   heading: (text: string) => HTMLElement;
   message: (title: string, text: string, ...extra: Node[]) => Node[];
-  say: (text: string) => void;
-  ask: (text: string) => boolean;
+  say: (text: string, tone?: Tone, action?: ToastAction) => void;
+  /** U3: a dialog (resolves true for the confirm button); tests pass their own, sync or not. */
+  ask: (text: string, options?: ConfirmOptions) => boolean | Promise<boolean>;
   failed: (result: ApiFail, crumbs: Array<[string, string?]>) => void;
   actions: HTMLElement;
   /** Copy text to the clipboard; false when the browser refuses. */
@@ -121,7 +124,7 @@ export const peopleScreen = async (kit: ScreenKit, stillHere: () => boolean) => 
           const question = next === "owner"
             ? `Make ${person.displayName} an owner?\n\nOwners can manage people and change owner-only fields (prices, hours, phone, email, address).`
             : `Make ${person.displayName} an editor?\n\nEditors can no longer manage people or change owner-only fields.`;
-          if (!kit.ask(question)) { select.value = person.role; return; }
+          if (!(await kit.ask(question, { confirm: next === "owner" ? "Make owner" : "Make editor" }))) { select.value = person.role; return; }
           if (await patch(person, { action: "set-role", role: next })) kit.say(`${person.displayName} is now ${next === "owner" ? "an owner" : "an editor"}.`);
         });
         roleCell.append(select);
@@ -133,7 +136,7 @@ export const peopleScreen = async (kit: ScreenKit, stillHere: () => boolean) => 
       if (!self) {
         const reset = h(doc, "button", { type: "button", class: "vc-button", "aria-label": `Reset password of ${person.displayName}` }, "Reset password");
         reset.addEventListener("click", async () => {
-          if (!kit.ask(`Reset the password of ${person.displayName}?\n\nThey are signed out everywhere at once and get a temporary password, shown to you once.`)) return;
+          if (!(await kit.ask(`Reset the password of ${person.displayName}?\n\nThey are signed out everywhere at once and get a temporary password, shown to you once.`, { confirm: "Reset password", danger: true }))) return;
           const done = await patch(person, { action: "reset-password" });
           if (done?.temporaryPassword) showSecret(done.user, done.temporaryPassword, "Password reset");
         });
@@ -142,7 +145,7 @@ export const peopleScreen = async (kit: ScreenKit, stillHere: () => boolean) => 
           : h(doc, "button", { type: "button", class: "vc-button", "aria-label": `Enable ${person.displayName}` }, "Enable");
         toggle.addEventListener("click", async () => {
           if (person.status === "active") {
-            if (!kit.ask(`Disable ${person.displayName}?\n\nThey are signed out at once and cannot sign in until an owner enables them again. Their saved drafts stay.`)) return;
+            if (!(await kit.ask(`Disable ${person.displayName}?\n\nThey are signed out at once and cannot sign in until an owner enables them again. Their saved drafts stay.`, { confirm: "Disable", danger: true }))) return;
             if (await patch(person, { action: "disable" })) kit.say(`${person.displayName} is disabled.`);
           } else if (await patch(person, { action: "enable" })) kit.say(`${person.displayName} can sign in again.`);
         });

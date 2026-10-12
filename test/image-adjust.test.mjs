@@ -42,7 +42,9 @@ const sheet = ({ adjust, uploadResult = { ok: true, image: { src: "/assets/uploa
 test("sheet: Crop / resize opens on a library image; Square + a width make the copy; Save uploads it and picks it; the original is untouched", async () => {
   const s = sheet();
   await s.settle(); await s.settle();
-  assert.ok(s.press("Crop or resize sam-at-the-desk-0123abcd.webp"), "every image has Crop / resize");
+  // U3: select an image first; Crop / resize is in the footer for the selected one.
+  s.$(".vc-tile").click();
+  assert.ok(s.press("Crop or resize sam-at-the-desk-0123abcd.webp"), "the selected image has Crop / resize");
   s.press("Crop or resize sam-at-the-desk-0123abcd.webp").click();
   await s.settle();
   assert.equal(s.$(".vc-picker-library").hidden, true);
@@ -67,6 +69,7 @@ test("sheet: Crop / resize opens on a library image; Square + a width make the c
 test("sheet: a failure changes nothing and says so; Back returns to the images", async () => {
   const s = sheet({ adjust: async () => { throw new Error("canvas exploded"); } });
   await s.settle(); await s.settle();
+  s.$(".vc-tile").click();
   s.press("Crop or resize sam-at-the-desk-0123abcd.webp").click();
   await s.settle();
   s.press("Save as a new image").click();
@@ -78,6 +81,7 @@ test("sheet: a failure changes nothing and says so; Back returns to the images",
   assert.deepEqual([s.$(".vc-picker-library").hidden, s.$(".vc-adjust").hidden], [false, true]);
   const failedUpload = sheet({ uploadResult: { ok: false, message: "Too many uploads" } });
   await failedUpload.settle(); await failedUpload.settle();
+  failedUpload.$(".vc-tile").click();
   failedUpload.press("Crop or resize sam-at-the-desk-0123abcd.webp").click();
   await failedUpload.settle();
   failedUpload.press("Save as a new image").click();

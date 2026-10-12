@@ -441,9 +441,23 @@ test("P8 shell: nothing to publish; the editor's Review & publish needs a saved 
     assert.equal(review.disabled, true, "unsaved changes: save first");
     h.root.querySelector('[data-action="save"]').click();
     await h.until(() => !review.disabled, "the saved draft");
+    // U3: Publish opens the review dialog of this draft; Cancel changes nothing.
     review.click();
+    const dialog = () => h.window.document.querySelector(".vc-dialog");
+    assert.ok(dialog(), "the dialog opens");
+    assert.match(dialog().querySelector(".vc-dialog-title").textContent, /^Publish .+\?$/);
+    assert.match(dialog().textContent, /These changes go live on .+ in a few minutes\. Other pages are not affected\./);
+    assert.match(dialog().querySelector(".vc-changes").textContent, /Changed/);
+    const choice = (text) => [...dialog().querySelectorAll("button")].find((button) => button.textContent === text);
+    assert.equal(h.window.document.activeElement, choice("Cancel"), "the safe choice has focus");
+    choice("Cancel").click();
     await settle();
-    assert.equal(h.window.location.hash, "#/publish/file%3Asite");
+    assert.equal(dialog(), null);
+    assert.equal(h.window.location.hash, "#/files/site");
+    // Escape closes it too.
+    review.click();
+    h.window.document.dispatchEvent(new h.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    assert.equal(dialog(), null);
   } finally { await h.close(); }
 });
 
@@ -524,9 +538,27 @@ test("P10 shell: Choose image… opens the sheet (uploads + site images); upload
   assert.equal(sheet().querySelector(".vc-tile").dataset.src, uploaded, "newest upload first");
   assert.ok(sheet().querySelector(".vc-tile").classList.contains("vc-tile-current"));
   assert.match(sheet().querySelector(".vc-tile").textContent, /Uploaded/);
+  assert.equal(sheet().querySelector("h2").textContent, "Choose image for Photo");
+  // U3: a click selects (nothing changes yet), "Use image" uses it; the toast offers Undo.
+  const use = sheet().querySelector('[data-action="use-image"]');
+  assert.equal(use.disabled, true, "nothing selected yet");
   sheet().querySelector('.vc-tile[data-src="/images/hero.svg"]').click();
+  assert.equal(src.value, uploaded, "selecting is not choosing");
+  assert.match(sheet().querySelector(".vc-sheet-chosen").textContent, /1 selected · hero\.svg/);
+  use.click();
+  assert.equal(sheet(), null);
   assert.equal(src.value, "/images/hero.svg");
   assert.equal(alt.value, "Alex smiling", "alt kept");
+  const toast = root.parentElement.querySelector(".vc-toast") ?? document.querySelector(".vc-toast");
+  assert.match(toast.textContent, /^Image replacedUndo$/);
+  toast.querySelector(".vc-toast-action").click();
+  assert.equal(src.value, uploaded, "Undo puts the previous image back");
+  // A double-click uses an image at once.
+  button("Choose the image for Photo").click();
+  for (let i = 0; i < 20 && !sheet().querySelector(".vc-tile"); i += 1) await settle();
+  sheet().querySelector('.vc-tile[data-src="/images/hero.svg"]').dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true }));
+  assert.equal(sheet(), null);
+  assert.equal(src.value, "/images/hero.svg");
   button("Choose the image for Photo").click();
   document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
   assert.equal(sheet(), null);
