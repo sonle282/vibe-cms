@@ -2,7 +2,7 @@
 
 > Nguồn: [DESIGN.md](DESIGN.md) §I. Quy tắc: 1 task = 1 commit; mỗi task REPORT → DỪNG chờ review. Test của gói **không đọc
 > dữ liệu site khách**. Task có sửa repo site: đầu task `git status` sạch + pull nhánh production của site; có thay đổi
-> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (P12f).
+> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (P12f · release v0.19.0).
 
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
@@ -28,7 +28,7 @@
 | **P12d** | Gói: `f.tuple`, text `pattern` / `tokens`, rich text `allow`, **`rules` của site** (chỗ cắm plugin: build + lưu + publish) — những gì Novelle cần | 14–22 | ✅ Xong (merge 2026-10-12; 46d74bb, CI 38196413379) |
 | **P12e** | CLI: `import-legacy-users` từ D1 của CMS chép (cùng định dạng hash → không đặt lại mật khẩu; admin → owner) | 6–10 | ✅ Xong (merge 2026-10-12; 8028ab0, CI 38197484347) |
 | P12g | Gói (trước Innovate): field "chữ hoặc tham chiếu" (giá `{ "of": … }`), ảnh theo tên trong manifest + kích thước do build tạo | 10–16 | ⏳ |
-| **P12f** | Gói: cắt / đổi cỡ ảnh = **bản sao mới**, giữ ảnh gốc (như Mr Spa), làm trong trình duyệt — không binding `IMAGES` | 8–14 | 🔎 Chờ review (commit + CI: xem PR) |
+| **P12f** | Gói: cắt / đổi cỡ ảnh = **bản sao mới**, giữ ảnh gốc (như Mr Spa), làm trong trình duyệt — không binding `IMAGES` | 8–14 | ✅ Xong (merge 2026-10-12; 884a683, CI 38198654822) |
 | P13 | Novelle: `cms.config` trên JSON có sẵn (không đổi nội dung) + plugin + `bind` selector; chạy song song CMS chép ở local | 10–16 | ⏳ |
 | P14 | Novelle: chuyển (`setup --site novelle`, nhập users, gỡ CMS chép), G.2 1 cặp trên `dev`, Workers Builds không biến token | 10–16 | ⏳ |
 | P15 | Innovate: tách nốt `site.ts` → JSON (reviews, FAQ, membership, chính sách, Journal…) — HTML giống từng byte | 8–14 | ⏳ |
@@ -114,7 +114,7 @@
   ở run 36372154008; job `secrets` quét gitleaks toàn lịch sử vài giây). Nếu repo về private: 2.000 phút / tháng ≈ 1.500+
   lần chạy.
 - **Phân phối:** GitHub Release `vX.Y.Z` + `vibe-cms-X.Y.Z.tgz` (workflow `release.yml` khi push tag), site cài bằng URL
-  công khai — không token. Chưa tạo tag / release: bản đầu tiên khi lõi đủ dùng (reviewer báo).
+  công khai — không token. **Bản đầu tiên: v0.19.0** (SonLe duyệt 2026-10-12, để Novelle cài từ URL release ở P13).
 - **Auth local (P6):** `npm run auth:local` chạy wiring production (`createSiteRuntime`) trong `wrangler dev --local` với D1 +
   KV + rate limit giả lập và GitHub giả: bootstrap, People, publish bằng đăng nhập thật, đo CPU băm mật khẩu.
 - **API local (P5):** `npm run api:local` chạy API trong Worker (`test/api-worker`, `wrangler dev --local`, D1 local) và
