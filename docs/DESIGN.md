@@ -825,16 +825,48 @@ nào là tên / host của site thì lấy từ config.
   - Change password: "Use 12–200 characters. Your current CMS session will stay active after saving."
 - **Màn nhỏ ≤ 900 px:** "Open on a laptop"; không che trang đăng nhập.
 
-### H.4 Thứ tự làm
+### H.4 Thứ tự làm — 3 track (review sản phẩm 2026-10-12, NL-DECISION-VIBECMS-001)
 
-Các batch:
-- **M1–M6:** khung và sửa nội dung → release **v0.22.0** + `vibe-cms update` cho Novelle.
-- **M7–M12:** các màn hình → **v0.23.0**.
-- **M13–M15:** khối chung, plugin admin, `init` → **v0.24.0**.
+**Vì sao đổi thứ tự.** Làm M1→M15 tuần tự (~170–250 giờ) thì không site nào nhận được gì cho tới cuối, trong khi vẫn
+phải giữ 2 CMS chép tay (Mr Spa gốc + bản của Innovate): mỗi lỗi sửa 2 nơi. Innovate và Novelle **không có collection
+nào** — họ chỉ dùng phần lõi của Mr Spa (sửa trang theo section, Link, ảnh, SEO, lưu / publish, Media, Users). Sản
+phẩm, blog, danh mục, menu nhiều cấp chỉ Mr Spa cần. Trong 12 tháng tới gói phục vụ các site hiện có **và khách salon
+của Mr Spa** (SonLe 2026-10-12); site thứ 4 đã có: **Modern Nails Lounge** (đang live, chưa có CMS, nội dung trong
+`src/data/*.ts`) — khách đầu tiên cài mới hoàn toàn, đúng bài kiểm tra "cắm vào web nào cũng được".
 
-Sau đó tiếp **P17** (Innovate dùng giao diện mới ngay khi chuyển) và **P19–P22** (Mr Spa: plugin + config, so ảnh
-chụp từng màn với CMS hiện tại = nghiệm thu "y chang"). Test của gói kiểm **chữ nguyên văn** của từng màn bằng DOM giả;
-e2e chụp ảnh từng màn.
+| Track | Task | Kết quả | Release |
+|---|---|---|---|
+| **A — lõi chung → Innovate** | M2, M3, **M3b**, M4, M5, M6 → M7, M11, M12 | Innovate chuyển sang gói (P17), gỡ bản chép (P18) — **bản chép đầu tiên biến mất** | v0.22.0 sau M6 (+ Novelle); v0.23.0 sau M12 |
+| **C — cài mới → Modern** | M15 (`vibe-cms init`) → P23–P25 | Modern có CMS từ con số 0 bằng các bước trong README; đo thời gian | v0.24.0 |
+| **B — phần riêng Mr Spa** | M8, M9, M10, M13, M14 → P19–P22 | Mr Spa chạy trên gói, gỡ CMS cũ — **hết bản chép** | v0.25.0 |
+
+Track C đi trước B: Modern là giá trị mới (chủ tiệm chưa có CMS) và chứng minh sản phẩm cho khách salon kế tiếp; Mr Spa
+đã có CMS chạy tốt, hoãn chỉ tốn công giữ bản gốc. M3b (sau M3): chụp **CMS chép của Innovate** (giao diện Mr Spa) và
+**admin của gói** trên cùng nội dung Innovate, chạy ở máy, đặt cạnh nhau — bằng chứng "y chang" cho từng task về sau
+(script ở repo site, không đụng production). Test của gói vẫn kiểm **chữ nguyên văn** bằng DOM giả; e2e chụp từng màn.
+
+### H.5 Đo lường, tiêu chí dừng, việc không làm
+
+**Chỉ số chính**
+- **Số CMS chép tay còn lại:** 2 hôm nay → 1 sau P18 → 0 sau P22.
+- **Độ y chang:** số màn đạt / 32 màn đã kiểm kê của Mr Spa (ảnh M3b đặt cạnh nhau, SonLe duyệt).
+- **Sau khi một site chuyển:** số lần chủ tiệm / nhân viên tự publish mỗi tháng (audit log, không tính người làm web) và
+  thời gian publish → live.
+- **Track C:** **thời gian tới lần publish đầu** của một site mới (từ `npm i` tới publish đầu tiên trên production),
+  đếm cả việc chuyển nội dung sang JSON — ghi lại ở Modern để làm mức cho khách salon kế tiếp.
+
+**Tiêu chí dừng**
+- Một màn tốn quá **2× giờ ước lượng** để giống từng pixel → dừng ở mức "đủ giống", ghi khác biệt vào §H (không chạy theo).
+- Track A trễ quá **2 tuần** so với mốc → cắt phạm vi (ví dụ dời M11 Rename / Archive) để chuyển Innovate trước.
+- Sau P17, 30 ngày mà chủ Innovate **không tự publish lần nào** → dừng thêm tính năng, hỏi chủ tiệm vướng ở đâu trước.
+- Track C: thời gian tới publish đầu của Modern quá **2 ngày công** → sửa `init` / README trước khi nhận khách tiếp.
+
+**Không làm lúc này** (cân lại mỗi khi một track xong)
+- API cho trợ lý AI tự tạo nháp (người duyệt publish): hướng dài hạn — giữ API chung, có tài liệu, để sau này cắm vào được; chưa xây.
+- SEO riêng từng trang, thêm / đổi chỗ carousel ngay trên preview (Mr Spa còn để ngỏ).
+- Sửa nội dung trên điện thoại (Mr Spa chặn < 900 px), đa ngôn ngữ cho admin, dark mode.
+- Nhiều khách trên một hệ thống (SaaS), thanh toán: chỉ xét khi có ≥ 3 khách salon trả tiền.
+- Thêm vào gói những gì 1 site cần mà không site thứ 2 nào cần — đó là việc của plugin (M14).
 
 ---
 
@@ -861,7 +893,8 @@ thay đổi lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tà
 | **P11** | CLI `setup` (idempotent, `--account`) / `migrate` / `check` / `export` + `import` / `update` / `reset-owner-password` (đặt mật khẩu tạm cho owner quên mật khẩu, không sửa D1 tay) + tài liệu cài | cài demo từ đầu theo tài liệu **bằng URL release, không token**; `setup` lần 2 = không đổi gì; `update` đổi URL sang bản mới | chạy local (miniflare); xuất / nhập D1 demo khớp số dòng |
 | P12b–P12f | (Viết lại 2026-10-12: 2 site pilot đã chạy CMS chép tay) tuỳ chọn / plugin chung mà site thật cần: list / collection cố định, mục chỉ owner, Activity (P12b, §C.7); History đọc từ git (P12c); plugin kiểu field riêng (P12d); CLI nhập users từ CMS chép (P12e); cắt / đổi cỡ ảnh = bản sao (P12f) | mỗi mục chạy trên demo | test + e2e demo |
 | P13–P18 | Site 2 (chưa go-live) trước rồi site 1: config trên JSON có sẵn + plugin, chạy song song CMS chép ở local, chuyển (D1 mới + nhập users), dọn CMS chép | **mỗi site: Workers Builds build xanh không có biến môi trường token nào** (gói cài từ URL release) + 1 cặp publish + **lưu và đọc lại 1 nháp > 100 KB trên D1 THẬT** | so HTML public; Workers Builds log |
-| M1–M15 | Admin giống hệt CMS tham chiếu rồi tách phần chung (§H): khung, sửa trang 2 cấp, Link, ảnh, lưu / publish, các màn, khối chung, plugin admin, `init` | mỗi màn đúng chữ + bố cục §H.3 trên demo | test DOM (chữ nguyên văn) + e2e chụp ảnh từng màn |
+| M1–M15 | Admin giống hệt CMS tham chiếu rồi tách phần chung (§H), theo 3 track (§H.4): A lõi → Innovate, C cài mới → Modern (`init`), B phần riêng → Mr Spa | mỗi màn đúng chữ + bố cục §H.3 trên demo; ảnh đặt cạnh nhau (M3b) | test DOM (chữ nguyên văn) + e2e chụp ảnh từng màn |
+| P23–P25 | Site cài mới đầu tiên (Modern Nails Lounge): nội dung → JSON, `init` + config, bật CMS | thời gian tới publish đầu ≤ 2 ngày công (§H.5) | so HTML public; ghi thời gian |
 | P19 | Plugin catalog + redirects-check | test plugin trên fixture catalog nhỏ | test plugin |
 | P20–P22 | Site cũ chuyển sang gói (config đầy đủ → bật, HTML public giống từng byte → dọn CMS cũ) | CMS mới làm được mọi việc CMS cũ làm | so HTML + kiểm production |
 

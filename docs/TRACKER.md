@@ -1,8 +1,8 @@
-# Vibe CMS — Tracker (P1–P22, P12b–P12h, U1–U4, M0–M15)
+# Vibe CMS — Tracker (P1–P25, P12b–P12h, U1–U4, M0–M15)
 
 > Nguồn: [DESIGN.md](DESIGN.md) §I. Quy tắc: 1 task = 1 commit; mỗi task REPORT → DỪNG chờ review. Test của gói **không đọc
 > dữ liệu site khách**. Task có sửa repo site: đầu task `git status` sạch + pull nhánh production của site; có thay đổi
-> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (P16 xong · M0: kế hoạch admin giống hệt Mr Spa, DESIGN §H — làm M1–M15 trước P17).
+> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (M1 xong · review sản phẩm: 3 track A → C → B, DESIGN §H.4–H.5; tiếp theo M2).
 
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
@@ -41,28 +41,37 @@
 | **P16** | Innovate: `cms.config` + plugin + collection cho các mục vừa tách; `wrangler.toml` → `wrangler.jsonc`; song song ở local | 12–18 | ✅ Xong (merge 2026-10-12; innovate PR #9, 1909475 — cài v0.21.0, `vibe:check` + `vibe:break` 12 ca, HTML giống từng byte) |
 | **M0** | Đối chiếu CMS Mr Spa (code + 32 ảnh chụp chạy local) với gói, phỏng vấn SonLe, viết §H (giống hệt + mô hình chung) | 4–6 | ✅ Xong (2026-10-12) |
 | **M1** | Khung y chang: URL theo đường dẫn (`/admin/pages/…`, `#/…` cũ chuyển hướng), `/admin` → trang đầu; rail (Users chỉ admin, avatar 2 chữ + Change password / Sign out, `under` = tab); top bar (3 thiết bị co vừa + nhớ, chip trạng thái + nhãn ngắn, icon View live / History / Discard / Reload and keep / Check again, ⋯ khi < 900, Publish luôn hiện + 10 lý do); tooltip 400 ms, toast Mr Spa; bỏ Preview toggle, Ctrl+S, dòng trạng thái, Skip link | 14–20 | ✅ Xong (2026-10-12) |
-| M2 | Vai trò Admin / Editor: migration D1 `owner` → `admin`, config `"admin"` (+ `"owner"` cảnh báo), CLI `reset-admin-password` (bí danh cũ), chữ trên mọi màn; hộp Change password thay màn My account (giữ bắt đổi mật khẩu tạm) | 6–10 | ⏳ |
-| M3 | Sửa trang 2 cấp: danh sách section theo thứ tự trên trang (tóm tắt, chấm chưa lưu, tip ẩn được), cấp 2 (←, Esc, trượt 220 ms, nhớ section), field (nhãn = nút, help trên ô, hộp lỗi đầu trang), list (N of M, Banner 1, ↑ ↓ ×, hỏi trước khi xoá, chọn thẻ ↔ preview, ghi chú preview); bridge (chip trên / trong, viền section, chớp, chỉ cuộn khi khuất); bỏ bộ đếm ký tự mọi ô | 16–24 | ⏳ |
-| M4 | `f.link` (Page · Web address · Phone · Email, Find a page > 8, "Opens: …", lỗi bằng lời thường, Save tắt khi link sai) + `f.phone` (`site.phone.country`) | 10–14 | ⏳ |
-| M5 | Ảnh y chang: thẻ (Desktop / Mobile ghép `mobile`, ô trống nét đứt, hover Replace / Adjust / thả file, thả = tải lên có %, ⋯ Set as main / Copy / Remove trừ ảnh bắt buộc); bỏ ô địa chỉ / alt / ảnh phone dưới thẻ; sheet (ngữ cảnh, chip theo nhóm, Load more 40, lưới 5 cột, chân sheet, Undo); Adjust như Mr Spa (Shape + điểm lấy nét) thay giao diện Crop | 14–20 | ⏳ |
-| M6 | Lưu / publish y chang: bản khôi phục cục bộ 24 h + "Restore unsaved changes?", 2 hộp thoại (Review changes theo section + `<mark>` + ảnh nhỏ → Publish {name}), tiến độ trong chip + biên nhận localStorage + lịch theo dõi 20 phút + build failed (`publish.buildCheck`), Live tải lại lặng lẽ, chữ Leave / Discard / 409; bỏ toast lưu / publish. Rồi release **v0.22.0** + Novelle | 14–20 | ⏳ |
-| M7 | Pages 2 cột (`group`, `area`, `description`, pill Live / Off, "Unpublished changes"), khu vực site (crumb "Across the whole site", `previewOn`), Popup (công tắc + 4 câu trạng thái), `layout: "seo"` (Google + thẻ chia sẻ, đếm 160) | 12–18 | ⏳ |
-| M8 | Danh sách collection: tab `under`, `list.columns` / `filters` / `search`, trạng thái Live / Draft / Archived (`status`), ⋯ Edit / Duplicate / View on website, `labels.add`, chữ trống / đếm; bỏ cột ID | 10–14 | ⏳ |
-| M9 | `layout: "record"` (mục lục + form + cột On the website / Ready to publish / Duplicate / Hide, `ready`) + bản ghi có preview dùng khung sửa trang; bỏ ô ID / Status / Text tự thêm | 14–20 | ⏳ |
-| M10 | `layout: "document"` (giấy + thanh định dạng Mr Spa, cover, tiêu đề lớn, cột Post details / In Google / Ready; `plain` cho policy, đếm chữ), hộp Add link (trang hoặc HTTPS); nút ngoài bộ Mr Spa chỉ khi `allow` cần | 12–18 | ⏳ |
-| M11 | Media y chang: chip, Load more, chi tiết (Rename = tên hiển thị D1, Copy link, Adjust, Used on → mở đúng ô, Remove / Archive / Unarchive + luật), ⋯ Remove unused images (> 30 ngày); Drafts y chang (See changes chỉ đọc, mã commit 7 ký tự; giữ publish nhiều nháp) | 16–24 | ⏳ |
-| M12 | People & activity y chang (bảng + ⋯, Reset password = admin gõ, Refresh, Add a person có mật khẩu tạm sửa được, bỏ ô chọn vai trò / Name; Activity 4 lọc, 100 dòng, Refresh), Version history = hộp thoại (mọi vai trò), Sign-in (Signing in…, lỗi trên nút), màn nhỏ không che đăng nhập. Rồi release **v0.23.0** | 12–18 | ⏳ |
-| M13 | Khối chung: `f.menu` (thẻ link, nhóm dropdown nhiều cấp, ↑ ↓ ⋯ Remove, Opens), link list, ô lấy giá trị từ ô khác ("Phone comes from Header…"), `f.price` cơ bản | 12–18 | ⏳ |
-| M14 | Plugin admin: module trình duyệt khai trong config (control field riêng, panel riêng trong record / list, luật) được bundle vào `/admin`; ví dụ trong demo | 12–18 | ⏳ |
-| M15 | `vibe-cms init`: đọc JSON của site → nháp `cms.config.ts` (file, section, field đoán kiểu, group) + gợi ý `data-cms-bind`; README "thêm CMS vào site trong 5 bước". Rồi release **v0.24.0** | 10–16 | ⏳ |
-| P17 | Innovate: chuyển production trong khung giờ báo chủ (publish hết nháp trước, nhập users), G.2 trên `main`; lưu + đọc 1 nháp > 100 KB trên D1 THẬT | 8–12 | ⏳ |
-| P18 | Innovate: dọn CMS chép; D1 / R2 cũ giữ 30 ngày rồi chủ xoá | 4–8 | ⏳ |
-| P19 | Plugin catalog + redirects-check | 16–24 | ⏳ |
-| P20 | Mr Spa: `cms.config` đầy đủ (chưa bật) | 16–24 | ⏳ |
-| P21 | Mr Spa: bật gói thay CMS cũ, HTML public giống từng byte | 20–32 | ⏳ |
-| P22 | Mr Spa: dọn code CMS cũ | 8–15 | ⏳ |
+| M2 | **A ·** Vai trò Admin / Editor: migration D1 `owner` → `admin`, config `"admin"` (+ `"owner"` cảnh báo), CLI `reset-admin-password` (bí danh cũ), chữ trên mọi màn; hộp Change password thay màn My account (giữ bắt đổi mật khẩu tạm) | 6–10 | ⏳ |
+| M3 | **A ·** Sửa trang 2 cấp: danh sách section theo thứ tự trên trang (tóm tắt, chấm chưa lưu, tip ẩn được), cấp 2 (←, Esc, trượt 220 ms, nhớ section), field (nhãn = nút, help trên ô, hộp lỗi đầu trang), list (N of M, Banner 1, ↑ ↓ ×, hỏi trước khi xoá, chọn thẻ ↔ preview, ghi chú preview); bridge (chip trên / trong, viền section, chớp, chỉ cuộn khi khuất); bỏ bộ đếm ký tự mọi ô | 16–24 | ⏳ |
+| M3b | **A ·** Đo "y chang" (§H.4): script ở repo Innovate chạy **CMS chép** và **admin của gói** trên cùng nội dung, ở máy (D1 / KV local, người dùng thử tạo tại chỗ), chụp từng màn đặt cạnh nhau → ảnh kèm mỗi task về sau; không đụng production | 4–6 | ⏳ |
+| M4 | **A ·** `f.link` (Page · Web address · Phone · Email, Find a page > 8, "Opens: …", lỗi bằng lời thường, Save tắt khi link sai) + `f.phone` (`site.phone.country`) | 10–14 | ⏳ |
+| M5 | **A ·** Ảnh y chang: thẻ (Desktop / Mobile ghép `mobile`, ô trống nét đứt, hover Replace / Adjust / thả file, thả = tải lên có %, ⋯ Set as main / Copy / Remove trừ ảnh bắt buộc); bỏ ô địa chỉ / alt / ảnh phone dưới thẻ; sheet (ngữ cảnh, chip theo nhóm, Load more 40, lưới 5 cột, chân sheet, Undo); Adjust như Mr Spa (Shape + điểm lấy nét) thay giao diện Crop | 14–20 | ⏳ |
+| M6 | **A ·** Lưu / publish y chang: bản khôi phục cục bộ 24 h + "Restore unsaved changes?", 2 hộp thoại (Review changes theo section + `<mark>` + ảnh nhỏ → Publish {name}), tiến độ trong chip + biên nhận localStorage + lịch theo dõi 20 phút + build failed (`publish.buildCheck`), Live tải lại lặng lẽ, chữ Leave / Discard / 409; bỏ toast lưu / publish. Rồi release **v0.22.0** + Novelle | 14–20 | ⏳ |
+| M7 | **A ·** Pages 2 cột (`group`, `area`, `description`, pill Live / Off, "Unpublished changes"), khu vực site (crumb "Across the whole site", `previewOn`), Popup (công tắc + 4 câu trạng thái), `layout: "seo"` (Google + thẻ chia sẻ, đếm 160) | 12–18 | ⏳ |
+| M11 | **A ·** Media y chang: chip, Load more, chi tiết (Rename = tên hiển thị D1, Copy link, Adjust, Used on → mở đúng ô, Remove / Archive / Unarchive + luật), ⋯ Remove unused images (> 30 ngày); Drafts y chang (See changes chỉ đọc, mã commit 7 ký tự; giữ publish nhiều nháp) | 16–24 | ⏳ |
+| M12 | **A ·** People & activity y chang (bảng + ⋯, Reset password = admin gõ, Refresh, Add a person có mật khẩu tạm sửa được, bỏ ô chọn vai trò / Name; Activity 4 lọc, 100 dòng, Refresh), Version history = hộp thoại (mọi vai trò), Sign-in (Signing in…, lỗi trên nút), màn nhỏ không che đăng nhập. Rồi release **v0.23.0** | 12–18 | ⏳ |
+| P17 | **A ·** Innovate: chuyển production trong khung giờ báo chủ (publish hết nháp trước, nhập users), G.2 trên `main`; lưu + đọc 1 nháp > 100 KB trên D1 THẬT | 8–12 | ⏳ |
+| P18 | **A ·** Innovate: dọn CMS chép; D1 / R2 cũ giữ 30 ngày rồi chủ xoá | 4–8 | ⏳ |
+| M15 | **C ·** `vibe-cms init`: đọc JSON của site → nháp `cms.config.ts` (file, section, field đoán kiểu, group) + gợi ý `data-cms-bind`; README "thêm CMS vào site trong 5 bước". Rồi release **v0.24.0** | 10–16 | ⏳ |
+| P23 | **C ·** Modern Nails Lounge: nội dung `src/data/*.ts` → JSON (HTML public giống từng byte), như P15 của Innovate | 6–10 | ⏳ |
+| P24 | **C ·** Modern: `vibe-cms init` → `cms.config` + `data-cms-*`, `vibe-cms setup`, chạy song song ở local; ghi **thời gian tới lần publish đầu** (§H.5) | 6–10 | ⏳ |
+| P25 | **C ·** Modern: bật CMS trên production (SonLe duyệt, báo chủ tiệm), người dùng đầu tiên, 1 cặp publish | 3–5 | ⏳ |
+| M8 | **B ·** Danh sách collection: tab `under`, `list.columns` / `filters` / `search`, trạng thái Live / Draft / Archived (`status`), ⋯ Edit / Duplicate / View on website, `labels.add`, chữ trống / đếm; bỏ cột ID | 10–14 | ⏳ |
+| M9 | **B ·** `layout: "record"` (mục lục + form + cột On the website / Ready to publish / Duplicate / Hide, `ready`) + bản ghi có preview dùng khung sửa trang; bỏ ô ID / Status / Text tự thêm | 14–20 | ⏳ |
+| M10 | **B ·** `layout: "document"` (giấy + thanh định dạng Mr Spa, cover, tiêu đề lớn, cột Post details / In Google / Ready; `plain` cho policy, đếm chữ), hộp Add link (trang hoặc HTTPS); nút ngoài bộ Mr Spa chỉ khi `allow` cần | 12–18 | ⏳ |
+| M13 | **B ·** Khối chung: `f.menu` (thẻ link, nhóm dropdown nhiều cấp, ↑ ↓ ⋯ Remove, Opens), link list, ô lấy giá trị từ ô khác ("Phone comes from Header…"), `f.price` cơ bản | 12–18 | ⏳ |
+| M14 | **B ·** Plugin admin: module trình duyệt khai trong config (control field riêng, panel riêng trong record / list, luật) được bundle vào `/admin`; ví dụ trong demo | 12–18 | ⏳ |
+| P19 | **B ·** Plugin catalog + redirects-check | 16–24 | ⏳ |
+| P20 | **B ·** Mr Spa: `cms.config` đầy đủ (chưa bật) | 16–24 | ⏳ |
+| P21 | **B ·** Mr Spa: bật gói thay CMS cũ, HTML public giống từng byte | 20–32 | ⏳ |
+| P22 | **B ·** Mr Spa: dọn code CMS cũ | 8–15 | ⏳ |
 
 ## Ghi chú
+
+- **Review sản phẩm (2026-10-12, NL-DECISION-VIBECMS-001, DESIGN §H.4–H.5):** Innovate và Novelle không có collection
+  → phần lõi (Track A) đủ để chuyển Innovate; phần riêng Mr Spa (Track B) để sau site cài mới đầu tiên (Track C:
+  Modern Nails Lounge, đang live, chưa có CMS). SonLe: 12 tháng tới phục vụ các site hiện có + khách salon của Mr Spa.
+  Chỉ số: số CMS chép còn lại (2 → 0), số màn y chang / 32, số lần chủ tiệm tự publish, thời gian tới publish đầu của site mới.
 
 - **P6 review (2026-10-07):** `npm run check` xanh trước khi sửa (204 test, store 24, API 50, auth 19 kiểm; PBKDF2 ~16 ms
   trong workerd local). Đối chiếu §F.1 đủ: PBKDF2 100k, phiên KV 30 ngày, owner / editor, bootstrap 1 lần, rate limit,
