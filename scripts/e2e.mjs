@@ -317,6 +317,9 @@ try {
   const postImageSrc = await postImage.getAttribute("src");
   check("editor: the uploaded image is in the text, selected, alt asked for", /^\/assets\/uploads\/20\d\d\/\d\d\/post-chair-[0-9a-f]{8}\.webp$/.test(postImageSrc ?? "") && await field("body").getByLabel("Alt text").evaluate((element) => element === document.activeElement), postImageSrc);
   await field("body").getByLabel("Alt text").fill("A pedicure chair");
+  // Measure once the picture has loaded (its size, and the corner handle placed on it), not while it is still coming.
+  await postImage.evaluate((image) => (image.complete && image.naturalWidth > 0 ? null : new Promise((resolve) => image.addEventListener("load", resolve, { once: true }))));
+  await field("body").locator(".vc-rich-handle").waitFor({ state: "visible" });
   const before = await postImage.boundingBox();
   const handle = await field("body").locator(".vc-rich-handle").boundingBox();
   await page.mouse.move(handle.x + 8, handle.y + 8);
