@@ -323,3 +323,11 @@ a.vc-user-name { color: var(--vc-fg); text-decoration: none; } a.vc-user-name:ho
 .vc-activity-ok { color: var(--vc-success); }
 .vc-activity-bad { color: var(--vc-danger); }
 .vc-activity + .vc-error + .vc-button { margin-top: 12px; }
+
+/* P12c: History — one card per version, newest first. */
+.vc-history { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 8px; }
+.vc-history-item { background: var(--vc-surface); border-radius: var(--vc-radius-14); box-shadow: 0 0 0 1px rgba(0,0,0,.05); padding: 12px 16px; }
+.vc-history-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; }
+.vc-history-actions { margin-left: auto; display: flex; gap: 8px; }
+.vc-history-title { margin: 6px 0 0; color: var(--vc-fg-muted); font-size: 12px; overflow-wrap: anywhere; }
+.vc-history-changes { margin-top: 8px; border-top: 1px solid #f0f0f3; padding-top: 8px; }

@@ -368,6 +368,24 @@ try {
   check("commit message names the owner's internal id, no email", /usr_[a-z2-7]{16}/.test(github.commit().message) && !github.commit().message.includes("@"));
   check("after publishing: 'Publishing…' until the site serves it; no drafts left", /Publishing… started/.test(await page.locator(".vc-live").innerText()) && await page.locator(".vc-badge").isHidden());
 
+  // ---------------------------------------------------------------- P12c: History of the salon info (owner), from the fake GitHub's commits
+  await open("#/files/site");
+  await page.locator('[data-action="history"]').click();
+  await page.locator(".vc-history-item").first().waitFor();
+  const versions = await page.locator(".vc-history-item").allInnerTexts();
+  check("history: the publish and the first version, newest first", versions.length === 2 && /Published in the CMS · newest/.test(versions[0]) && /Changed in the website's code/.test(versions[1]), versions);
+  // This Worker is not rebuilt after the publish, so the website still shows the first version: comparing the
+  // published one lists what it changes; the first one is "what the website shows now".
+  const compareText = async (index) => {
+    const item = page.locator(".vc-history-item").nth(index);
+    await item.getByRole("button", { name: "Compare" }).click();
+    await item.locator(".vc-history-changes:not([hidden])").waitFor();
+    return { text: await item.locator(".vc-history-changes").innerText(), lines: await item.locator(".vc-changes li").count() };
+  };
+  const newest = await compareText(0); const oldest = await compareText(1);
+  check("history: compare lists what the published version changes on the website", /Restoring it would change:/.test(newest.text) && newest.lines > 0, newest);
+  check("history: the first version is what the website shows now", /This is what the website shows now/.test(oldest.text), oldest);
+
   // ---------------------------------------------------------------- P8b: the owner adds an editor on the People screen
   await page.locator(".vc-nav-list").getByRole("link", { name: "People" }).click();
   await page.locator("form.vc-people-add").waitFor();

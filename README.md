@@ -5,13 +5,13 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.15.0 · P12b.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
+> Status: **0.16.0 · P12c.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
 > fields on the server, CMS API + one-commit GitHub publishing, sign-in, and the editor at `/admin` (lists, forms
 > generated from `cms.config`, a visual rich-text editor, a live preview of the draft on the real page, drafts, review
 > of changes, publish, live status, People, My account), rich text cleaned on the server, images (upload to R2, picker,
 > inline images resized by dragging, published in the same commit), and the `vibe-cms` command (setup, migrate, check,
-> export / import, update, reset-owner-password), fixed lists / collections, owner-only sections and the Activity log.
-> Next: the rest of what the first real sites use (history, field plugins, CLI import, image crop — P12c–P12f), then
+> export / import, update, reset-owner-password), fixed lists / collections, owner-only sections, the Activity log and History (restore an older version as a draft).
+> Next: the rest of what the first real sites use (field plugins, CLI import, image crop — P12d–P12f), then
 > moving them onto the package (P13–P18;
 > [docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
 
@@ -179,6 +179,13 @@ groups: f.list(f.object({ label: "Group", fields: { … } }), { label: "Menu gro
 - `access: "owner"`: the whole file / collection is hidden from editors (403 `owner_only`, audited). `locked: "owner"`
   on a field is the softer form: editors see it, greyed out.
 - **Activity** (owners, in the navigation): publishes, sign-ins, people changes and refusals in plain words, 50 at a time.
+
+## History (P12c)
+
+Owners have **History** in the editor: every version of that file or record, newest first, read from the site's
+git history (CMS publishes — from this package or an older CMS — and changes made in the code). **Compare** says what
+restoring a version would change; **Restore as draft** makes it your draft, published like any other. Nothing is
+migrated: it reads GitHub with the site's token.
 
 ## CMS API and publishing (P5)
 
