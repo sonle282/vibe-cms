@@ -3,9 +3,22 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## Unreleased (M1)
+## Unreleased (M1, M2)
 
-The admin becomes the Mr Spa CMS as it is (docs/DESIGN.md §H; released with M2–M6 as 0.22.0). Nothing to change on a
+**M2 — roles are Admin / Editor** (the Mr Spa CMS's names). Nothing to do on a site; its data stays as it is.
+
+- Every screen says **Admin** (account menu, People, Activity, field notes "Only an admin can change this.", the review
+  "(admin only)", sign-in "Ask an admin to reset it."). The People note and role cards are the Mr Spa CMS's words.
+- `cms.config`: **`locked: "admin"`**, **`access: "admin"`**, `roles: ["admin", "editor"]`. **`"owner"` still works**
+  (its old name): the build prints one warning listing where — rename when convenient.
+- The CMS database is not migrated: the Admin role keeps its stored code `owner` (never shown). The People API takes
+  `"admin"` (and `"owner"`).
+- CLI: **`vibe-cms reset-admin-password`**; `reset-owner-password` still works.
+- **Change password** in the account menu opens the Mr Spa dialog ("Change your password": current, new, confirm;
+  this session stays signed in) — the My account screen is gone (`/admin/account` opens the dialog). A temporary
+  password still has to be replaced at the first sign-in.
+
+**M1 — the frame of the Mr Spa CMS** (docs/DESIGN.md §H; released with M2–M6 as 0.22.0). Nothing to change on a
 site: its config, content and data stay as they are.
 
 - **Addresses by path**: `/admin` opens the first page's editor; every screen has its own address

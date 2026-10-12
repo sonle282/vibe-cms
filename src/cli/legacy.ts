@@ -75,7 +75,7 @@ export const importLegacyUsers = ({ root, from, fromConfig, local = false, confi
   const rows = legacy.map((row) => ({ ...userFromLegacyRow(row), must_change_password: state.includes(`password_reset_required:${row.id}`) ? 1 : 0 }) as UserRow);
   const table = rows.map((row) => `  ${row.username.padEnd(24)} ${row.role.padEnd(6)} ${row.status.padEnd(9)}${row.must_change_password ? " must change the temporary password" : ""}`).join("\n");
   log(`${dryRun ? "Would import" : "Importing"} ${rows.length} ${rows.length === 1 ? "person" : "people"} from ${from} (${local ? "local" : "remote"}) into ${BINDINGS.db}:\n${table}`);
-  if (!rows.some((row) => row.role === "owner")) log("Note: nobody is an admin in the old CMS, so there is no owner yet — sign in with the bootstrap secrets once to create one.");
+  if (!rows.some((row) => row.role === "owner")) log("Note: nobody is an admin in the old CMS, so there is no admin yet — sign in with the bootstrap secrets once to create one.");
   if (dryRun) { log("Dry run: nothing was written."); return { rows, written: false }; }
   const dir = mkdtempSync(join(tmpdir(), "vibe-cms-legacy-"));
   try {

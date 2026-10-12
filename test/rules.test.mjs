@@ -8,13 +8,13 @@ const base = () => ({
   configVersion: 1,
   site: { name: "Demo Salon", url: "https://demo.example", timezone: "America/New_York" },
   repo: { owner: "sonle282", name: "vibe-cms-demo", branch: "main" },
-  roles: ["owner", "editor"],
+  roles: ["admin", "editor"],
   files: [{
     key: "site", label: "Salon info", path: "src/data/site.json", format: "json", preview: "/",
     sections: [{ key: "contact", label: "Contact", fields: ["phone", "hours"] }, { key: "home", label: "Home", fields: ["hero"] }],
     fields: {
-      phone: f.text({ label: "Phone", locked: "owner" }),
-      hours: f.hours({ label: "Hours", locked: "owner" }),
+      phone: f.text({ label: "Phone", locked: "admin" }),
+      hours: f.hours({ label: "Hours", locked: "admin" }),
       hero: f.object({ label: "Banner", fields: { title: f.text({ label: "Heading" }), image: f.image({ label: "Image", alt: true }) } }),
     },
   }],
@@ -24,10 +24,10 @@ const base = () => ({
     status: { field: "status", live: "published", draft: "draft" }, order: { by: "name" },
     fields: {
       name: f.text({ label: "Name", required: true }),
-      price: f.text({ label: "Price", locked: "owner" }),
+      price: f.text({ label: "Price", locked: "admin" }),
       status: f.select({ label: "Status", options: ["published", "draft"] }),
       category: f.select({ label: "Category", options: ["Nails", "Spa"] }),
-      items: f.list(f.object({ label: "Item", fields: { name: f.text({ label: "Name" }), price: f.text({ label: "Price", locked: "owner" }) } }), { label: "Items", ordered: true, min: 0, max: 20 }),
+      items: f.list(f.object({ label: "Item", fields: { name: f.text({ label: "Name" }), price: f.text({ label: "Price", locked: "admin" }) } }), { label: "Items", ordered: true, min: 0, max: 20 }),
       related: f.reference({ label: "Related", to: "services", multiple: true, ordered: true }),
     },
   }, {
@@ -69,7 +69,7 @@ rule("repo.branch is required", (c) => { c.repo.branch = ""; }, "repo.branch", /
 rule('repo.branch: no ".."', (c) => { c.repo.branch = "feature..x"; }, "repo.branch", /not a valid branch name: it has "\.\."/);
 rule("repo.branch: no spaces", (c) => { c.repo.branch = "my branch"; }, "repo.branch", /space/);
 rule('repo.branch: no ".lock" part', (c) => { c.repo.branch = "release/x.lock"; }, "repo.branch", /\.lock/);
-rule("roles are fixed to owner + editor", (c) => { c.roles = ["owner", "admin"]; }, "roles", /must be \["owner", "editor"\]/);
+rule("roles are fixed to admin + editor", (c) => { c.roles = ["owner", "admin"]; }, "roles", /must be \["admin", "editor"\]/);
 rule("media.dir outside public/ needs the address it is served at (base)", (c) => { c.media.dir = "src/uploads"; }, "media.dir", /is outside public\/, so the address uploads are served at is needed/);
 rule("media.dir has no '..'", (c) => { c.media.dir = "public/../secrets"; }, "media.dir", /must be a folder of the repository/);
 rule("P12h: media.names needs its manifest (.json)", (c) => { c.media.names = { manifest: "src/data/images.txt" }; }, "media.names.manifest", /required — the site's image manifest/);
@@ -119,7 +119,7 @@ rule("every field needs a label", (c) => { c.files[0].fields.phone = { type: "te
 rule("nested fields need a label too", (c) => { delete c.collections[0].fields.items.of.fields.name.label; }, "collections[0].fields.items.of.fields.name.label", /required/);
 rule("unknown field type", (c) => { c.files[0].fields.phone = { type: "colour", label: "Colour" }; }, "files[0].fields.phone.type", /unknown field type "colour" → use one of text, richText/);
 rule("unknown option (typo) on a field", (c) => { c.files[0].fields.phone.lockd = "owner"; }, "files[0].fields.phone.lockd", /unknown option for a text field → allowed: label, help, required, locked, bind, maxLength, multiline/);
-rule('locked only accepts "owner" (deep path)', (c) => { c.collections[0].fields.items.of.fields.price.locked = "admin"; }, "collections[0].fields.items.of.fields.price.locked", /only "owner" is allowed \(got "admin"\)/);
+rule('locked only accepts "admin" (deep path)', (c) => { c.collections[0].fields.items.of.fields.price.locked = "editor"; }, "collections[0].fields.items.of.fields.price.locked", /only "admin" is allowed \(got "editor"\)/);
 rule("required is true / false", (c) => { c.collections[0].fields.name.required = "yes"; }, "collections[0].fields.name.required", /true or false/);
 rule("text maxLength is a whole number ≥ 1", (c) => { c.files[0].fields.phone.maxLength = 0; }, "files[0].fields.phone.maxLength", /whole number ≥ 1/);
 rule("select needs options", (c) => { c.collections[0].fields.category.options = []; }, "collections[0].fields.category.options", /at least one option/);

@@ -26,15 +26,15 @@ export const describeActivity = (entry: ActivityEntry): { text: string; tone: "o
     case "failed": return { text: `Publishing ${what} failed${typeof detail.code === "string" ? ` (${detail.code.replace(/_/g, " ")})` : ""}`, tone: "bad" };
     case "denied": {
       const verb = stage === "publish" ? "publish" : "save";
-      if (detail.reason === "owner_only") return { text: `Refused to ${verb} ${what}: only owners can change it`, tone: "bad" };
+      if (detail.reason === "owner_only") return { text: `Refused to ${verb} ${what}: only admins can change it`, tone: "bad" };
       const fields = fieldsOf(detail);
-      return { text: `Refused to ${verb} ${what}: ${fields.length ? fields.join(", ") : "owner-only fields"} ${fields.length === 1 ? "is" : "are"} for owners only`, tone: "bad" };
+      return { text: `Refused to ${verb} ${what}: ${fields.length ? fields.join(", ") : "admin-only fields"} ${fields.length === 1 ? "is" : "are"} for admins only`, tone: "bad" };
     }
     case "login": return { text: "Signed in", tone: "plain" };
     case "login_failed": return { text: `Failed sign-in (${detail.reason === "disabled" ? "account disabled" : detail.reason === "unknown_user" ? "unknown username" : "wrong password"})`, tone: "bad" };
     case "logout": return { text: "Signed out", tone: "plain" };
     case "password_change": return { text: "Changed their password", tone: "plain" };
-    case "bootstrap": return { text: "Created the first owner", tone: "ok" };
+    case "bootstrap": return { text: "Created the first admin", tone: "ok" };
     case "user_create": return { text: `Added ${what}`, tone: "plain" };
     case "user_disable": return { text: `Disabled ${what}`, tone: "plain" };
     case "user_enable": return { text: `Enabled ${what}`, tone: "plain" };
@@ -52,7 +52,7 @@ const when = (iso: string) => {
 export const activityScreen = async (kit: ScreenKit, stillHere: () => boolean, kind = "all") => {
   const { doc, api, user } = kit;
   const crumbs: Array<[string, string?]> = [["People & activity"]];
-  if (user.role !== "owner") return kit.show({ title: "Activity", crumbs: [["Activity"]] }, kit.message("Activity", "Only an owner can see the activity log."));
+  if (user.role !== "owner") return kit.show({ title: "Activity", crumbs: [["Activity"]] }, kit.message("Activity", "Only an admin can see the activity log."));
   const filter = ACTIVITY_FILTERS.some(([key]) => key === kind) ? kind : "all";
   const first = await api.get<ActivityPage>(`/api/cms/activity?kind=${encodeURIComponent(filter)}`);
   if (!stillHere()) return;
@@ -71,7 +71,7 @@ export const activityScreen = async (kit: ScreenKit, stillHere: () => boolean, k
       // U4 (Mr Spa 20): Date · Person · What happened · Change · Result (Done / Failed).
       tbody.append(h(doc, "tr", { "data-id": String(entry.id) },
         h(doc, "td", { class: "vc-activity-when" }, h(doc, "time", { datetime: entry.at }, when(entry.at))),
-        h(doc, "td", {}, entry.who ?? "—", entry.role !== "anonymous" ? h(doc, "span", { class: "vc-note" }, ` ${entry.role === "owner" ? "Owner" : "Editor"}`) : null),
+        h(doc, "td", {}, entry.who ?? "—", entry.role !== "anonymous" ? h(doc, "span", { class: "vc-note" }, ` ${entry.role === "owner" ? "Admin" : "Editor"}`) : null),
         h(doc, "td", { class: `vc-activity-${tone}` }, text),
         h(doc, "td", { class: "vc-mono" }, sha || "—"),
         h(doc, "td", {}, h(doc, "span", { class: `vc-pill ${tone === "bad" ? "vc-pill-failed" : "vc-pill-live"}` }, tone === "bad" ? "Failed" : "Done"))));

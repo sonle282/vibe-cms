@@ -2,7 +2,7 @@
 
 > Nguồn: [DESIGN.md](DESIGN.md) §I. Quy tắc: 1 task = 1 commit; mỗi task REPORT → DỪNG chờ review. Test của gói **không đọc
 > dữ liệu site khách**. Task có sửa repo site: đầu task `git status` sạch + pull nhánh production của site; có thay đổi
-> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (M1 xong · review sản phẩm: 3 track A → C → B, DESIGN §H.4–H.5; tiếp theo M2).
+> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (M2 xong · 3 track A → C → B, DESIGN §H.4–H.5; tiếp theo M3).
 
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
@@ -41,7 +41,7 @@
 | **P16** | Innovate: `cms.config` + plugin + collection cho các mục vừa tách; `wrangler.toml` → `wrangler.jsonc`; song song ở local | 12–18 | ✅ Xong (merge 2026-10-12; innovate PR #9, 1909475 — cài v0.21.0, `vibe:check` + `vibe:break` 12 ca, HTML giống từng byte) |
 | **M0** | Đối chiếu CMS Mr Spa (code + 32 ảnh chụp chạy local) với gói, phỏng vấn SonLe, viết §H (giống hệt + mô hình chung) | 4–6 | ✅ Xong (2026-10-12) |
 | **M1** | Khung y chang: URL theo đường dẫn (`/admin/pages/…`, `#/…` cũ chuyển hướng), `/admin` → trang đầu; rail (Users chỉ admin, avatar 2 chữ + Change password / Sign out, `under` = tab); top bar (3 thiết bị co vừa + nhớ, chip trạng thái + nhãn ngắn, icon View live / History / Discard / Reload and keep / Check again, ⋯ khi < 900, Publish luôn hiện + 10 lý do); tooltip 400 ms, toast Mr Spa; bỏ Preview toggle, Ctrl+S, dòng trạng thái, Skip link | 14–20 | ✅ Xong (2026-10-12) |
-| M2 | **A ·** Vai trò Admin / Editor: migration D1 `owner` → `admin`, config `"admin"` (+ `"owner"` cảnh báo), CLI `reset-admin-password` (bí danh cũ), chữ trên mọi màn; hộp Change password thay màn My account (giữ bắt đổi mật khẩu tạm) | 6–10 | ⏳ |
+| **M2** | **A ·** Vai trò Admin / Editor: ~~migration D1~~ (giữ mã lưu `owner`, §H.1), config `"admin"` (+ `"owner"` một cảnh báo), CLI `reset-admin-password` (bí danh cũ), chữ trên mọi màn; hộp Change password thay màn My account (giữ bắt đổi mật khẩu tạm) | 6–10 | ✅ Xong (2026-10-12) |
 | M3 | **A ·** Sửa trang 2 cấp: danh sách section theo thứ tự trên trang (tóm tắt, chấm chưa lưu, tip ẩn được), cấp 2 (←, Esc, trượt 220 ms, nhớ section), field (nhãn = nút, help trên ô, hộp lỗi đầu trang), list (N of M, Banner 1, ↑ ↓ ×, hỏi trước khi xoá, chọn thẻ ↔ preview, ghi chú preview); bridge (chip trên / trong, viền section, chớp, chỉ cuộn khi khuất); bỏ bộ đếm ký tự mọi ô | 16–24 | ⏳ |
 | M3b | **A ·** Đo "y chang" (§H.4): script ở repo Innovate chạy **CMS chép** và **admin của gói** trên cùng nội dung, ở máy (D1 / KV local, người dùng thử tạo tại chỗ), chụp từng màn đặt cạnh nhau → ảnh kèm mỗi task về sau; không đụng production | 4–6 | ⏳ |
 | M4 | **A ·** `f.link` (Page · Web address · Phone · Email, Find a page > 8, "Opens: …", lỗi bằng lời thường, Save tắt khi link sai) + `f.phone` (`site.phone.country`) | 10–14 | ⏳ |

@@ -474,6 +474,12 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
 /* M1: the one tooltip (Mr Spa): after 400 ms on hover, at once on keyboard focus; to the right of the rail. */
 .vc-tooltip { position: fixed; z-index: 2147483000; top: 0; left: 0; max-width: 240px; padding: 6px 8px; border-radius: var(--radius-6); background: var(--text); color: #fff; font: 500 var(--text-12)/1.35 var(--font-ui); pointer-events: none; white-space: normal; }
 
+/* M2: "Change your password" (Mr Spa): the fields in the dialog, a status line. */
+.vc-password-form { display: grid; gap: 14px; }
+.vc-password-status { margin: 0; min-height: 1.4em; font-size: var(--text-13); }
+.vc-password-status[data-tone="error"] { color: var(--danger); }
+.vc-password-status[data-tone="success"] { color: var(--success); }
+
 /* U3: the image card (Mr Spa 01 / 22) — the picture as it is, its file and size; Replace on hover / focus; ⋯ menu. */
 .vc-image-card { position: relative; overflow: visible; border: 1px solid var(--hairline); border-radius: var(--radius-12); background: var(--surface); }
 .vc-image-stage { position: relative; display: grid; place-items: center; min-height: 120px; max-height: 240px; overflow: hidden; border-radius: var(--radius-12) var(--radius-12) 0 0; background: var(--canvas); }

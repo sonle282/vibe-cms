@@ -1,11 +1,11 @@
 /**
  * P4: fields locked for the owner, checked on the server. `checkLocks` is pure: (config, role, before, after) → the
- * violations, each with the field's path and label ("Only the owner can change Price"). `enforceLocks` records an audit
+ * violations, each with the field's path and label ("Only an admin can change Price"). `enforceLocks` records an audit
  * "denied" row and throws LockedFieldError (HTTP 403) — used when a draft is saved AND again at publish, because the
  * role can change in between. Values are never written to the audit, only paths and labels.
  *
- * Rules for an editor (the owner may do anything):
- * 1. A field with locked: "owner" keeps its value — at any depth (object, list, collection item). A locked object or list
+ * Rules for an editor (an admin may do anything; M2: the Admin role is stored as "owner"):
+ * 1. A field with locked: "admin" (or "owner") keeps its value — at any depth (object, list, collection item). A locked object or list
  *    is locked as a whole. Empty values ("", null, missing, [], {}) count as the same value.
  * 2. A new item (collection record or list entry) may be added when every locked field in it is empty.
  * 3. Items may be re-ordered: collection records are matched by their id, list entries by "id" when they have one,
@@ -13,6 +13,7 @@
  * 4. An item whose locked fields hold a value may not be removed.
  */
 import type { CmsCollection, CmsConfig, Field } from "../config/index.js";
+import { isAdminOnly } from "../config/roles.js";
 import { isRecord, pathStep, toTree, type FieldTree } from "../config/tree.js";
 import { parseResourceId, type DraftStore, type SaveDraft } from "../store/index.js";
 import { sameValue } from "../writer/json.js";
@@ -44,7 +45,7 @@ export const isBlank = (value: unknown): boolean => {
 const sameLocked = (a: unknown, b: unknown) => (isBlank(a) && isBlank(b)) || sameValue(a, b);
 
 const hasLocks = (field: Field): boolean =>
-  field.locked === "owner" || (field.type === "object" && Object.values(field.fields).some(hasLocks)) || (field.type === "list" && hasLocks(field.of)) || (field.type === "tuple" && field.items.some(hasLocks));
+  isAdminOnly(field.locked) || (field.type === "object" && Object.values(field.fields).some(hasLocks)) || (field.type === "list" && hasLocks(field.of)) || (field.type === "tuple" && field.items.some(hasLocks));
 const treeHasLocks = (tree: FieldTree): boolean => [...tree.values()].some((node) => (node instanceof Map ? treeHasLocks(node) : hasLocks(node)));
 
 type Found = { path: string; labels: string[]; label: string };
@@ -54,15 +55,15 @@ type Ctx = { violations: LockViolation[]; thing: string };
 
 const violation = (ctx: Ctx, found: Found, reason: LockReason, thing = ctx.thing) => {
   const field = found.labels.join(" › ");
-  const message = reason === "changed" ? `Only the owner can change ${field}`
-    : reason === "added" ? `Only the owner can add ${thing} with ${field} filled in — leave ${found.label} empty for the owner`
-    : `Only the owner can remove ${thing} that has ${field}`;
+  const message = reason === "changed" ? `Only an admin can change ${field}`
+    : reason === "added" ? `Only an admin can add ${thing} with ${field} filled in — leave ${found.label} empty for an admin`
+    : `Only an admin can remove ${thing} that has ${field}`;
   ctx.violations.push({ path: found.path, field, label: found.label, reason, message });
 };
 
 /** Locked fields inside `value` that hold something. */
 const filledField = (field: Field, value: unknown, path: string, labels: string[], out: Found[]) => {
-  if (field.locked === "owner") { if (!isBlank(value)) out.push({ path, labels, label: field.label }); return; }
+  if (isAdminOnly(field.locked)) { if (!isBlank(value)) out.push({ path, labels, label: field.label }); return; }
   if (field.type === "object" && isRecord(value)) filledTree(toTree(field.fields), value, path, labels, out);
   if (field.type === "list" && Array.isArray(value)) value.forEach((item, index) => filledField(field.of, item, `${path}[${index}]`, labels, out));
   if (field.type === "tuple" && Array.isArray(value)) field.items.forEach((item, index) => filledField(item, value[index], `${path}[${index}]`, [...labels, item.label], out));
@@ -86,7 +87,7 @@ const compareTree = (ctx: Ctx, tree: FieldTree, before: Record<string, unknown> 
 };
 
 const compareField = (ctx: Ctx, field: Field, before: unknown, after: unknown, path: string, labels: string[]) => {
-  if (field.locked === "owner") { if (!sameLocked(before, after)) violation(ctx, { path, labels, label: field.label }, "changed"); return; }
+  if (isAdminOnly(field.locked)) { if (!sameLocked(before, after)) violation(ctx, { path, labels, label: field.label }, "changed"); return; }
   if (!hasLocks(field)) return;
   if (field.type === "object") compareTree(ctx, toTree(field.fields), isRecord(before) ? before : undefined, isRecord(after) ? after : undefined, path, labels);
   else if (field.type === "tuple") field.items.forEach((item, index) => compareField(ctx, item, Array.isArray(before) ? before[index] : undefined, Array.isArray(after) ? after[index] : undefined, `${path}[${index}]`, [...labels, item.label]));

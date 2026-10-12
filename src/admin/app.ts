@@ -21,7 +21,7 @@ import { createForm, type Form, type ReferenceTarget } from "./form.js";
 import { ACCEPTED_TYPES, adjustImage, measureImage, openImagePicker, prepareImage, type Adjust, type LibraryImage, type Measure, type Prepare, type PreparedImage } from "./media.js";
 import { configBinds, fieldAt, type PreviewOwner } from "./bridge.js";
 import { createPreview, previewUrl, type Preview } from "./preview.js";
-import { accountScreen, peopleScreen, type ScreenKit } from "./people.js";
+import { openChangePassword, peopleScreen, type ScreenKit } from "./people.js";
 import { activityScreen } from "./activity.js";
 import { historyScreen, type HistoryTarget } from "./history.js";
 import { ADMIN_BASE, adminHref, legacyHashPath, parseAdminPath, type AdminRoute } from "./routes.js";
@@ -146,8 +146,9 @@ export const startAdmin = (options: AdminOptions) => {
   // Mr Spa: the first two letters of the username.
   const initials = user.username.slice(0, 2).toUpperCase() || "?";
   const menu = h(doc, "div", { class: "vc-menu", role: "menu", hidden: true, "aria-label": "Account" },
-    h(doc, "div", { class: "vc-menu-head" }, h(doc, "strong", { class: "vc-user-name-text" }, user.displayName), h(doc, "span", { class: "vc-user-role" }, user.role === "owner" ? "Owner" : "Editor")),
-    h(doc, "a", { class: "vc-menu-item vc-user-name", role: "menuitem", href: adminHref.account(), onclick: () => closeMenu() }, "My account"),
+    h(doc, "div", { class: "vc-menu-head" }, h(doc, "strong", { class: "vc-user-name-text" }, user.displayName), h(doc, "span", { class: "vc-user-role" }, user.role === "owner" ? "Admin" : "Editor")),
+    // M2 (Mr Spa): Change password opens its dialog here (no My account screen).
+    h(doc, "button", { type: "button", class: "vc-menu-item vc-user-name", role: "menuitem", onclick: () => { closeMenu(); openChangePassword(kit); } }, "Change password"),
     signOut);
   const avatar = h(doc, "button", { type: "button", class: "vc-avatar", "aria-haspopup": "menu", "aria-expanded": "false", "aria-label": "Account menu", "data-tooltip": "Account" }, initials);
   const closeMenu = () => { menu.hidden = true; avatar.setAttribute("aria-expanded", "false"); };
@@ -303,8 +304,10 @@ export const startAdmin = (options: AdminOptions) => {
     const legacy = legacyHashPath(win.location.hash);
     if (legacy) win.history.replaceState(null, "", legacy);
     let target = parseAdminPath(win.location.pathname);
+    // M2: /admin/account (My account of before) is the Change password dialog, over the first page.
+    const openPassword = target.kind === "account";
     // Mr Spa: /admin opens the first page's editor.
-    if (target.kind === "home") {
+    if (target.kind === "home" || target.kind === "account") {
       win.history.replaceState(null, "", boot.files[0] ? adminHref.file(boot.files[0].key) : adminHref.pages());
       target = parseAdminPath(win.location.pathname);
     }
@@ -340,7 +343,6 @@ export const startAdmin = (options: AdminOptions) => {
       else if (target.kind === "users") await peopleScreen(kit, stillHere);
       else if (target.kind === "audit") await activityScreen(kit, stillHere, target.filter);
       else if (target.kind === "history") await historyScreen(kit, stillHere, target.resource, historyTarget(target.resource), (next) => { void go(next, { force: true }); });
-      else if (target.kind === "account") await accountScreen(kit, stillHere);
       else show({ title: "Not found", crumbs: [["Pages", adminHref.pages()], ["Not found"]] }, message("Not found", "There is nothing at this address in the CMS.", link(adminHref.pages(), "Go to Pages")));
     } catch {
       if (stillHere()) show({ title: "Error", crumbs: [["Pages", adminHref.pages()], ["Error"]] }, message("Something went wrong", "The page could not be shown. Reload to try again."));
@@ -349,6 +351,7 @@ export const startAdmin = (options: AdminOptions) => {
     const after = focusAfterShow;
     focusAfterShow = undefined;
     if (stillHere() && !after?.()) main.querySelector<HTMLElement>("h1")?.focus();
+    if (stillHere() && openPassword) openChangePassword(kit);
   };
 
   const failed = (result: ApiFail, crumbsFor: Array<[string, string?]>) => {
@@ -803,7 +806,7 @@ export const startAdmin = (options: AdminOptions) => {
   const timeOf = (iso: string | number) => { const date = new Date(iso); return Number.isNaN(date.getTime()) ? "" : date.toLocaleString([], { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" }); };
 
   const changeItem = (change: Change) => {
-    const parts: Node[] = [h(doc, "span", { class: "vc-change-label" }, change.label), change.locked ? h(doc, "span", { class: "vc-change-locked" }, " (owner only)") : h(doc, "span"), doc.createTextNode(": ")];
+    const parts: Node[] = [h(doc, "span", { class: "vc-change-label" }, change.label), change.locked ? h(doc, "span", { class: "vc-change-locked" }, " (admin only)") : h(doc, "span"), doc.createTextNode(": ")];
     const text = (cls: string, value: string) => h(doc, cls === "del" ? "del" : "ins", { class: `vc-change-${cls}` }, value || "(empty)");
     if (change.kind === "changed") parts.push(h(doc, "span", { class: "vc-change-what" }, text("del", change.before ?? ""), " → ", text("ins", change.after ?? "")));
     else if (change.kind === "added") parts.push(h(doc, "span", { class: "vc-change-what" }, "added ", text("ins", change.after ?? "")));
@@ -817,7 +820,7 @@ export const startAdmin = (options: AdminOptions) => {
   const publishProblem = (result: ApiFail) => {
     if (result.status === 401) return "You are signed out. Sign in again, then publish.";
     if (result.error === "source_changed") return "Not published: the website changed after you started editing. Discard the draft and make your change again on the current content.";
-    if (result.error === "locked_field") return "Not published: only the owner can change some of these fields.";
+    if (result.error === "locked_field") return "Not published: only an admin can change some of these fields.";
     if (result.error === "invalid_content") return `Not published: some fields need attention — ${(Array.isArray(result.data.errors) ? (result.data.errors as Array<{ message: string }>) : []).map((entry) => entry.message).join(" ") || result.message}`;
     return `Not published. ${result.message}`;
   };
@@ -1088,7 +1091,7 @@ export const startAdmin = (options: AdminOptions) => {
           showBanner(`Not published: ${changed.map(labelOf).join(", ") || "some content"} changed on the website after you started editing. Open ${changed.length === 1 ? "it" : "each one"}, discard the draft and make your change again — or untick ${changed.length === 1 ? "it" : "them"} and publish the rest.`);
           return;
         }
-        if (result.error === "locked_field" && Array.isArray(result.data.fields)) { showBanner("Not published: only the owner can change some of these fields.", h(doc, "ul", {}, (result.data.fields as Array<{ message: string }>).map((entry) => h(doc, "li", {}, entry.message)))); return; }
+        if (result.error === "locked_field" && Array.isArray(result.data.fields)) { showBanner("Not published: only an admin can change some of these fields.", h(doc, "ul", {}, (result.data.fields as Array<{ message: string }>).map((entry) => h(doc, "li", {}, entry.message)))); return; }
         if (result.error === "invalid_content") { showBanner(`Not published: ${labelOf(String(result.data.resource ?? ""))} has fields that need attention. Open it, fix them and save again.`, h(doc, "ul", {}, (Array.isArray(result.data.errors) ? (result.data.errors as Array<{ path: string; message: string }>) : []).map((entry) => h(doc, "li", {}, `${entry.path}: ${entry.message}`)))); return; }
         showBanner(`Not published. ${result.message}`);
         return;

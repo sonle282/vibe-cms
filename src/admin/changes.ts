@@ -6,6 +6,7 @@
  * compared position by position.
  */
 import type { Field } from "../config/index.js";
+import { isAdminOnly } from "../config/roles.js";
 import { getAt, isRecord, keyPath, pathText, same, type Path } from "./value.js";
 
 export type ChangeKind = "changed" | "added" | "removed" | "moved" | "created";
@@ -17,7 +18,7 @@ export type Change = {
   kind: ChangeKind;
   before?: string;
   after?: string;
-  /** The field is owner-only (`locked: "owner"`). */
+  /** The field is admin-only (`locked: "admin"`). */
   locked?: boolean;
 };
 export type ReferenceLabels = Record<string, Record<string, string>>;
@@ -108,7 +109,7 @@ export const summarizeChanges = ({ fields, before, after, references = {}, newRe
 
   const compare = (field: Field, b: unknown, a: unknown, label: string, path: Path, locked: boolean) => {
     if (same(b, a) || (empty(b) && empty(a))) return;
-    const isLocked = locked || field.locked === "owner";
+    const isLocked = locked || isAdminOnly(field.locked);
     const where = pathText(path);
     switch (field.type) {
       case "object":

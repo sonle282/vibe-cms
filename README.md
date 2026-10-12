@@ -10,7 +10,7 @@ open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY
 > generated from `cms.config`, a visual rich-text editor, a live preview of the draft on the real page, drafts, review
 > of changes, publish, live status, People, My account), rich text cleaned on the server, images (upload to R2, picker,
 > inline images resized by dragging, published in the same commit), and the `vibe-cms` command (setup, migrate, check,
-> export / import, update, reset-owner-password), fixed lists / collections, owner-only sections, the Activity log, History (restore an older version as a draft),
+> export / import, update, reset-admin-password), fixed lists / collections, admin-only sections, the Activity log, History (restore an older version as a draft),
 > tuples, text patterns / tokens, per-field rich-text tags and site `rules`. Also: importing the people of an older CMS, cropping an image
 > into a new copy. Next: moving the first sites onto the package (P13–P18; either-fields and images by name, P12g,
 > before the second), then
@@ -59,15 +59,15 @@ that version — no `.npmrc`, no `NODE_AUTH_TOKEN`, on your machine or in Cloudf
      files: [{
        key: "site", label: "Salon info", path: "src/data/site.json", format: "json",
        fields: {
-         phone: f.text({ label: "Phone", locked: "owner" }),   // editors see it, only the owner changes it
-         email: f.text({ label: "Email", locked: "owner" }),
-         hours: f.hours({ label: "Opening hours", locked: "owner" }),
+         phone: f.text({ label: "Phone", locked: "admin" }),   // editors see it, only an admin changes it
+         email: f.text({ label: "Email", locked: "admin" }),
+         hours: f.hours({ label: "Opening hours", locked: "admin" }),
        },
      }],
      collections: [{
        key: "services", label: "Services", itemLabel: "Service",
        store: { kind: "json-array", path: "src/data/services.json", idField: "id" },
-       fields: { name: f.text({ label: "Name", required: true }), price: f.text({ label: "Price", locked: "owner" }) },
+       fields: { name: f.text({ label: "Name", required: true }), price: f.text({ label: "Price", locked: "admin" }) },
      }],
    });
    ```
@@ -88,7 +88,7 @@ that version — no `.npmrc`, no `NODE_AUTH_TOKEN`, on your machine or in Cloudf
 
    ```bash
    npx wrangler secret put VIBE_GITHUB_TOKEN        # see "CMS API and publishing" below
-   npx wrangler secret put CMS_BOOTSTRAP_USERNAME   # the first owner (remove both after the first sign-in)
+   npx wrangler secret put CMS_BOOTSTRAP_USERNAME   # the first admin (remove both after the first sign-in)
    npx wrangler secret put CMS_BOOTSTRAP_PASSWORD
    npx vibe-cms check
    ```
@@ -111,7 +111,7 @@ runs it; `--account <id>` picks another account. No command asks for, prints or 
 | `import --file <sql> [--local]` | Into a set-up, **empty** CMS database with the same migrations; compares the rows table by table |
 | `update [version]` | Points `package.json` at that release (default: the latest), runs `npm install`, prints the CHANGELOG's "Site action" of every version in between. Nothing is written if the release does not exist |
 | `import-legacy-users --from <old D1> [--from-config <file>] [--dry-run]` | Moving from the CMS a site ran before: its people come over to the new (empty) database with the **same passwords** — admin → owner, disabled stays disabled, a temporary password still has to be changed. Refuses when the new database already has people |
-| `reset-owner-password [--username <name>]` | The owner forgot their password: a temporary one, shown once; they must change it at the next sign-in, every session is signed out, one audit row |
+| `reset-admin-password [--username <name>]` (old name `reset-owner-password`) | An admin forgot their password: a temporary one, shown once; they must change it at the next sign-in, every session is signed out, one audit row |
 
 Moving a site to another Cloudflare account, in this order (the ids in `wrangler.jsonc` point at the account `setup`
 last ran on): `export --out backup` (old account) → `setup --site <site> --account <new>` →
@@ -129,13 +129,13 @@ All problems are listed at once, each with its place and a fix; warnings are pri
 
 | Area | Rules |
 |---|---|
-| Top level | `configVersion` is 1; no unknown settings (typos); `roles` if given is exactly `["owner", "editor"]` |
+| Top level | `configVersion` is 1; no unknown settings (typos); `roles` if given is exactly `["admin", "editor"]` |
 | `site` | `name` required; `url` a full `http(s)` address; `timezone` a real IANA zone |
 | `repo` | `owner` a GitHub user / organisation name; `name` a repository name (no `.git`); `branch` required and a valid git branch name (no space, `..`, `~^:?*[\`, `@{`, `.lock`, empty parts) |
 | Keys | file / collection keys: lowercase `a-z0-9-`, unique across files **and** collections; field keys: identifiers, dotted keys allowed (`"about.title"`) but not clashing with a field at the same level; section keys unique; a field in one section only (a field in no section = warning) |
 | Paths | relative, `/` separators, no `..`, not absolute, inside `src/data/` or `src/content/` (add more with `contentDirs`); one entry per path; files are `.json` — **YAML is not supported**; `preview` starts with `/` and its `{placeholders}` are fields of the entry |
 | Collections | `store.kind` is `"json-array"` (needs `path` to a `.json` file + `idField`) or `"markdown-dir"` (needs `dir` + `slugField`); the id field, if declared, is text; `order.by` is a field; `status.live` ≠ `status.draft` and both are options of a `status` select; `fixed` is true / false; `icon` (its place on the admin rail) is one of `list` (default), `box`, `grid`, `pencil`, `image`, `calendar`, `star`, `tag`, `users`, `file`, `package`, `pen-line`; `under` (the key of another collection, not itself `under` one) shows it as a tab of that collection instead of a place on the rail; `access` (files too) only `"owner"` |
-| Every field | known type; `label` required; no unknown options; `required` is true / false; `locked` only `"owner"` |
+| Every field | known type; `label` required; no unknown options; `required` is true / false; `locked` only `"admin"` (`"owner"`, its old name, works with one warning) |
 | Per type | `text.maxLength` ≥ 1; `select.options` non-empty and unique; `list.of` required (checked too), `min` ≤ `max`, `fixed` true / false (with `min` / `max` = warning); `object.fields` non-empty; `reference.to` names an existing collection (`ordered` without `multiple` = warning); `hours` takes no options; object / list nesting at most **8** levels |
 | Content | every declared file / folder exists and parses (JSON; Markdown front matter); json-array files hold a list of records with unique ids; each value matches its field — text is a string (`maxLength`), select is one of the options, hours rows are `{ days: [0–6], open: "HH:MM", close: "HH:MM" }` or `{ days, closed: true }` (each day once, close after open), lists respect `min` / `max`, references point to existing ids, images are a path or `{ src, alt }`; missing **required** values are errors; properties the config does not declare are **warnings** |
 
@@ -163,29 +163,29 @@ Example — a real build of the demo site with a price written as a number, an u
 
 ## Locked fields (P4)
 
-Fields with `locked: "owner"` are enforced on the server when a draft is saved **and** again at publish: an editor may
+Fields with `locked: "admin"` are enforced on the server when a draft is saved **and** again at publish: an editor may
 not change them (at any depth), may add an item only with its locked fields empty, may re-order items, and may not remove
 an item whose locked fields hold a value. A refusal is a 403 `locked_field` with the field paths and labels
-("Only the owner can change Price") and one audit row — never the values. Rules in detail: docs/DESIGN.md §C.1.
+("Only an admin can change Price") and one audit row — never the values. Rules in detail: docs/DESIGN.md §C.1.
 
-## Fixed lists, owner-only sections, Activity (P12b)
+## Fixed lists, admin-only sections, Activity (P12b)
 
 ```ts
 groups: f.list(f.object({ label: "Group", fields: { … } }), { label: "Menu groups", fixed: true }), // items: edit only
 // a collection:  { key: "services", …, fixed: true }   — no new record
-// a file / collection:  { key: "salon", …, access: "owner" }   — editors do not see it
+// a file / collection:  { key: "salon", …, access: "admin" }   — editors do not see it
 ```
 
-- `fixed: true` on a list: nobody (owner included) adds, removes or moves its items — the site's code decides which
+- `fixed: true` on a list: nobody (admins included) adds, removes or moves its items — the site's code decides which
   exist; their values stay editable. On a collection: no new record. Checked at save and at publish.
-- `access: "owner"`: the whole file / collection is hidden from editors (403 `owner_only`, audited). `locked: "owner"`
+- `access: "admin"`: the whole file / collection is hidden from editors (403 `owner_only`, audited). `locked: "admin"`
   on a field is the softer form: editors see it, greyed out.
-- **Activity** (owners, in the navigation): publishes, sign-ins, people changes and refusals in plain words, 50 at a time.
+- **Activity** (admins, under Users): publishes, sign-ins, people changes and refusals in plain words, 50 at a time.
 
 ## Tuples, patterns, tokens, site rules (P12d)
 
 ```ts
-items: f.list(f.tuple([f.text({ label: "Service" }), f.text({ label: "Price", locked: "owner", pattern: "\\$\\d+\\+?", patternHint: "a price like $17 or $45+" })], { label: "Service and price" }), { label: "Services" }),
+items: f.list(f.tuple([f.text({ label: "Service" }), f.text({ label: "Price", locked: "admin", pattern: "\\$\\d+\\+?", patternHint: "a price like $17 or $45+" })], { label: "Service and price" }), { label: "Services" }),
 intro: f.text({ label: "Intro", tokens: ["phone", "city"] }),          // only {phone} and {city} between braces
 headline: f.richText({ label: "Headline", allow: ["em", "br"] }),       // the toolbar shows italic only
 // on a file or collection: the site's own check, at build / save / publish
@@ -264,18 +264,18 @@ The site needs:
 ## Sign-in and People (P6)
 
 Username + password, the same way as the CMS the package grew out of: PBKDF2-SHA256 (100,000 iterations), a session
-cookie backed by KV, roles **owner** / **editor** checked on every request, sign-in and publish rate limits. The site
+cookie backed by KV, roles **admin** / **editor** checked on every request, sign-in and publish rate limits. The site
 needs these bindings / secrets (docs/DESIGN.md §F.1):
 
 - `CMS_DB` (D1 `<site>-cms`), `SESSION` (KV `<site>-session`),
 - rate limits `CMS_LOGIN_LIMITER` (10 / 60 s) and `CMS_PUBLISH_LIMITER` (20 / 60 s) — required in production,
-- `CMS_BOOTSTRAP_USERNAME` + `CMS_BOOTSTRAP_PASSWORD` once, for the first owner (then remove them),
+- `CMS_BOOTSTRAP_USERNAME` + `CMS_BOOTSTRAP_PASSWORD` once, for the first admin (then remove them),
 - Workers **Paid** is recommended: a sign-in costs ~16–45 ms CPU, Workers Free allows 10 ms.
 
 Owners manage people on the admin's **People** screen (API: `/api/cms/users`): add someone (their temporary password
 is shown once), change roles, disable / enable, reset a password. New and reset users must choose their own password
-at the first sign-in; anyone can change theirs later on **My account** (click your name). An owner who forgot their
-password: `npx vibe-cms reset-owner-password` (a temporary one, shown once).
+at the first sign-in; anyone can change theirs later with **Change password** (the account menu at the bottom of the
+rail). An admin who forgot their password: `npx vibe-cms reset-admin-password` (a temporary one, shown once).
 
 ## The editor (P7, P8)
 
@@ -285,7 +285,7 @@ Drafts; Users and the account at the bottom), a top bar (breadcrumb, Laptop / Ta
 live, Version history, Discard draft, Save draft, Publish), and every screen at its own address (`/admin/pages/<file>`,
 `/admin/catalog/<collection>/<id>`, `/admin/drafts`, `/admin/media`, `/admin/users`…). Lists have search, and a form
 is generated from the fields — every field type, sections, nested lists, ordered references.
-Saving makes a **draft** (the website does not change); fields with `locked: "owner"` are shown to editors but cannot
+Saving makes a **draft** (the website does not change); fields with `locked: "admin"` are shown to editors but cannot
 be changed. **Review & publish** lists my drafts with what each changes in plain words ("Price: $35 → $40"); publishing
 the ticked ones makes one commit, and the admin says when the website serves them ("Live"). Rich text people type is
 cleaned on the server (scripts, event handlers, frames, `javascript:` links… are removed and the editor is told);

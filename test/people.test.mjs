@@ -1,4 +1,4 @@
-// P8b: the People and My account screens on a fake DOM (happy-dom), against the REAL sign-in + People code (P6) on
+// P8b / M2: the People screen and the Change password dialog on a fake DOM (happy-dom), against the REAL sign-in + People code (P6) on
 // node:sqlite with the package migrations and a memory KV, signed in with a real session cookie.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -83,7 +83,7 @@ test("People: owners see it in the navigation; the list shows everyone, with no 
   const me = h.rowOf("owner");
   // Last sign-in: today (the setup signed in just now), in the browser's own date format.
   const today = new Date().toLocaleString([], { day: "numeric", month: "short", year: "numeric" });
-  assert.ok(me.textContent.startsWith(`OOOlivia Owner owner (you)OwnerActive${today}`), me.textContent);
+  assert.ok(me.textContent.startsWith(`OOOlivia Owner owner (you)AdminActive${today}`), me.textContent);
   assert.equal(me.querySelector("select"), null, "no role menu on yourself");
   assert.equal(h.button(me, "Disable"), undefined, "you cannot disable yourself");
   for (const form of h.root.querySelectorAll("form")) assert.equal(form.getAttribute("method"), "post");
@@ -133,10 +133,10 @@ test("People: change role (asks first), disable (signed out at once) / enable, r
   select.value = "owner"; select.dispatchEvent(new h.window.Event("change"));
   await settle();
   assert.equal(select.value, "editor");
-  assert.match(h.asked.at(-1), /Make Ed an owner\?/);
+  assert.match(h.asked.at(-1), /Make Ed an admin\?/);
   answer = true;
   select.value = "owner"; select.dispatchEvent(new h.window.Event("change"));
-  await until(() => /now an owner/.test(h.toast()), "the role change");
+  await until(() => /now an admin/.test(h.toast()), "the role change");
   assert.equal((await ed.json("GET", "/api/auth/me")).user.role, "owner");
   assert.equal(h.rowOf("eddie").querySelector("select").value, "owner");
 
@@ -174,7 +174,7 @@ test("People: a refusal from the server is shown on the list (here: another owne
   select.value = "editor"; select.dispatchEvent(new h.window.Event("change"));
   await until(() => [...h.root.querySelectorAll(".vc-error")].some((element) => element.textContent.startsWith("Co Owner:")), "the refusal");
   const errors = [...h.root.querySelectorAll(".vc-error")].map((element) => element.textContent).join(" ");
-  assert.match(errors, /Co Owner: Only an owner can manage people\./);
+  assert.match(errors, /Co Owner: Only an admin can manage people\./);
   assert.equal(h.rowOf("coowner").querySelector("select").value, "owner", "the list shows what is true");
 });
 
@@ -201,7 +201,7 @@ test("U2 / M1 shell: the rail (Pages, collections, Media, Drafts; Users at the b
   avatar.click();
   assert.equal(menu.hidden, false);
   assert.equal(avatar.getAttribute("aria-expanded"), "true");
-  assert.match(menu.textContent, /Owner.*My account.*Sign out$/);
+  assert.match(menu.textContent, /Admin.*Change password.*Sign out$/);
   menu.dispatchEvent(new h.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   assert.equal(menu.hidden, true);
   avatar.click();
@@ -214,38 +214,45 @@ test("People: editors do not see it, and the screen says why", async () => {
   const h = await setup({ as: "editor" });
   assert.ok(![...h.root.querySelectorAll(".vc-rail a.vc-rail-item")].some((a) => a.textContent.trim() === "Users"));
   await h.go("/admin/users");
-  assert.match(h.root.querySelector(".vc-body").textContent, /Only an owner can manage people/);
+  assert.match(h.root.querySelector(".vc-body").textContent, /Only an admin can manage people/);
 });
 
-test("My account: who I am; change my password (checks, wrong current password, success keeps me signed in)", async () => {
+test("M2 Change password (Mr Spa): the dialog from the account menu — checks, wrong current password, success keeps me signed in", async () => {
   const h = await setup();
-  assert.equal(h.root.querySelector(".vc-user-name").getAttribute("href"), "/admin/account");
-  await h.go("/admin/account");
-  const facts = h.root.querySelector(".vc-account-facts").textContent;
-  assert.match(facts, /NameOlivia OwnerUsernameownerRoleOwner/);
-  const form = h.root.querySelector("form.vc-account");
+  const item = h.root.querySelector(".vc-user-name");
+  assert.equal(item.textContent, "Change password");
+  item.click();
+  const dialog = () => h.window.document.querySelector(".vc-dialog");
+  assert.equal(dialog().querySelector(".vc-dialog-title").textContent, "Change your password");
+  assert.equal(dialog().querySelector(".vc-dialog-text").textContent, "Use 12–200 characters. Your current CMS session will stay active after saving.");
+  const form = dialog().querySelector("form.vc-password-form");
   assert.equal(form.getAttribute("method"), "post");
-  const submit = () => form.dispatchEvent(new h.window.Event("submit", { bubbles: true, cancelable: true }));
-  const error = () => form.querySelector(".vc-error").textContent;
+  assert.deepEqual([...form.querySelectorAll("label")].map((label) => label.textContent), ["Current password", "New password", "Confirm new password"]);
+  const save = () => [...dialog().querySelectorAll("button")].find((button) => button.textContent === "Save password").click();
+  const status = () => form.querySelector(".vc-password-status").textContent;
   type(h.window, form.querySelector("#vc-pw-current"), OWNER.password);
   type(h.window, form.querySelector("#vc-pw-new"), "brand-new-password-1");
-  type(h.window, form.querySelector("#vc-pw-again"), "brand-new-password-2");
-  submit();
-  assert.equal(error(), "The two new passwords are not the same.");
+  type(h.window, form.querySelector("#vc-pw-confirm"), "brand-new-password-2");
+  save();
+  await settle();
+  assert.equal(status(), "New passwords do not match.");
   type(h.window, form.querySelector("#vc-pw-current"), "not-my-password");
-  type(h.window, form.querySelector("#vc-pw-again"), "brand-new-password-1");
-  submit();
-  await until(() => error(), "the wrong-password error");
-  assert.equal(error(), "Current password is incorrect.");
+  type(h.window, form.querySelector("#vc-pw-confirm"), "brand-new-password-1");
+  save();
+  await until(() => /incorrect/.test(status()), "the wrong-password error");
+  assert.equal(status(), "Current password is incorrect.");
   type(h.window, form.querySelector("#vc-pw-current"), OWNER.password);
-  type(h.window, form.querySelector("#vc-pw-new"), "brand-new-password-1");
-  type(h.window, form.querySelector("#vc-pw-again"), "brand-new-password-1");
-  submit();
-  await until(() => /Password changed/.test(h.toast()), "the change");
+  save();
+  await until(() => status() === "Password changed successfully.", "the change");
   assert.equal(form.querySelector("#vc-pw-new").value, "", "the fields are cleared");
+  await until(() => !dialog(), "the dialog closes");
   await h.go("/admin/users");
   assert.equal(h.root.querySelector("h1").textContent, "People", "still signed in here");
   const other = h.browserFor();
   assert.equal((await other.login(OWNER.username, OWNER.password)).error, "invalid_credentials");
   assert.equal((await other.login(OWNER.username, "brand-new-password-1")).ok, true);
+  // The address of My account of before opens the dialog over the first page.
+  await h.go("/admin/account");
+  assert.equal(h.window.location.pathname, `/admin/pages/${config.files[0].key}`);
+  assert.equal(dialog().querySelector(".vc-dialog-title").textContent, "Change your password");
 });

@@ -1,14 +1,14 @@
 /**
- * P8b: People (owners only) and My account, on the P6 API.
- *   /admin/users    add a person (a temporary password is shown once), change role, disable / enable, reset a password
- *   /admin/account  my name and role; change my password (other sessions end, this one goes on)
+ * P8b: People (admins only) and, M2, the Change password dialog of the Mr Spa CMS (from the account menu), on the P6
+ * API. /admin/users: add a person (a temporary password is shown once), change role, disable / enable, reset a password.
+ * The Admin role is stored as "owner" (its code since P6); every screen says Admin.
  * The server decides everything (owner only, never the last active owner, not yourself); the screen only explains.
  * Passwords stay in the page only until it is left: never in the URL, storage or logs; every form posts.
  */
 import type { ApiFail, Client } from "./api.js";
 import type { BootUser } from "./boot.js";
 import { clear, h } from "./dom.js";
-import type { ConfirmOptions } from "./dialog.js";
+import { openDialog, type ConfirmOptions, type OpenDialog } from "./dialog.js";
 import type { Tone, ToastAction } from "./toast.js";
 import { adminHref } from "./routes.js";
 
@@ -33,8 +33,9 @@ export type ScreenKit = {
   copy?: (text: string) => Promise<boolean>;
 };
 
-export const ROLE_HELP = "Owners can do everything: manage people and change owner-only fields (prices, opening hours, phone, email, address). Editors change everything else and publish.";
-const roleName = (role: Role) => (role === "owner" ? "Owner" : "Editor");
+// M2: the Mr Spa CMS's words.
+export const ROLE_HELP = "Admins can add people and see activity. Editors can change content and publish.";
+const roleName = (role: Role) => (role === "owner" ? "Admin" : "Editor");
 const when = (iso: string | null) => {
   if (!iso) return "Never";
   const date = new Date(iso);
@@ -54,7 +55,7 @@ const row = (doc: Document, id: string, label: string, input: HTMLElement, help?
 export const peopleScreen = async (kit: ScreenKit, stillHere: () => boolean) => {
   const { doc, api, user } = kit;
   const crumbs: Array<[string, string?]> = [["People & activity"]];
-  if (user.role !== "owner") return kit.show({ title: "People", crumbs: [["People"]] }, kit.message("People", "Only an owner can manage people. Ask an owner of this site if someone needs an account."));
+  if (user.role !== "owner") return kit.show({ title: "People", crumbs: [["People"]] }, kit.message("People", "Only an admin can manage people. Ask an admin of this site if someone needs an account."));
   const result = await api.get<{ users: PublicUser[] }>("/api/cms/users");
   if (!stillHere()) return;
   if (!result.ok) return kit.failed(result, crumbs);
@@ -87,7 +88,7 @@ export const peopleScreen = async (kit: ScreenKit, stillHere: () => boolean) => 
     h(doc, "span", { class: "vc-choice-text" }, h(doc, "span", { class: "vc-choice-title" }, title), h(doc, "span", { class: "vc-choice-help" }, text)));
   const role = h(doc, "fieldset", { id: "vc-new-role", class: "vc-choices" }, h(doc, "legend", { class: "vc-label" }, "Role"),
     roleCard("editor", "Editor", "Changes content and publishes."),
-    roleCard("owner", "Owner", "Also manages people, sees activity and changes owner-only fields."));
+    roleCard("owner", "Admin", "Also adds people and sees activity."));
   const roleValue = () => (form.querySelector<HTMLInputElement>('input[name="role"]:checked')?.value ?? "editor") as Role;
   const addError = h(doc, "p", { class: "vc-error", role: "alert" });
   const addButton = h(doc, "button", { type: "submit", class: "vc-button vc-primary vc-wide" }, "Add person");
@@ -132,15 +133,15 @@ export const peopleScreen = async (kit: ScreenKit, stillHere: () => boolean) => 
       const roleCell = h(doc, "td");
       if (self) roleCell.append(roleName(person.role));
       else {
-        const select = h(doc, "select", { class: "vc-input vc-role", "aria-label": `Role of ${person.displayName}` }, h(doc, "option", { value: "editor" }, "Editor"), h(doc, "option", { value: "owner" }, "Owner"));
+        const select = h(doc, "select", { class: "vc-input vc-role", "aria-label": `Role of ${person.displayName}` }, h(doc, "option", { value: "editor" }, "Editor"), h(doc, "option", { value: "owner" }, "Admin"));
         select.value = person.role;
         select.addEventListener("change", async () => {
           const next = select.value as Role;
           const question = next === "owner"
-            ? `Make ${person.displayName} an owner?\n\nOwners can manage people and change owner-only fields (prices, hours, phone, email, address).`
-            : `Make ${person.displayName} an editor?\n\nEditors can no longer manage people or change owner-only fields.`;
-          if (!(await kit.ask(question, { confirm: next === "owner" ? "Make owner" : "Make editor" }))) { select.value = person.role; return; }
-          if (await patch(person, { action: "set-role", role: next })) kit.say(`${person.displayName} is now ${next === "owner" ? "an owner" : "an editor"}.`);
+            ? `Make ${person.displayName} an admin?\n\nAdmins can add people, see activity and change admin-only fields.`
+            : `Make ${person.displayName} an editor?\n\nEditors can no longer add people or change admin-only fields.`;
+          if (!(await kit.ask(question, { confirm: next === "owner" ? "Make admin" : "Make editor" }))) { select.value = person.role; return; }
+          if (await patch(person, { action: "set-role", role: next })) kit.say(`${person.displayName} is now ${next === "owner" ? "an admin" : "an editor"}.`);
         });
         roleCell.append(select);
       }
@@ -160,12 +161,12 @@ export const peopleScreen = async (kit: ScreenKit, stillHere: () => boolean) => 
           : h(doc, "button", { type: "button", class: "vc-button", "aria-label": `Enable ${person.displayName}` }, "Enable");
         toggle.addEventListener("click", async () => {
           if (person.status === "active") {
-            if (!(await kit.ask(`Disable ${person.displayName}?\n\nThey are signed out at once and cannot sign in until an owner enables them again. Their saved drafts stay.`, { confirm: "Disable", danger: true }))) return;
+            if (!(await kit.ask(`Disable ${person.displayName}?\n\nThey are signed out at once and cannot sign in until an admin enables them again. Their saved drafts stay.`, { confirm: "Disable", danger: true }))) return;
             if (await patch(person, { action: "disable" })) kit.say(`${person.displayName} is disabled.`);
           } else if (await patch(person, { action: "enable" })) kit.say(`${person.displayName} can sign in again.`);
         });
         buttons.append(reset, toggle);
-      } else buttons.append(h(doc, "a", { href: adminHref.account(), class: "vc-button vc-quiet" }, "My account"));
+      } else buttons.append(h(doc, "button", { type: "button", class: "vc-button vc-quiet", onclick: () => openChangePassword(kit) }, "Change password"));
       tbody.append(h(doc, "tr", { "data-user": person.username }, name, roleCell, status, h(doc, "td", { class: "vc-note" }, when(person.lastLoginAt)), buttons));
     }
   };
@@ -188,45 +189,47 @@ export const peopleScreen = async (kit: ScreenKit, stillHere: () => boolean) => 
   ]);
 };
 
-export const accountScreen = async (kit: ScreenKit, stillHere: () => boolean) => {
+/**
+ * M2: "Change your password", the dialog of the Mr Spa CMS (account menu → Change password): current, new, confirm;
+ * this session stays signed in (the server signs out the others). The password never leaves the form but to the API.
+ */
+export const openChangePassword = (kit: ScreenKit) => {
   const { doc, api, user } = kit;
-  const crumbs: Array<[string, string?]> = [["My account"]];
-  const me = await api.get<{ user: PublicUser; dev?: boolean }>("/api/auth/me");
-  if (!stillHere()) return;
-  if (!me.ok) return kit.failed(me, crumbs);
-  const person = me.data.user;
-  const form = h(doc, "form", { class: "vc-section vc-account", method: "post", "aria-labelledby": "vc-pw-title" });
-  const field = (id: string, label: string, autocomplete: string, help?: string) => {
+  const field = (id: string, label: string, autocomplete: string) => {
     const input = h(doc, "input", { id, type: "password", class: "vc-input", autocomplete, required: true, ...(autocomplete === "new-password" ? { minlength: "12", maxlength: "200" } : {}) });
-    return { input, element: row(doc, id, label, input, help) };
+    return { input, element: row(doc, id, label, input) };
   };
   const current = field("vc-pw-current", "Current password", "current-password");
-  const next = field("vc-pw-new", "New password", "new-password", "At least 12 characters. A few unrelated words make a strong one.");
-  const again = field("vc-pw-again", "New password again", "new-password");
-  const error = h(doc, "p", { class: "vc-error", role: "alert" });
-  const submit = h(doc, "button", { type: "submit", class: "vc-button vc-primary" }, "Change password");
-  form.append(
-    h(doc, "h2", { id: "vc-pw-title", class: "vc-section-title" }, "Change my password"),
-    h(doc, "input", { type: "text", name: "username", autocomplete: "username", value: person.username, hidden: true, readonly: true }),
-    current.element, next.element, again.element, error, submit);
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    error.textContent = "";
-    if (next.input.value !== again.input.value) { error.textContent = "The two new passwords are not the same."; again.input.focus(); return; }
-    submit.disabled = true;
+  const next = field("vc-pw-new", "New password", "new-password");
+  const confirm = field("vc-pw-confirm", "Confirm new password", "new-password");
+  const status = h(doc, "p", { class: "vc-password-status", role: "status", "aria-live": "polite" });
+  const say = (text: string, tone: "error" | "success") => { status.textContent = text; status.dataset.tone = tone; };
+  // A form with method="post", so a password manager sees it and nothing lands in the address if a script fails.
+  const form = h(doc, "form", { class: "vc-password-form", method: "post" },
+    h(doc, "input", { type: "text", name: "username", autocomplete: "username", value: user.username, hidden: true, readonly: true }),
+    current.element, next.element, confirm.element, status);
+  const save = async (dialog: OpenDialog) => {
+    status.textContent = "";
+    if (!form.reportValidity?.() && [current, next, confirm].some((entry) => !entry.input.value)) return false;
+    if (next.input.value !== confirm.input.value) { say("New passwords do not match.", "error"); confirm.input.focus(); return false; }
+    dialog.busy(true);
     const changed = await api.put("/api/auth/password", { currentPassword: current.input.value, newPassword: next.input.value });
-    submit.disabled = false;
-    if (!changed.ok) { error.textContent = changed.message; current.input.focus(); return; }
+    dialog.busy(false);
+    if (!changed.ok) { say(changed.message, "error"); current.input.focus(); return false; }
     form.reset();
-    kit.say("Password changed. You stay signed in here; other devices are signed out.");
+    say("Password changed successfully.", "success");
+    setTimeout(() => dialog.close("saved"), 650);
+    return false;
+  };
+  const dialog = openDialog(doc, {
+    title: "Change your password",
+    text: "Use 12–200 characters. Your current CMS session will stay active after saving.",
+    body: [form],
+    buttons: [{ label: "Cancel", value: "cancel" }, { label: "Save password", kind: "primary", value: "save" }],
+    onButton: (value, open) => (value === "save" ? save(open) : true),
   });
-  kit.show({ title: "My account", crumbs }, [
-    kit.heading("My account"),
-    h(doc, "dl", { class: "vc-account-facts" },
-      h(doc, "dt", {}, "Name"), h(doc, "dd", {}, person.displayName),
-      h(doc, "dt", {}, "Username"), h(doc, "dd", { class: "vc-mono" }, person.username),
-      h(doc, "dt", {}, "Role"), h(doc, "dd", {}, `${roleName(person.role)} — ${person.role === "owner" ? "you can manage people and change owner-only fields." : "you can change content and publish; owner-only fields are shown locked."}`),
-      h(doc, "dt", {}, "Last sign-in"), h(doc, "dd", {}, when(person.lastLoginAt))),
-    me.data.dev ? h(doc, "p", { class: "vc-note" }, "Local development identity: there is no password to change.") : form,
-  ]);
+  // Enter in a field saves, like a form.
+  form.addEventListener("submit", (event) => { event.preventDefault(); void save(dialog); });
+  current.input.focus();
+  return dialog;
 };

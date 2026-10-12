@@ -5,7 +5,7 @@
 export { editorFields, startAdmin, type AdminOptions } from "./app.js";
 export { describeChange, formatHours, imagesIn, plainText, summarizeChanges, type RichImage, type Change, type ChangeKind, type ReferenceLabels, type SummaryInput } from "./changes.js";
 export { createForm, LOCK_HELP, OWNER_NOTE, type Form, type FormOptions, type Problem, type ReferenceOption, type ReferenceTarget } from "./form.js";
-export { accountScreen, peopleScreen, ROLE_HELP, type PublicUser, type ScreenKit } from "./people.js";
+export { openChangePassword, peopleScreen, ROLE_HELP, type PublicUser, type ScreenKit } from "./people.js";
 export { createClient, humanMessage, type ApiResult, type Client, type Fetch } from "./api.js";
 export { adminBoot, bootJson, type AdminBoot, type BootCollection, type BootFile, type BootMedia, type BootUser } from "./boot.js";
 export { ACCEPTED_TYPES, adjustImage, CROP_PRESETS, cropRect, measureImage, openImagePicker, outputSize, prepareImage, RESIZE_WIDTHS, type Adjust, type CropRect, type LibraryImage, type Measure, type PickerOptions, type Prepare, type PreparedImage } from "./media.js";

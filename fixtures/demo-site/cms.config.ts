@@ -9,7 +9,7 @@ export default defineCmsConfig({
   configVersion: 1,
   site: { name: "Demo Salon", url: "https://demo.example", timezone: "America/New_York" },
   repo: { owner: "sonle282", name: "vibe-cms-demo", branch: "main" },
-  roles: ["owner", "editor"],
+  roles: ["admin", "editor"],
   files: [
     {
       key: "site",
@@ -26,10 +26,10 @@ export default defineCmsConfig({
         // P9: the header shows the name without a data-cms-field attribute; the preview finds it by selector.
         name: f.text({ label: "Salon name", required: true, maxLength: 60, bind: "header .brand strong" }),
         // Locked for editors by default on every site: price, hours, phone, email, address.
-        phone: f.text({ label: "Phone", locked: "owner" }),
-        email: f.text({ label: "Email", locked: "owner" }),
-        address: f.object({ label: "Address", locked: "owner", fields: { street: f.text({ label: "Street" }), city: f.text({ label: "City" }) } }),
-        hours: f.hours({ label: "Opening hours", locked: "owner" }),
+        phone: f.text({ label: "Phone", locked: "admin" }),
+        email: f.text({ label: "Email", locked: "admin" }),
+        address: f.object({ label: "Address", locked: "admin", fields: { street: f.text({ label: "Street" }), city: f.text({ label: "City" }) } }),
+        hours: f.hours({ label: "Opening hours", locked: "admin" }),
         tagline: f.text({ label: "Tagline" }),
         hero: f.object({ label: "Banner", fields: { title: f.text({ label: "Heading" }), text: f.richText({ label: "Text" }), image: f.image({ label: "Picture", alt: true }) } }),
         highlights: f.reference({ label: "Featured services", to: "services", multiple: true, ordered: true, help: "Shown on the homepage, in this order." }),
@@ -37,7 +37,7 @@ export default defineCmsConfig({
         packages: f.list(f.object({ label: "Package", fields: {
           id: f.text({ label: "ID", required: true, pattern: "[a-z0-9-]+", patternHint: "lowercase letters, numbers and dashes" }),
           name: f.text({ label: "Name", required: true }),
-          price: f.text({ label: "Price", locked: "owner" }),
+          price: f.text({ label: "Price", locked: "admin" }),
         } }), { label: "Packages", ordered: true, itemLabel: "Package", max: 6 }),
         fromPrice: f.object({ label: "Price on the banner", fields: {
           of: f.pick({ label: "Package", required: true, choices: (content) => (Array.isArray(content.packages) ? content.packages : []).map((entry: { id: string; name: string; price: string }) => ({ value: entry.id, label: `${entry.name} · ${entry.price}`, group: "Packages" })) }),
@@ -64,7 +64,7 @@ export default defineCmsConfig({
       rules: (service) => (typeof service.price === "string" && service.price && !service.price.startsWith("$") ? [{ path: "price", message: "a price starts with $", hint: "e.g. $25 or $5+" }] : []),
       fields: {
         name: f.text({ label: "Name", required: true }),
-        price: f.text({ label: "Price", locked: "owner" }),
+        price: f.text({ label: "Price", locked: "admin" }),
         category: f.select({ label: "Category", options: ["Nails", "Spa"] }),
         extras: f.list(f.text({ label: "Extra" }), { label: "Extras", ordered: true, itemLabel: "Extra" }),
         description: f.text({ label: "Description", multiline: true, maxLength: 300 }),

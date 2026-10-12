@@ -156,7 +156,7 @@ test("release URLs, r2 list parsing, rate-limit namespaces, CHANGELOG site actio
 
 test("command line: help, version, unknown command / option, missing arguments", async () => {
   const s = site();
-  assert.match((await cli(s.root, ["help"])).out, /setup --site <site>[\s\S]*reset-owner-password/);
+  assert.match((await cli(s.root, ["help"])).out, /setup --site <site>[\s\S]*reset-admin-password[\s\S]*Old name:\s+reset-owner-password/);
   assert.match((await cli(s.root, ["--version"])).out, /^\d+\.\d+\.\d+$/);
   assert.match((await cli(s.root, ["deploy"])).err, /unknown command "deploy"/);
   assert.match((await cli(s.root, ["setup", "--sight", "x"])).err, /Unknown option '--sight'/);

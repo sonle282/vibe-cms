@@ -25,6 +25,7 @@
  * Every GET answers with the header x-cms-live-version (F-16).
  */
 import type { CmsCollection, CmsConfig, CmsFile } from "../config/index.js";
+import { isAdminOnly } from "../config/roles.js";
 import { checkRecordValues } from "../check/values.js";
 import { checkFixedLists } from "../check/structure.js";
 import { pickChoices } from "../check/picks.js";
@@ -165,13 +166,13 @@ export const createCmsApi = (deps: CmsApiDeps) => {
   const pathOf = (target: Target) => (target.kind === "file" ? target.file.path : recordPath(target.collection, target.id));
 
   // P12b: owner-only files / collections. A refused save or publish writes one audit "denied" row (reads do not).
-  const mayOpen = (user: Identity, entry: CmsFile | CmsCollection) => entry.access !== "owner" || user.role === "owner";
+  const mayOpen = (user: Identity, entry: CmsFile | CmsCollection) => !isAdminOnly(entry.access) || user.role === "owner";
   const entryOf = (target: Target) => (target.kind === "file" ? target.file : target.collection);
   const requireAccess = async (user: Identity, target: Target, stage?: "draft" | "publish") => {
     const entry = entryOf(target);
     if (mayOpen(user, entry)) return;
     if (stage && deps.audit) await deps.audit.record({ at: now(), userId: user.userId, role: user.role, action: "denied", stage, resource: target.resource, detail: { reason: "owner_only" } });
-    fail(403, "owner_only", `Only an owner can open or change ${entry.label}.`);
+    fail(403, "owner_only", `Only an admin can open or change ${entry.label}.`);
   };
   /** P12b: fixed lists keep their items; a fixed collection gets no new record. before undefined = a new record. */
   const structureProblems = (target: Target, before: unknown, content: unknown) => {
@@ -306,7 +307,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
 
   const listItems = async (user: Identity, key: string) => {
     const collection = collectionOf(key);
-    if (!mayOpen(user, collection)) fail(403, "owner_only", `Only an owner can open or change ${collection.label}.`);
+    if (!mayOpen(user, collection)) fail(403, "owner_only", `Only an admin can open or change ${collection.label}.`);
     const drafts = need(deps.drafts, "storage");
     const mine = (await drafts.mine(user.userId)).filter((row) => row.kind === "item" && row.resourceKey === key);
     const records = await reader.items(key);
@@ -593,7 +594,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
   };
 
   const activity = async (request: Request, user: Identity) => {
-    if (user.role !== "owner") fail(403, "owner_only", "Only an owner can see the activity log.");
+    if (user.role !== "owner") fail(403, "owner_only", "Only an admin can see the activity log.");
     const audit = need(deps.audit, "storage");
     const params = new URL(request.url).searchParams;
     const kind = params.get("kind") ?? "all";
@@ -616,7 +617,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
   /** The user id in a Vibe CMS commit message ("By: usr_… (owner) via Vibe CMS"). */
   const committedBy = (message: string) => /\nBy: ([A-Za-z0-9_-]{1,80}) \((?:owner|editor)\) via Vibe CMS/.exec(message)?.[1];
   const historyTarget = (user: Identity, resource: string | null) => {
-    if (user.role !== "owner") fail(403, "owner_only", "Only an owner can see the history and restore older versions.");
+    if (user.role !== "owner") fail(403, "owner_only", "Only an admin can see the history and restore older versions.");
     if (!resource) return fail(400, "bad_request", "resource is required (e.g. file:site).");
     try { return targetOf(resource); } catch (error) { if (error instanceof ApiError) throw error; return fail(400, "bad_request", `Not a resource id: ${resource}`); }
   };

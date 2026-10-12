@@ -18,8 +18,8 @@ const fields = {
     fromPrice: priceRef,
     highlights: f.list(f.object({ label: "Highlight", fields: { label: f.text({ label: "Label" }), of: f.pick({ label: "Line", choices: menuLines }) } }), { label: "Highlights" }),
     groups: f.list(f.object({ label: "Group", fields: { id: f.text({ label: "Id" }), title: f.text({ label: "Title" }),
-      tiers: f.list(f.object({ label: "Package", fields: { id: f.text({ label: "Id" }), name: f.text({ label: "Name" }), price: f.text({ label: "Price", locked: "owner" }) } }), { label: "Packages" }),
-      items: f.list(f.object({ label: "Line", fields: { id: f.text({ label: "Id" }), name: f.text({ label: "Name" }), price: f.text({ label: "Price", locked: "owner" }) } }), { label: "Lines" }) } }), { label: "Menu", fixed: true }),
+      tiers: f.list(f.object({ label: "Package", fields: { id: f.text({ label: "Id" }), name: f.text({ label: "Name" }), price: f.text({ label: "Price", locked: "admin" }) } }), { label: "Packages" }),
+      items: f.list(f.object({ label: "Line", fields: { id: f.text({ label: "Id" }), name: f.text({ label: "Name" }), price: f.text({ label: "Price", locked: "admin" }) } }), { label: "Lines" }) } }), { label: "Menu", fixed: true }),
   } }), { label: "Services", fixed: true }),
   "about.pair": f.tuple([f.text({ label: "Title" }), f.pick({ label: "Price", choices: menuLines })], { label: "Pair" }),
 };

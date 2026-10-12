@@ -26,7 +26,7 @@ before(async () => {
   config = {
     ...demo,
     files: [{ ...siteFile, fields: { ...siteFile.fields, footerLinks: { ...footer, fixed: true, max: undefined } } }],
-    collections: demo.collections.map((collection) => (collection.key === "services" ? { ...collection, fixed: true } : collection.key === "team" ? { ...collection, access: "owner" } : collection)),
+    collections: demo.collections.map((collection) => (collection.key === "services" ? { ...collection, fixed: true } : collection.key === "team" ? { ...collection, access: "admin" } : collection)),
   };
   delete config.files[0].fields.footerLinks.max;
 });
@@ -55,12 +55,15 @@ const harness = async () => {
 test("config: fixed (list, collection) and access (file, collection) are checked", () => {
   const base = { configVersion: 1, site: { name: "S", url: "https://s.example" }, repo: { owner: "o", name: "r", branch: "main" }, collections: [] };
   const file = (extra, fields = { items: f.list(f.text({ label: "Item" }), { label: "Items", fixed: true }) }) => ({ ...base, files: [{ key: "site", label: "Site", path: "src/data/site.json", format: "json", fields, ...extra }] });
-  assert.deepEqual(checkCmsConfig(file({ access: "owner" })).errors, []);
-  assert.match(checkCmsConfig(file({ access: "admin" })).errors[0].message, /only "owner" is allowed/);
+  assert.deepEqual(checkCmsConfig(file({ access: "admin" })).errors, []);
+  assert.match(checkCmsConfig(file({ access: "editor" })).errors[0].message, /only "admin" is allowed/);
+  // M2: "owner" is the old name — it works, with one warning that names the place.
+  const old = checkCmsConfig(file({ access: "owner" }));
+  assert.deepEqual([old.errors, old.warnings.map((warning) => `${warning.path}: ${warning.message}`)], [[], ['files[0].access: "owner" is the old name of "admin" (1 place: files[0].access)']]);
   assert.match(checkCmsConfig(file({}, { items: f.list(f.text({ label: "Item" }), { label: "Items", fixed: "yes" }) })).errors[0].message, /must be true or false/);
   assert.match(checkCmsConfig(file({}, { items: f.list(f.text({ label: "Item" }), { label: "Items", fixed: true, max: 3 }) })).warnings[0].message, /min \/ max have no effect/);
   const collection = (extra) => ({ ...base, files: [], collections: [{ key: "menu", label: "Menu", itemLabel: "Dish", store: { kind: "json-array", path: "src/data/menu.json", idField: "id" }, fields: { name: f.text({ label: "Name" }) }, ...extra }] });
-  assert.deepEqual(checkCmsConfig(collection({ fixed: true, access: "owner" })).errors, []);
+  assert.deepEqual(checkCmsConfig(collection({ fixed: true, access: "admin" })).errors, []);
   assert.match(checkCmsConfig(collection({ fixed: 1 })).errors[0].path, /collections\[0\]\.fixed/);
 });
 
@@ -129,7 +132,7 @@ test("API: owner-only collection — editors do not see it and get 403 owner_onl
     }
     const before = h.audit.entries.length;
     const save = await h.call("PUT", `/collections/team/items/${member.id}`, { as: "editor", body: { content: { ...member, name: "X" }, expectedRevision: 0, sourceVersion: "new" } });
-    assert.deepEqual([save.status, save.body.error, save.body.message], [403, "owner_only", "Only an owner can open or change Team."]);
+    assert.deepEqual([save.status, save.body.error, save.body.message], [403, "owner_only", "Only an admin can open or change Team."]);
     assert.deepEqual(h.audit.entries.slice(before).map((row) => [row.action, row.stage, row.resource, row.detail.reason]), [["denied", "draft", `item:team:${member.id}`, "owner_only"]]);
     const ownerVersion = await h.version(`/collections/team/items/${member.id}`);
     assert.equal((await h.call("PUT", `/collections/team/items/${member.id}`, { body: { content: { ...member, name: "Owner edit" }, expectedRevision: 0, sourceVersion: ownerVersion } })).status, 200);
@@ -162,7 +165,7 @@ test("API: /activity — owners only, plain filters, 50 a page with `before`, na
     ], "newest first, no 'started' rows, names and labels");
     assert.equal(all.next, null);
     const words = all.entries.map((row) => describeActivity(row).text);
-    assert.deepEqual(words, ["Failed sign-in (unknown username)", "Changed the role of Eddie to editor", "Refused to save Service · spa-pedicure: Price is for owners only", "Published Salon info (abcdef1)", "Signed in"]);
+    assert.deepEqual(words, ["Failed sign-in (unknown username)", "Changed the role of Eddie to editor", "Refused to save Service · spa-pedicure: Price is for admins only", "Published Salon info (abcdef1)", "Signed in"]);
     assert.deepEqual((await h.call("GET", "/activity?kind=publish")).body.entries.map((row) => row.action), ["succeeded"]);
     assert.deepEqual((await h.call("GET", "/activity?kind=denied")).body.entries.map((row) => row.action), ["login_failed", "denied"]);
     assert.deepEqual((await h.call("GET", "/activity?kind=people")).body.entries.map((row) => row.action), ["user_role_change"]);
@@ -220,7 +223,7 @@ test("admin: editor — no owner-only section, no Activity; fixed collection has
     await editor.go("/admin/catalog/services/new");
     assert.match(editor.root.textContent, /Services is a fixed set/);
     await editor.go("/admin/audit");
-    assert.match(editor.root.textContent, /Only an owner can see the activity log/);
+    assert.match(editor.root.textContent, /Only an admin can see the activity log/);
   } finally { editor.h.close(); }
 
   const owner = await shell("owner");
@@ -230,7 +233,7 @@ test("admin: editor — no owner-only section, no Activity; fixed collection has
     assert.ok([...owner.root.querySelectorAll(".vc-rail a.vc-rail-item")].some((link) => link.textContent.trim() === "Users"));
     await owner.go("/admin/audit");
     const rows = [...owner.root.querySelectorAll(".vc-activity tbody tr")].map((row) => [...row.querySelectorAll("td")].slice(1).map((cell) => cell.textContent.trim()));
-    assert.deepEqual(rows, [["Eddie Editor", "Refused to publish Team member · sam: only owners can change it", "—", "Failed"]]);
+    assert.deepEqual(rows, [["Eddie Editor", "Refused to publish Team member · sam: only admins can change it", "—", "Failed"]]);
     assert.equal(owner.root.querySelector('.vc-tabs [aria-current="page"]').textContent, "Activity");
     assert.equal(owner.root.querySelector('.vc-filters [aria-current="page"]').textContent, "All");
     await owner.go("/admin/audit/publish");
