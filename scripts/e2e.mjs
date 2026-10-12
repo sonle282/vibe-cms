@@ -320,6 +320,9 @@ try {
   // Measure once the picture has loaded (its size, and the corner handle placed on it), not while it is still coming.
   await postImage.evaluate((image) => (image.complete && image.naturalWidth > 0 ? null : new Promise((resolve) => image.addEventListener("load", resolve, { once: true }))));
   await field("body").locator(".vc-rich-handle").waitFor({ state: "visible" });
+  // The inspector is narrow (360 px): bring the picture and its corner handle into the middle of the window first.
+  await postImage.evaluate((image) => image.scrollIntoView({ block: "center" }));
+  await page.waitForTimeout(100);
   const before = await postImage.boundingBox();
   const handle = await field("body").locator(".vc-rich-handle").boundingBox();
   await page.mouse.move(handle.x + 8, handle.y + 8);
