@@ -3,7 +3,7 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## 0.21.0 — unreleased (P12g, P12h)
+## 0.21.0 — 2026-10-12 (P12g, P12h)
 
 - **Images by name** (`media.names`): for a site whose build makes its image sizes from a manifest, content holds
   names (`"nails/nails-01"`); the admin shows and sends addresses and the API converts both ways; an upload is named
