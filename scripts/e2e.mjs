@@ -329,6 +329,8 @@ try {
   await page.mouse.down();
   await page.mouse.move(handle.x + 8 - 200, handle.y + 8 + 40, { steps: 10 });
   await page.mouse.up();
+  // The drawn size follows the width written on the image; measure once both agree (slower machines draw later).
+  await postImage.evaluate((image) => new Promise((resolve) => { const started = Date.now(); const tick = () => (Math.abs(image.getBoundingClientRect().width - Number(image.getAttribute("width"))) <= 1 || Date.now() - started > 3000 ? resolve(null) : requestAnimationFrame(tick)); tick(); }));
   const after = await postImage.boundingBox();
   const postWidth = Number(await postImage.getAttribute("width"));
   check("editor: dragging the corner resizes the image, ratio kept, width written", Math.abs(postWidth - (before.width - 200)) <= 2 && Math.abs(after.width - postWidth) <= 1 && Math.abs(after.height / after.width - 0.75) < 0.01 && !(await postImage.getAttribute("height")), { before, after, postWidth });
