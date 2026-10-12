@@ -91,6 +91,8 @@ try {
     const mes = await time(() => call("GET", "/api/auth/me", { cookie: ownerCookie }), 8);
     const unknown = await time((index) => login(`nobody${index}`, "whatever-password"), 8);
     const median = (list) => list[Math.floor(list.length / 2)];
+    // The faster half of a sorted run: a shared CI runner sometimes stalls a few calls, which moves the median.
+    const quarter = (list) => list[Math.floor(list.length / 4)];
     const probe = async (path) => { const started = performance.now(); const body = await (await fetch(`${base}${path}`)).json(); return { ms: performance.now() - started, inside: body.insideMs }; };
     const hashes = []; const noops = [];
     for (let index = 0; index < 15; index += 1) { hashes.push(await probe("/__test/hash")); noops.push(await probe("/__test/noop")); }
@@ -98,7 +100,7 @@ try {
     const inside = median(hashes.map((entry) => entry.inside).sort((a, b) => a - b));
     console.log(`CPU (wrangler dev --local, workerd on this machine): one PBKDF2-SHA256 100k check ≈ ${hashCost.toFixed(1)} ms (median of 15, hash endpoint minus no-op endpoint; clock inside the Worker says ${inside.toFixed(1)} ms). Whole sign-in ${median(logins).toFixed(1)} ms vs /me ${median(mes).toFixed(1)} ms (includes local D1 / KV writes); unknown-user sign-in ${median(unknown).toFixed(1)} ms (decoy hash).`);
     // Loose bounds on purpose (CI runners are slower): the point is "hashing happens" and "unknown user ≈ real user".
-    check("one PBKDF2 check costs real CPU (> 5 ms); an unknown user costs about the same as a real sign-in", hashCost > 5 && hashCost < 400 && Math.abs(median(unknown) - median(logins)) < Math.max(40, median(logins) * 0.6), { hashCost, logins, mes, unknown });
+    check("one PBKDF2 check costs real CPU (> 5 ms); an unknown user costs about the same as a real sign-in", hashCost > 5 && hashCost < 400 && Math.abs(quarter(unknown) - quarter(logins)) < Math.max(40, quarter(logins) * 0.6), { hashCost, logins, mes, unknown });
 
     const audit = await (await fetch(`${base}/__test/audit`)).json();
     const actions = new Set(audit.map((row) => row.action));
