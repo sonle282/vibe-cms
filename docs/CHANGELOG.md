@@ -3,7 +3,7 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## 0.19.0 — unreleased (P12f)
+## 0.19.0 — 2026-10-12 (P12f · first release: everything below, P1–P12f)
 
 - **Crop / resize = a new copy.** In the image sheet every image (the site's own or an upload) has "Crop / resize":
   pick a shape first (Original, Square, Landscape 4:3, Wide 16:9, Portrait 4:5), then move the crop (drag, or the arrow

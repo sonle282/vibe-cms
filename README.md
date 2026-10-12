@@ -15,22 +15,21 @@ open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY
 > into a new copy. Next: moving the first sites onto the package (P13–P18; either-fields and images by name, P12g,
 > before the second), then
 > moving them onto the package (P13–P18;
-> [docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
+> [docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). First release: **v0.19.0** (2026-10-12).
 
 ## Install in a site (5 steps, no token)
 
 Every version is a GitHub Release with a `vibe-cms-X.Y.Z.tgz` file. A site installs it by its public URL, pinned to
 that version — no `.npmrc`, no `NODE_AUTH_TOKEN`, on your machine or in Cloudflare Workers Builds.
-(No release is published yet: the first one comes when the core is usable.)
 
 1. **Install**
 
    ```bash
-   npm i https://github.com/sonle282/vibe-cms/releases/download/v0.3.0/vibe-cms-0.3.0.tgz @astrojs/cloudflare
+   npm i https://github.com/sonle282/vibe-cms/releases/download/v0.19.0/vibe-cms-0.19.0.tgz @astrojs/cloudflare
    ```
 
    `package.json` then holds
-   `"@sonle282/vibe-cms": "https://github.com/sonle282/vibe-cms/releases/download/v0.3.0/vibe-cms-0.3.0.tgz"`
+   `"@sonle282/vibe-cms": "https://github.com/sonle282/vibe-cms/releases/download/v0.19.0/vibe-cms-0.19.0.tgz"`
    (and `package-lock.json` its checksum). To upgrade later: `npx vibe-cms update [version]` (below).
 
 2. **Add it to `astro.config.mjs`** (public pages keep prerendering; only the CMS routes run on demand):
