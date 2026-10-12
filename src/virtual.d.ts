@@ -18,6 +18,8 @@ declare module "cloudflare:workers" {
 
 // P10: the site's own images under public/ (built in for the image library).
 declare module "virtual:vibe-cms/images" {
-  const images: Array<{ src: string; width?: number; height?: number; bytes: number }>;
+  const images: Array<{ src: string; width?: number; height?: number; bytes: number; name?: string }>;
   export default images;
+  /** P12h: the site's image manifest when images are stored by name (media.names), else null. */
+  export const names: import("./media/names.js").ImageManifest | null;
 }

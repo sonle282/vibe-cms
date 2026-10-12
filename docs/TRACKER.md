@@ -2,7 +2,7 @@
 
 > Nguồn: [DESIGN.md](DESIGN.md) §I. Quy tắc: 1 task = 1 commit; mỗi task REPORT → DỪNG chờ review. Test của gói **không đọc
 > dữ liệu site khách**. Task có sửa repo site: đầu task `git status` sạch + pull nhánh production của site; có thay đổi
-> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (P12g · pick + toggle).
+> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (P12h · ảnh theo tên).
 
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
@@ -27,8 +27,8 @@
 | **P12c** | Gói: **History + Restore as draft** — đọc lịch sử commit của file trên GitHub (gồm cả các lần publish bằng CMS cũ, không cần chuyển dữ liệu) | 10–16 | ✅ Xong (merge 2026-10-12; d42af43, CI 38194532723) |
 | **P12d** | Gói: `f.tuple`, text `pattern` / `tokens`, rich text `allow`, **`rules` của site** (chỗ cắm plugin: build + lưu + publish) — những gì Novelle cần | 14–22 | ✅ Xong (merge 2026-10-12; 46d74bb, CI 38196413379) |
 | **P12e** | CLI: `import-legacy-users` từ D1 của CMS chép (cùng định dạng hash → không đặt lại mật khẩu; admin → owner) | 6–10 | ✅ Xong (merge 2026-10-12; 8028ab0, CI 38197484347) |
-| **P12g** | Gói (trước Innovate): `f.pick` (giá trị chọn từ danh sách site tính từ chính nội dung — giá `{ "of": … }`) + `f.toggle` (`plain`) | 6–10 | 🔄 Đang review |
-| P12h | Gói (trước Innovate): ảnh lưu theo tên trong manifest của site + kích thước do build tạo (upload → tên, đổi qua lại ở API) | 8–12 | ⏳ |
+| **P12g** | Gói (trước Innovate): `f.pick` (giá trị chọn từ danh sách site tính từ chính nội dung — giá `{ "of": … }`) + `f.toggle` (`plain`) | 6–10 | ✅ Xong (merge 2026-10-12; 2061801, PR #21) |
+| **P12h** | Gói (trước Innovate): ảnh theo tên trong manifest của site (`media.names`) — API đổi tên ↔ địa chỉ, upload được đặt tên theo chỗ commit (`media.dir` ngoài public/ + `media.base`), thư viện = manifest, build / lưu từ chối tên lạ | 8–12 | 🔄 Đang review |
 | **P12f** | Gói: cắt / đổi cỡ ảnh = **bản sao mới**, giữ ảnh gốc (như Mr Spa), làm trong trình duyệt — không binding `IMAGES` | 8–14 | ✅ Xong (merge 2026-10-12; 884a683, CI 38198654822) |
 | **P13** | Novelle: `cms.config` trên JSON có sẵn (không đổi nội dung) + plugin + `bind` selector; chạy song song CMS chép ở local | 10–16 | ✅ Xong (merge 2026-10-12; novelle PR #1, cài v0.19.0 từ URL release) |
 | **P14** | Novelle: chuyển (`setup --site novelle`, nhập users, gỡ CMS chép), G.2 1 cặp trên `dev`, Workers Builds không biến token | 10–16 | ✅ Xong (merge 2026-10-12; novelle PR #2, 30af26c; publish 37868c7 + revert a913f91 trên demo) |

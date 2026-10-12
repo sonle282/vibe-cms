@@ -12,6 +12,24 @@ import { toTree } from "../config/tree.js";
 import { add, checkRecord, describe, isRecord, at, type ValueCtx } from "./values.js";
 import { sanitizeRecord, unsafeOnly } from "./rich-text.js";
 import { ruleContext, runRules } from "./rules.js";
+import { mediaSettings } from "../media/index.js";
+import { imageNamesOf, type ImageManifest } from "../media/names.js";
+
+/** P12h: the site's image manifest (media.names.manifest), read from the project; problems go to `problems`. */
+export const readImageManifest = (config: CmsConfig, root: string, problems?: Problem[]): ImageManifest | undefined => {
+  const file = config.media?.names?.manifest;
+  if (!file) return undefined;
+  const full = join(root, file);
+  if (!existsSync(full)) { if (problems) add(problems, file, "the image manifest (media.names.manifest) is missing", "build the site's images first, or fix the path"); return undefined; }
+  try {
+    const data = JSON.parse(readFileSync(full, "utf8"));
+    if (!isRecord(data)) throw new Error("expected an object of names");
+    for (const [name, entry] of Object.entries(data)) if (!isRecord(entry) || typeof entry.path !== "string" || typeof entry.width !== "number" || typeof entry.height !== "number") throw new Error(`${JSON.stringify(name)} needs width, height and path`);
+    return data as ImageManifest;
+  } catch (error) { if (problems) add(problems, file, `the image manifest is not valid: ${(error as Error).message}`); return undefined; }
+};
+/** P12h: the names setting with its manifest, or undefined when the site stores image paths. */
+export const readImageNames = (config: CmsConfig, root: string, problems?: Problem[]) => imageNamesOf(config.media, readImageManifest(config, root, problems), mediaSettings(config.media).base);
 
 /** P8c: rich text the CMS would clean when someone edits it — a warning, the site's own files are never changed. */
 const unsafeHtml = (ctx: Ctx, fields: CmsCollection["fields"], record: Record<string, unknown>, path: string, markdownBody = false) => {
@@ -70,6 +88,8 @@ const loadCollection = (ctx: Ctx, root: string, collection: CmsCollection, index
 /** root = the project root (the folder of cms.config.ts). */
 export const checkContent = (config: CmsConfig, root: string): CheckResult => {
   const ctx: Ctx = { errors: [], warnings: [], ids: new Map() };
+  const imageNames = readImageNames(config, root, ctx.errors);
+  if (imageNames) ctx.imageNames = imageNames;
   const loaded = config.collections.map((collection, index) => loadCollection(ctx, root, collection, index));
   const fileData = new Map<string, unknown>();
   config.files.forEach((file, index) => {

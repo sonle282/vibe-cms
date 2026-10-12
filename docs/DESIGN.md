@@ -334,7 +334,13 @@ nên Ctrl+Z / Ctrl+Y vẫn chạy, dán chỉ giữ chữ), thêm phần ảnh m
   (mọi phần tử list), `pair[1]` (chỗ của tuple)); khi lưu nháp, lựa chọn tính từ **nháp** (thêm 1 dòng menu rồi trỏ tới
   ngay được). Admin: ô chọn (nhóm theo `group`), giá trị không còn trong danh sách được giữ + ghi "(not in the list)";
   review hiện tên dòng thay vì id. `toggle` = true / false; bỏ tick 1 giá trị chưa từng có → bỏ hẳn key (JSON không đổi).
-- **P12h (tiếp theo):** ảnh lưu theo tên trong manifest của site + kích thước do build tạo.
+- **P12h — ảnh theo tên (`media.names`):** nội dung giữ **tên** trong manifest của site (`"nails/nails-01"`), build của
+  site tạo các kích thước. Admin vẫn làm việc với địa chỉ: API đổi tên → địa chỉ khi đọc (cỡ lớn nhất ≤ `width`, mẫu
+  `url` = `"{path}-{width}.webp"`; ảnh upload chưa build → tìm file trong R2) và địa chỉ → tên khi lưu (mọi cỡ của 1 ảnh,
+  hoặc địa chỉ upload) → nháp / publish / History / file chỉ có tên. Ảnh upload đặt tên theo chỗ commit tính từ `root`
+  (`uploads/2026/10/x-1a2b3c4d`), publish commit file vào `media.dir` (được nằm ngoài public/, kèm `media.base` = địa chỉ
+  phục vụ từ R2). Thư viện ảnh = manifest (bỏ `exclude`). Build + mỗi lần lưu từ chối tên không có trong manifest và
+  không phải tên upload. Manifest tới Worker qua module ảo `virtual:vibe-cms/images` (`names`).
 
 ## C.8 History + Restore as draft (P12c)
 

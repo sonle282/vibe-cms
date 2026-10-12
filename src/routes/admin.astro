@@ -6,14 +6,14 @@
 import { env } from "cloudflare:workers";
 import config from "virtual:vibe-cms/config";
 import content from "virtual:vibe-cms/content";
-import images from "virtual:vibe-cms/images";
+import images, { names } from "virtual:vibe-cms/images";
 import { adminBoot, bootJson, createSiteRuntime, type SiteEnv } from "@sonle282/vibe-cms/api";
 // Geist for the CMS only (never the website or the preview): the same self-hosted font as the Mr Spa CMS.
 import "@fontsource-variable/geist/wght.css";
 import "./admin.css";
 
 export const prerender = false;
-const { auth } = createSiteRuntime({ config, content, images, env: env as SiteEnv, dev: import.meta.env.DEV });
+const { auth } = createSiteRuntime({ config, content, images, names, env: env as SiteEnv, dev: import.meta.env.DEV });
 const identity = await auth.identify(Astro.request);
 const current = identity ? await auth.session(Astro.request) : null;
 const state = identity === undefined ? "not-configured" : identity === null ? "signed-out" : identity.mustChangePassword ? "change-password" : "signed-in";

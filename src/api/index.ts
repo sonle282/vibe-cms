@@ -39,7 +39,8 @@ import { parseMarkdown } from "../writer/markdown.js";
 import { recordPath, writeArrayItem, writeFile, writeMarkdownItem } from "../writer/index.js";
 import { sameValue, type WriteResult } from "../writer/json.js";
 import { GitPublishError, type CommitAuthor, type FileContent, type GitPublisher } from "./github.js";
-import { MediaError, uploadPathsIn, type MediaStore } from "../media/index.js";
+import { MediaError, repoPathOf, uploadPathsIn, type MediaStore } from "../media/index.js";
+import { addressOfName, mapImageValues, nameOfAddress, uploadNamesIn, uploadTail, type ImageNames } from "../media/names.js";
 import type { Identify, Identity, RateLimiter } from "../auth/index.js";
 
 export { createSiteRuntime, loopbackApiUrl, type SiteEnv } from "./runtime.js";
@@ -96,7 +97,9 @@ export type CmsApiDeps = {
   /** P10: uploads in the site's R2 bucket (undefined = no CMS_MEDIA binding: uploading is off). */
   media?: MediaStore | undefined;
   /** P10: the site's own images (public/…), listed at build time for the image library. */
-  siteImages?: Array<{ src: string; width?: number; height?: number; bytes: number }>;
+  siteImages?: Array<{ src: string; width?: number; height?: number; bytes: number; name?: string }>;
+  /** P12h: images stored by name in the site's manifest (media.names), with the manifest of this build. */
+  imageNames?: ImageNames;
   /** Publish rate limit (20 / minute / user on the first site). */
   publishLimiter?: RateLimiter | undefined;
   /** true in production builds: no publish limiter → publish answers 503. */
@@ -235,12 +238,33 @@ export const createCmsApi = (deps: CmsApiDeps) => {
   const checkValues = async (target: Target, content: unknown, extraIds: Map<string, Set<string>> = new Map()) => {
     const ids = await idsForReferences();
     for (const [key, set] of extraIds) for (const id of set) ids.get(key)?.add(id);
-    if (target.kind === "file") return withRules(target, content, checkRecordValues({ fields: target.file.fields, record: content, ids }));
-    const result = checkRecordValues({ fields: target.collection.fields, record: content, ids, system: systemOf(target.collection) });
+    const imageNames = deps.imageNames;
+    if (target.kind === "file") return withRules(target, content, checkRecordValues({ fields: target.file.fields, record: content, ids, imageNames }));
+    const result = checkRecordValues({ fields: target.collection.fields, record: content, ids, system: systemOf(target.collection), imageNames });
     const idField = idFieldOf(target.collection);
     const record = content && typeof content === "object" ? (content as Record<string, unknown>) : {};
     if (record[idField] !== target.id) result.errors.push({ path: idField, message: `must be "${target.id}" (the record's id)`, hint: "the id cannot be changed in a draft" });
     return withRules(target, content, result);
+  };
+
+  // P12h: the editor works with addresses; drafts, publish and the files hold names. Out: name → address (an upload
+  // not built yet is found in the bucket); in: address → name (anything else is kept, and the value check refuses it).
+  const fieldsOfTarget = (target: Target) => (target.kind === "file" ? target.file.fields : target.collection.fields);
+  const toNames = (target: Target, content: unknown) => {
+    const names = deps.imageNames;
+    return names ? mapImageValues(fieldsOfTarget(target), content, (value) => nameOfAddress(names, value) ?? value) : content;
+  };
+  const toAddresses = async (target: Target, content: unknown) => {
+    const names = deps.imageNames;
+    if (!names || content === undefined || content === null) return content;
+    const staged = new Map<string, string>();
+    for (const name of uploadNamesIn(names, JSON.stringify(content))) {
+      const tail = uploadTail(names, name);
+      if (!tail || name in names.manifest || !deps.media || !names.uploads) continue;
+      const path = await deps.media.find(`${names.uploads.base}/${tail}`);
+      if (path) staged.set(tail, path);
+    }
+    return mapImageValues(fieldsOfTarget(target), content, (value) => addressOfName(names, value, (tail) => staged.get(tail)) ?? value);
   };
 
   /** P8c: clean the rich text a user changed (vs `before`); refuse values over the size limit. */
@@ -305,7 +329,9 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     if (current.value === undefined && !draft) fail(404, "not_found", `${target.resource} does not exist.`);
     // P12g: the choices of its pick fields, from what is being edited (the draft, else the live content).
     const choices = pickChoices(target.kind === "file" ? target.file.fields : target.collection.fields, draft?.content ?? current.value);
-    return json({ resource: target.resource, label: target.kind === "file" ? target.label : recordLabel(target.collection, current.value ?? draft?.content, target.id), content: current.value ?? null, version: current.version, draft: draftView(draft, current.version), ...(Object.keys(choices).length ? { choices } : {}) });
+    const view = draftView(draft, current.version);
+    if (view) view.content = await toAddresses(target, view.content);
+    return json({ resource: target.resource, label: target.kind === "file" ? target.label : recordLabel(target.collection, current.value ?? draft?.content, target.id), content: (await toAddresses(target, current.value)) ?? null, version: current.version, draft: view, ...(Object.keys(choices).length ? { choices } : {}) });
   };
 
   const putDraft = async (request: Request, user: Identity, target: Target) => {
@@ -316,6 +342,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     const expectedRevision = body.expectedRevision;
     if (typeof expectedRevision !== "number" || !Number.isInteger(expectedRevision) || expectedRevision < 0) fail(400, "expected_revision_required", "expectedRevision is required: 0 for a new draft, else the revision you loaded.");
     if (!body.content || typeof body.content !== "object" || Array.isArray(body.content)) fail(400, "bad_request", "content must be an object.");
+    body.content = toNames(target, body.content);
     const checked = await checkValues(target, body.content);
     if (checked.errors.length) fail(422, "invalid_content", "The content does not match cms.config.", { errors: checked.errors });
     const current = await live(target);
@@ -450,17 +477,31 @@ export const createCmsApi = (deps: CmsApiDeps) => {
 
         // P10: uploads the published content uses and the branch does not have yet go into the same commit.
         const mediaFiles: string[] = [];
-        const base = deps.media?.settings.base;
-        if (base) {
-          const used = uploadPathsIn(loaded.map(({ draft }) => JSON.stringify(draft.content)).join("\n"), base);
-          const inRepo = used.length && publisher.exists ? await publisher.exists(head.sha, used.map((path) => `public${path}`)) : new Set<string>();
+        const settings = deps.media?.settings;
+        if (settings) {
+          const texts = loaded.map(({ draft }) => JSON.stringify(draft.content)).join("\n");
+          const used = uploadPathsIn(texts, settings.base);
           const missing: string[] = [];
-          for (const path of used) {
-            if (inRepo.has(`public${path}`)) continue;
+          // P12h: an upload named in the content ("uploads/2026/10/chair-1a2b3c4d") that the manifest does not have yet:
+          // its staged file goes into media.dir with the content, and the site's build gives it its sizes.
+          const names = deps.imageNames;
+          if (names?.uploads) {
+            for (const name of uploadNamesIn(names, texts)) {
+              if (name in names.manifest) continue;
+              const tail = uploadTail(names, name)!;
+              const path = await deps.media!.find(`${names.uploads.base}/${tail}`);
+              if (path) used.push(path); else missing.push(name);
+            }
+          }
+          const repoPaths = used.map((path) => repoPathOf(settings, path));
+          const inRepo = used.length && publisher.exists ? await publisher.exists(head.sha, repoPaths) : new Set<string>();
+          for (const [index, path] of used.entries()) {
+            const repoPath = repoPaths[index];
+            if (inRepo.has(repoPath)) continue;
             const staged = await deps.media!.read(path);
             if (!staged) { missing.push(path); continue; }
-            files[`public${path}`] = staged.bytes;
-            mediaFiles.push(`public${path}`);
+            files[repoPath] = staged.bytes;
+            mediaFiles.push(repoPath);
           }
           if (missing.length) return await failWith(409, "media_missing", `Some images are neither on the website nor uploaded: ${missing.join(", ")} — choose them again.`, { paths: missing });
         }

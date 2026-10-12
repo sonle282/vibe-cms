@@ -12,6 +12,8 @@ import { normalizePath, type Plugin } from "vite";
 import { countConfig, formatWarnings, type CmsConfig } from "./config/index.js";
 import { checkSite } from "./load-config.js";
 import { detectImage, IMAGE_EXTENSIONS, mediaSettings } from "./media/index.js";
+import { manifestImages } from "./media/names.js";
+import { readImageNames } from "./check/content.js";
 
 export type VibeCmsOptions = {
   /** Path of the site's config, relative to the project root. Default: "cms.config.ts". */
@@ -61,12 +63,17 @@ export const siteImages = (root: string, limit = 3000) => {
   return out;
 };
 
-const virtualModules = (file: string, root: string, paths: string[]): Plugin => ({
+const virtualModules = (file: string, root: string, paths: string[], cms: CmsConfig): Plugin => ({
   name: "vibe-cms:virtual",
   resolveId: (id) => (id === VIRTUAL_CONFIG ? RESOLVED_VIRTUAL_CONFIG : id === VIRTUAL_CONTENT ? RESOLVED_VIRTUAL_CONTENT : id === VIRTUAL_IMAGES ? RESOLVED_VIRTUAL_IMAGES : undefined),
   load: (id) => {
     if (id === RESOLVED_VIRTUAL_CONFIG) return `export { default } from ${JSON.stringify(normalizePath(file))};`;
-    if (id === RESOLVED_VIRTUAL_IMAGES) return `export default ${JSON.stringify(siteImages(root))};`;
+    if (id === RESOLVED_VIRTUAL_IMAGES) {
+      // P12h: images by name — the library lists the manifest, and the Worker gets the manifest to convert names.
+      const names = readImageNames(cms, root);
+      return `export default ${JSON.stringify(names ? manifestImages(names) : siteImages(root))};
+export const names = ${JSON.stringify(names ? names.manifest : null)};`;
+    }
     if (id !== RESOLVED_VIRTUAL_CONTENT) return undefined;
     // ?raw keeps the exact bytes (line endings, spacing): the writer patches this text at publish time.
     const imports = paths.map((path, index) => `import f${index} from ${JSON.stringify(`${normalizePath(join(root, path))}?raw`)};`);
@@ -83,7 +90,7 @@ export const vibeCms = (options: VibeCmsOptions = {}): AstroIntegration => ({
       const cms = await checkSite(file, { onWarnings: (warnings, where) => logger.warn(formatWarnings(where, warnings)) });
       const { files, collections } = countConfig(cms);
       logger.info(`config OK: ${files} files, ${collections} collections, content checked (${cms.repo.owner}/${cms.repo.name} → ${cms.repo.branch})`);
-      updateConfig({ vite: { plugins: [virtualModules(file, root, contentPaths(cms, root))] } });
+      updateConfig({ vite: { plugins: [virtualModules(file, root, contentPaths(cms, root), cms)] } });
       injectRoute({ pattern: "/admin", entrypoint: "@sonle282/vibe-cms/routes/admin.astro", prerender: false });
       injectRoute({ pattern: "/api/cms/health", entrypoint: "@sonle282/vibe-cms/routes/health.ts", prerender: false });
       injectRoute({ pattern: "/api/cms/[...path]", entrypoint: "@sonle282/vibe-cms/routes/api.ts", prerender: false });

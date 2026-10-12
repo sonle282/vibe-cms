@@ -15,6 +15,8 @@
 import { detectImage, type ImageInfo } from "./image-type.js";
 
 export { detectImage, IMAGE_EXTENSIONS, type ImageInfo, type ImageKind } from "./image-type.js";
+// P12h: images stored by name in the site's manifest.
+export { addressOfName, imageNamesOf, isImageName, manifestImages, mapImageValues, nameOfAddress, uploadNamesIn, uploadTail, type ImageManifest, type ImageNames, type ManifestEntry } from "./names.js";
 
 /** The part of Cloudflare's R2 binding the CMS uses. */
 export interface MediaBucket {
@@ -31,9 +33,10 @@ const STAGING = "staging/";
 const INDEX = "upload-index/";
 
 export type MediaSettings = { dir: string; base: string; maxBytes: number };
-export const mediaSettings = (media?: { dir?: string; maxBytes?: number }): MediaSettings => {
+export const mediaSettings = (media?: { dir?: string; base?: string; maxBytes?: number }): MediaSettings => {
   const dir = media?.dir ?? DEFAULT_MEDIA_DIR;
-  return { dir, base: dir.replace(/^public/, ""), maxBytes: media?.maxBytes ?? DEFAULT_MAX_BYTES };
+  // P12h: a folder outside public/ (the build turns it into the site's images) says where it is served until then.
+  return { dir, base: media?.base ?? dir.replace(/^public/, ""), maxBytes: media?.maxBytes ?? DEFAULT_MAX_BYTES };
 };
 
 /** "Hội sơn — Spa.JPG" → "hoi-son-spa" (60 characters at most, "image" when nothing is left). */
@@ -44,6 +47,8 @@ export const uploadSlug = (fileName: string) =>
 /** The strict shape of an upload path under `base` — nothing else is ever read from or served out of the bucket. */
 export const uploadPattern = (base: string) => new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}/(20\\d{2})/(0[1-9]|1[0-2])/([a-z0-9]+(?:-[a-z0-9]+)*)-([0-9a-f]{8})\\.(webp|jpg|png|avif)$`);
 /** Every upload path written in some text (JSON, HTML, Markdown). */
+/** P12h: where the publish commits an upload: its folder in the repo (media.dir) instead of the address' base. */
+export const repoPathOf = (settings: MediaSettings, path: string) => `${settings.dir}${path.slice(settings.base.length)}`;
 export const uploadPathsIn = (text: string, base: string) => {
   const escaped = base.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
   return [...new Set([...text.matchAll(new RegExp(`${escaped}/20\\d{2}/(?:0[1-9]|1[0-2])/[a-z0-9]+(?:-[a-z0-9]+)*-[0-9a-f]{8}\\.(?:webp|jpg|png|avif)`, "g"))].map((match) => match[0]))];
@@ -112,7 +117,14 @@ export const createMediaStore = ({ bucket, settings, now = () => new Date() }: {
     return new Response(found.bytes, { headers: { "content-type": found.mime, "cache-control": "public, max-age=60", "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox", "x-vibe-cms-upload": "staging" } });
   };
 
-  return { settings, stage, list, read, serve, pattern };
+  /** P12h: the staged upload with this address but any extension ("/assets/uploads/2026/10/chair-1a2b3c4d"), or undefined. */
+  const find = async (stem: string) => {
+    const page = await bucket.list({ prefix: keyOf(`${stem}.`), limit: 10 });
+    const path = page.objects.map((object) => `/${object.key.slice(STAGING.length)}`).find((candidate) => pattern.test(candidate));
+    return path;
+  };
+
+  return { settings, stage, list, read, serve, pattern, find };
 };
 export type MediaStore = ReturnType<typeof createMediaStore>;
 
