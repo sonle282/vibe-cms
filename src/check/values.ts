@@ -7,7 +7,8 @@ import type { Field } from "../config/index.js";
 import type { CheckResult, Problem } from "../config/validate.js";
 import { toTree, type FieldTree } from "../config/tree.js";
 
-export type ValueCtx = CheckResult & { ids: Map<string, Set<string>> };
+/** P12g: root = the whole record (pick choices are computed from it); picks = those choices, once per field. */
+export type ValueCtx = CheckResult & { ids: Map<string, Set<string>>; root?: Record<string, unknown>; picks?: Map<Field, Set<string> | null> };
 type Ctx = ValueCtx;
 type Tree = FieldTree;
 
@@ -91,6 +92,22 @@ export const checkValue = (ctx: Ctx, field: Field, value: unknown, path: string)
     case "hours":
       checkHours(ctx, value, path);
       return;
+    case "toggle":
+      if (typeof value !== "boolean") add(ctx.errors, path, `expected true or false, got ${describe(value)}`);
+      return;
+    case "pick": {
+      if (typeof value !== "string") { add(ctx.errors, path, `expected the value of one of the choices, got ${describe(value)}`); return; }
+      // The choices come from the site's function, on the server; where it is not there (the admin), the server checks.
+      if (typeof field.choices !== "function") return;
+      ctx.picks ??= new Map();
+      if (!ctx.picks.has(field)) {
+        try { ctx.picks.set(field, new Set((field.choices(ctx.root ?? {}) ?? []).map((choice) => choice.value))); }
+        catch (error) { ctx.picks.set(field, null); add(ctx.errors, path, `the site's choices for "${field.label}" failed: ${(error as Error).message}`, "fix the choices function in cms.config"); }
+      }
+      const allowed = ctx.picks.get(field);
+      if (allowed && !allowed.has(value)) add(ctx.errors, path, `${describe(value)} is not one of the choices of "${field.label}"`, allowed.size ? `e.g. ${[...allowed].slice(0, 3).map((known) => JSON.stringify(known)).join(", ")}` : "there are no choices yet");
+      return;
+    }
     case "object":
       if (!isRecord(value)) { add(ctx.errors, path, `expected an object, got ${describe(value)}`); return; }
       checkRecord(ctx, value, toTree(field.fields), path);
@@ -124,7 +141,7 @@ export const checkValue = (ctx: Ctx, field: Field, value: unknown, path: string)
  * (the id field, status field, Markdown body).
  */
 export const checkRecordValues = ({ fields, record, path = "", ids = new Map(), system = [] }: { fields: Record<string, Field>; record: unknown; path?: string; ids?: Map<string, Set<string>>; system?: string[] }): CheckResult => {
-  const ctx: Ctx = { errors: [], warnings: [], ids };
+  const ctx: Ctx = { errors: [], warnings: [], ids, ...(isRecord(record) ? { root: record } : {}) };
   if (!isRecord(record)) add(ctx.errors, path || "(content)", `expected an object ({ … }), got ${describe(record)}`);
   else checkRecord(ctx, record, toTree(fields), path, system);
   return { errors: ctx.errors, warnings: ctx.warnings };

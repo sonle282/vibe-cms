@@ -29,6 +29,8 @@ export type SummaryInput = {
   references?: ReferenceLabels;
   /** For a record that is not live yet. */
   newRecord?: { itemLabel: string; title: string };
+  /** P12g: the labels of pick values ("packages/the-essential-reset" → "The Essential Reset"). */
+  choiceLabels?: Record<string, string>;
 };
 
 const MAX = 140;
@@ -66,7 +68,7 @@ export const formatHours = (value: unknown) => {
   }).join(" · ");
 };
 
-export const summarizeChanges = ({ fields, before, after, references = {}, newRecord }: SummaryInput): Change[] => {
+export const summarizeChanges = ({ fields, before, after, references = {}, newRecord, choiceLabels }: SummaryInput): Change[] => {
   const out: Change[] = [];
   if (newRecord && (before === undefined || before === null)) {
     out.push({ path: "", label: `New ${newRecord.itemLabel.toLowerCase()}`, kind: "created", after: newRecord.title });
@@ -78,6 +80,8 @@ export const summarizeChanges = ({ fields, before, after, references = {}, newRe
     if (value === undefined || value === null) return "";
     switch (field.type) {
       case "text": case "select": return short(String(value));
+      case "pick": return short(typeof value === "string" ? choiceLabels?.[value] ?? value : String(value));
+      case "toggle": return value === true ? "Yes" : value === false ? "No" : "";
       case "richText": return short(plainText(String(value)));
       case "image": return typeof value === "string" ? value : isRecord(value) ? String(value.src ?? "") : "";
       case "hours": return formatHours(value);

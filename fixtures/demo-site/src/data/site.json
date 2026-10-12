@@ -15,6 +15,11 @@
     "image": { "src": "/images/hero.svg", "alt": "A pastel drawing of a nail polish bottle" }
   },
   "highlights": ["spa-pedicure", "classic-manicure"],
+  "packages": [
+    { "id": "express", "name": "Express visit", "price": "$30" },
+    { "id": "deluxe", "name": "Deluxe visit", "price": "$75" }
+  ],
+  "fromPrice": { "of": "express" },
   "footerLinks": [
     {
       "title": "Visit",

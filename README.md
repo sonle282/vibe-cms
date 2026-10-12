@@ -192,6 +192,21 @@ headline: f.richText({ label: "Headline", allow: ["em", "br"] }),       // the t
 rules: (value, content) => (value.price || value.note ? [] : [{ path: "price", message: "a price or a note is needed" }]),
 ```
 
+## A price written once: pick + toggle (P12g)
+
+A `pick` holds one of a list the site computes from the record's own content — e.g. a price written once in the menu
+and used elsewhere by its place. The function runs on the server (build, save, publish, the editor's view); the
+admin shows the result as a list (grouped by `group`) and keeps a value that is no longer listed, saying so.
+
+```ts
+const menuLines = (content) => content.services.flatMap((service) => service.groups.flatMap((group) =>
+  group.items.map((line) => ({ value: `${group.id}/${line.id}`, label: `${line.name} · ${line.price}`, group: group.title }))));
+fromPrice: f.object({ label: "From price", fields: {
+  of: f.pick({ label: "Line of the menu", required: true, choices: menuLines }),   // { "of": "packages/the-essential-reset" }
+  plain: f.toggle({ label: "Plain", help: "Show the price without “from”" }),      // true / false, left out until set
+} }),
+```
+
 ## History (P12c)
 
 Owners have **History** in the editor: every version of that file or record, newest first, read from the site's

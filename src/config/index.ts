@@ -38,9 +38,19 @@ export type ReferenceField = Base & { type: "reference"; to: string; multiple?: 
 /** P12d: a fixed-length list stored as a JSON array, one field per place — e.g. ["Manicure", "$17"] = [name, price]. */
 export type TupleField = Base & { type: "tuple"; items: Field[] };
 
-export type Field = TextField | RichTextField | ImageField | SelectField | HoursField | ObjectField | ListField | ReferenceField | TupleField;
+/**
+ * P12g: one of a list the site computes from the record's own content — e.g. a price written once in the menu and used
+ * elsewhere by its place ("packages/the-essential-reset"). Stored as text. `choices` runs on the server (build check,
+ * save, publish, the editor's view); the admin shows its result (grouped by `group`).
+ */
+export type PickChoice = { value: string; label: string; group?: string };
+export type PickField = Base & { type: "pick"; choices: (content: Record<string, unknown>) => readonly PickChoice[] };
+/** P12g: yes / no, stored as true / false (left out while it was never set). */
+export type ToggleField = Base & { type: "toggle" };
+
+export type Field = TextField | RichTextField | ImageField | SelectField | HoursField | ObjectField | ListField | ReferenceField | TupleField | PickField | ToggleField;
 export type FieldType = Field["type"];
-export const FIELD_TYPES: readonly FieldType[] = ["text", "richText", "image", "select", "hours", "object", "list", "reference", "tuple"];
+export const FIELD_TYPES: readonly FieldType[] = ["text", "richText", "image", "select", "hours", "object", "list", "reference", "tuple", "pick", "toggle"];
 
 /**
  * P12d: a site's own rule for a file / collection record — the plugin seam: cross-field checks the field types cannot
@@ -125,6 +135,10 @@ export const f = {
   reference: (options: Options<ReferenceField>): ReferenceField => ({ type: "reference", ...options }),
   /** f.tuple([f.text({ label: "Service" }), f.text({ label: "Price", locked: "owner" })], { label: "Service and price" }) */
   tuple: (items: Field[], options: Omit<Options<TupleField>, "items">): TupleField => ({ type: "tuple", items, ...options }),
+  /** f.pick({ label: "Price", choices: (content) => menuLines(content) }) — P12g */
+  pick: (options: Options<PickField>): PickField => ({ type: "pick", ...options }),
+  /** f.toggle({ label: "Show without “from”" }) — P12g */
+  toggle: (options: Options<ToggleField>): ToggleField => ({ type: "toggle", ...options }),
 };
 
 export { assertCmsConfig, branchProblem, checkCmsConfig, CmsConfigError, countConfig, DEFAULT_CONTENT_DIRS, formatProblem, formatWarnings, MAX_DEPTH, pathProblem } from "./validate.js";

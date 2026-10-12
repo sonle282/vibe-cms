@@ -3,6 +3,15 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.21.0 — unreleased (P12g)
+
+- **`f.pick`**: a value chosen from a list the site computes from the record's own content (`choices`), for a price
+  written once in the menu and used elsewhere by its place (`{ "of": "packages/the-essential-reset" }`). Checked at
+  build, save and publish; the admin shows the choices grouped and keeps a value that is no longer listed; the review
+  shows the line's name.
+- **`f.toggle`**: yes / no, stored as true / false (left out until it is set).
+- Site action: none.
+
 ## 0.20.0 — 2026-10-12 (U1–U4: the Mr Spa CMS design system)
 
 - **The Mr Spa CMS screens** (U4):

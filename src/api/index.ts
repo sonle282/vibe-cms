@@ -27,6 +27,7 @@
 import type { CmsCollection, CmsConfig, CmsFile } from "../config/index.js";
 import { checkRecordValues } from "../check/values.js";
 import { checkFixedLists } from "../check/structure.js";
+import { pickChoices } from "../check/picks.js";
 import { ruleContext, runRules } from "../check/rules.js";
 import { describeCleaned, RICH_TEXT_MAX_CHARS, sanitizeRecord, unsafeOnly, type CleanedField } from "../check/rich-text.js";
 import { checkPublishLocks, LockedFieldError, lockedFieldBody, saveDraftChecked, type AuditEntry, type AuditLog, type Role } from "../locks/index.js";
@@ -302,7 +303,9 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     const current = await live(target);
     const draft = await drafts.get(user.userId, target.resource);
     if (current.value === undefined && !draft) fail(404, "not_found", `${target.resource} does not exist.`);
-    return json({ resource: target.resource, label: target.kind === "file" ? target.label : recordLabel(target.collection, current.value ?? draft?.content, target.id), content: current.value ?? null, version: current.version, draft: draftView(draft, current.version) });
+    // P12g: the choices of its pick fields, from what is being edited (the draft, else the live content).
+    const choices = pickChoices(target.kind === "file" ? target.file.fields : target.collection.fields, draft?.content ?? current.value);
+    return json({ resource: target.resource, label: target.kind === "file" ? target.label : recordLabel(target.collection, current.value ?? draft?.content, target.id), content: current.value ?? null, version: current.version, draft: draftView(draft, current.version), ...(Object.keys(choices).length ? { choices } : {}) });
   };
 
   const putDraft = async (request: Request, user: Identity, target: Target) => {

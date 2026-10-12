@@ -1,7 +1,8 @@
 // Demo site config: 1 file (salon info) + 3 collections (services, team, posts). Invented content only; the build
 // checks this config and the content it points to. Between them they use every field type (P7: the admin edits all of
 // them): text (single / multiline / maxLength), richText, image (path / with alt), select, hours, object, list (ordered,
-// of text / of objects / nested), reference (one / many, ordered), dotted keys, sections, a status field, Markdown body.
+// of text / of objects / nested), reference (one / many, ordered), dotted keys, sections, a status field, Markdown body,
+// and (P12g) pick + toggle: the banner's price points to a package of the same file, written once.
 import { defineCmsConfig, f } from "@sonle282/vibe-cms/config";
 
 export default defineCmsConfig({
@@ -18,7 +19,7 @@ export default defineCmsConfig({
       preview: "/",
       sections: [
         { key: "contact", label: "Contact & hours", fields: ["phone", "email", "address", "hours"] },
-        { key: "home", label: "Homepage", fields: ["name", "tagline", "hero", "highlights"] },
+        { key: "home", label: "Homepage", fields: ["name", "tagline", "hero", "highlights", "packages", "fromPrice"] },
         { key: "footer", label: "Footer & search", fields: ["footerLinks", "seo.title", "seo.description"] },
       ],
       fields: {
@@ -32,6 +33,16 @@ export default defineCmsConfig({
         tagline: f.text({ label: "Tagline" }),
         hero: f.object({ label: "Banner", fields: { title: f.text({ label: "Heading" }), text: f.richText({ label: "Text" }), image: f.image({ label: "Picture", alt: true }) } }),
         highlights: f.reference({ label: "Featured services", to: "services", multiple: true, ordered: true, help: "Shown on the homepage, in this order." }),
+        // P12g: a price is written once, in its package; the banner points to a package by its id.
+        packages: f.list(f.object({ label: "Package", fields: {
+          id: f.text({ label: "ID", required: true, pattern: "[a-z0-9-]+", patternHint: "lowercase letters, numbers and dashes" }),
+          name: f.text({ label: "Name", required: true }),
+          price: f.text({ label: "Price", locked: "owner" }),
+        } }), { label: "Packages", ordered: true, itemLabel: "Package", max: 6 }),
+        fromPrice: f.object({ label: "Price on the banner", fields: {
+          of: f.pick({ label: "Package", required: true, choices: (content) => (Array.isArray(content.packages) ? content.packages : []).map((entry: { id: string; name: string; price: string }) => ({ value: entry.id, label: `${entry.name} · ${entry.price}`, group: "Packages" })) }),
+          plain: f.toggle({ label: "Plain price", help: "Show the price without “from”" }),
+        } }),
         footerLinks: f.list(
           f.object({ label: "Link group", fields: { title: f.text({ label: "Group title", required: true }), links: f.list(f.object({ label: "Link", fields: { label: f.text({ label: "Text", required: true }), href: f.text({ label: "Address", required: true }) } }), { label: "Links", ordered: true, max: 5, itemLabel: "Link" }) } }),
           { label: "Footer links", ordered: true, max: 3, itemLabel: "Group" },
