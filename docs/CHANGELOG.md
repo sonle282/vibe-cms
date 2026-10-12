@@ -3,6 +3,23 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.17.0 — unreleased (P12d)
+
+- **`f.tuple([...], { label })`** — a fixed-length list stored as a JSON array, one field per place: e.g. a menu line
+  `["Manicure", "$17"]` = `f.tuple([f.text({ label: "Service" }), f.text({ label: "Price", locked: "owner" })])`. Every
+  place is a normal field (locks, patterns, rich text…); the form shows them side by side; the review reads per place.
+- **Text `pattern` + `patternHint`** — the whole value must match (`pattern: "\\d{2}:\\d{2}"` in cms.config.ts,
+  `patternHint: "a time like 09:30"`); the form says the format.
+- **Text `tokens`** — the {words} the site's code fills in (`tokens: ["phone", "city"]`): any other `{word}` is refused;
+  the form lists them.
+- **Rich text `allow`** — the tags one field may hold (a part of the shared list, e.g. `["em", "br"]`): the server cleans
+  to it and the toolbar shows only the tools that fit.
+- **`rules` on a file or a collection — the plugin seam:** a function `(value, content) => problems` in cms.config.ts
+  for checks the field types cannot say (a price that must point at an existing package…). `content.file(key)` /
+  `content.items(key)` read the site's other content. Runs at build, when a draft is saved and again at publish; problems
+  appear next to the field; `warning: true` does not block. A rule that throws is an error naming it, never a crash.
+- Site action: none.
+
 ## 0.16.0 — unreleased (P12c)
 
 - **History** (owners): "History" in the editor of a file or record lists its versions, newest first, from the site's

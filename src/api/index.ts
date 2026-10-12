@@ -27,6 +27,7 @@
 import type { CmsCollection, CmsConfig, CmsFile } from "../config/index.js";
 import { checkRecordValues } from "../check/values.js";
 import { checkFixedLists } from "../check/structure.js";
+import { ruleContext, runRules } from "../check/rules.js";
 import { describeCleaned, RICH_TEXT_MAX_CHARS, sanitizeRecord, unsafeOnly, type CleanedField } from "../check/rich-text.js";
 import { checkPublishLocks, LockedFieldError, lockedFieldBody, saveDraftChecked, type AuditEntry, type AuditLog, type Role } from "../locks/index.js";
 import {
@@ -204,15 +205,30 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     for (const collection of config.collections) ids.set(collection.key, new Set((await reader.items(collection.key)).map((record) => parseResourceId(record.resource)).map((resource) => (resource.kind === "item" ? resource.id : ""))));
     return ids;
   };
+  // P12d: the site's rules read the content this Worker serves (loaded once, only when a rule exists).
+  let rulesContent: Promise<ReturnType<typeof ruleContext>> | undefined;
+  const loadRulesContent = () => (rulesContent ??= (async () => {
+    const files = new Map<string, unknown>();
+    for (const file of config.files) { const record = await reader.file(file.key); if (record) files.set(file.key, record.data); }
+    const items = new Map<string, Array<Record<string, unknown>>>();
+    for (const collection of config.collections) items.set(collection.key, (await reader.items(collection.key)).map((record) => record.data as Record<string, unknown>));
+    return ruleContext(files, items);
+  })());
+  const withRules = async (target: Target, content: unknown, result: { errors: Array<{ path: string; message: string; hint?: string }>; warnings: Array<{ path: string; message: string; hint?: string }> }) => {
+    const rules = target.kind === "file" ? target.file.rules : target.collection.rules;
+    if (!rules) return result;
+    const ruled = runRules(rules, content, await loadRulesContent());
+    return { errors: [...result.errors, ...ruled.errors], warnings: [...result.warnings, ...ruled.warnings] };
+  };
   const checkValues = async (target: Target, content: unknown, extraIds: Map<string, Set<string>> = new Map()) => {
     const ids = await idsForReferences();
     for (const [key, set] of extraIds) for (const id of set) ids.get(key)?.add(id);
-    if (target.kind === "file") return checkRecordValues({ fields: target.file.fields, record: content, ids });
+    if (target.kind === "file") return withRules(target, content, checkRecordValues({ fields: target.file.fields, record: content, ids }));
     const result = checkRecordValues({ fields: target.collection.fields, record: content, ids, system: systemOf(target.collection) });
     const idField = idFieldOf(target.collection);
     const record = content && typeof content === "object" ? (content as Record<string, unknown>) : {};
     if (record[idField] !== target.id) result.errors.push({ path: idField, message: `must be "${target.id}" (the record's id)`, hint: "the id cannot be changed in a draft" });
-    return result;
+    return withRules(target, content, result);
   };
 
   /** P8c: clean the rich text a user changed (vs `before`); refuse values over the size limit. */

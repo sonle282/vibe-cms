@@ -117,6 +117,7 @@ export const createForm = (options: FormOptions): Form => {
       onChange: (value) => set(path, value === "" && wasAbsent ? undefined : value),
       ...(options.pickImage ? { pickImage: options.pickImage } : {}),
       ...(options.loadMarkdown ? { loadMarkdown: options.loadMarkdown } : {}),
+      ...(field.allow ? { allow: field.allow } : {}),
     });
     editor.area.setAttribute("aria-labelledby", `${id}-label`);
     editors.set(pathText(path), editor);
@@ -275,7 +276,7 @@ export const createForm = (options: FormOptions): Form => {
     const note = h(doc, "p", { class: "vc-note" });
     const itemLabel = field.itemLabel ?? field.of.label;
     const list = () => (Array.isArray(getAt(state, path)) ? (getAt(state, path) as unknown[]) : []);
-    const primitive = !["object", "list", "hours", "image"].includes(field.of.type) && !(field.of.type === "reference" && field.of.multiple);
+    const primitive = !["object", "list", "hours", "image", "tuple"].includes(field.of.type) && !(field.of.type === "reference" && field.of.multiple);
     const add = h(doc, "button", { type: "button", class: "vc-button vc-add" }, icon(doc, "plus"), ` Add ${itemLabel.toLowerCase()}`);
     const write = (next: unknown[], focus?: { index: number; action: string }) => {
       set(path, next);
@@ -364,7 +365,10 @@ export const createForm = (options: FormOptions): Form => {
     const locked = lockedAbove || (field.locked === "owner" && !owner);
     const reason = path.length === 1 ? options.readOnly?.[String(path[0])] : undefined;
     const disabled = locked || Boolean(reason);
-    const shown = extra.label ? { ...field, label: extra.label } : field;
+    // P12d: a text field says which {words} the website fills in and the format it needs.
+    const hints = field.type === "text" ? [field.tokens?.length ? `Words the website fills in: ${field.tokens.map((token) => `{${token}}`).join(", ")}.` : "", field.patternHint ? `Format: ${field.patternHint}.` : ""].filter(Boolean).join(" ") : "";
+    const withHints = hints ? { ...field, help: field.help ? `${field.help} ${hints}` : hints } : field;
+    const shown = extra.label ? { ...withHints, label: extra.label } : withHints;
     const common = { path, field: shown, locked: locked && !lockedAbove, reason, hideLabel: extra.hideLabel };
     switch (field.type) {
       case "text": {
@@ -390,6 +394,12 @@ export const createForm = (options: FormOptions): Form => {
         return wrap({ ...common, group: true, control: box });
       }
       case "list": return wrap({ ...common, group: true, control: listInput(field, path, disabled).control });
+      case "tuple": {
+        // P12d: one field per place of the stored list, side by side.
+        const box = h(doc, "div", { class: "vc-object vc-tuple" });
+        field.items.forEach((item, index) => box.append(renderField(item, [...path, index], locked || Boolean(reason))));
+        return wrap({ ...common, group: true, control: box });
+      }
       case "reference": {
         const { control, id, group } = referenceInput(field, path, disabled);
         return wrap({ ...common, group, control, inputId: id });

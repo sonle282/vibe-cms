@@ -23,9 +23,10 @@ const safeUrl = (value: string, kind: "href" | "src") => {
 };
 
 /** Clean `root`'s children in place (root itself is kept as is). */
-export const cleanRichDom = (root: Element, { markdown = false }: { markdown?: boolean } = {}) => {
+export const cleanRichDom = (root: Element, { markdown = false, allow }: { markdown?: boolean; allow?: readonly string[] } = {}) => {
   const doc = root.ownerDocument;
-  const tags = new Set([...RICH_TEXT_TAGS, ...(markdown ? MARKDOWN_TAGS : [])]);
+  // P12d: a field's own allow-list narrows the shared one (the server uses the same list).
+  const tags = new Set([...RICH_TEXT_TAGS.filter((tag) => !allow || allow.includes(tag)), ...(markdown ? MARKDOWN_TAGS : [])]);
   const visit = (parent: Element) => {
     for (const node of [...parent.childNodes]) {
       if (node.nodeType === TEXT) continue;

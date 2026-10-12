@@ -11,6 +11,7 @@ import { parseMarkdown } from "../writer/markdown.js";
 import { toTree } from "../config/tree.js";
 import { add, checkRecord, describe, isRecord, at, type ValueCtx } from "./values.js";
 import { sanitizeRecord, unsafeOnly } from "./rich-text.js";
+import { ruleContext, runRules } from "./rules.js";
 
 /** P8c: rich text the CMS would clean when someone edits it — a warning, the site's own files are never changed. */
 const unsafeHtml = (ctx: Ctx, fields: CmsCollection["fields"], record: Record<string, unknown>, path: string, markdownBody = false) => {
@@ -70,10 +71,12 @@ const loadCollection = (ctx: Ctx, root: string, collection: CmsCollection, index
 export const checkContent = (config: CmsConfig, root: string): CheckResult => {
   const ctx: Ctx = { errors: [], warnings: [], ids: new Map() };
   const loaded = config.collections.map((collection, index) => loadCollection(ctx, root, collection, index));
+  const fileData = new Map<string, unknown>();
   config.files.forEach((file, index) => {
     const data = readJson(ctx, root, file.path, `files[${index}].path`);
     if (data === undefined) return;
     if (!isRecord(data)) { add(ctx.errors, file.path, `expected an object ({ … }), got ${describe(data)}`); return; }
+    fileData.set(file.key, data);
     checkRecord(ctx, data, toTree(file.fields), file.path);
     unsafeHtml(ctx, file.fields, data, file.path);
   });
@@ -90,5 +93,10 @@ export const checkContent = (config: CmsConfig, root: string): CheckResult => {
       }
     }
   }
+  // P12d: the site's own rules, once everything is loaded (a rule may read other files / collections).
+  const content = ruleContext(fileData, new Map(loaded.filter((entry) => entry !== undefined).map((entry) => [entry!.collection.key, entry!.records.map((record) => record.data)])));
+  const merge = (result: CheckResult) => { ctx.errors.push(...result.errors); ctx.warnings.push(...result.warnings); };
+  for (const file of config.files) if (file.rules && fileData.has(file.key)) merge(runRules(file.rules, fileData.get(file.key), content, file.path));
+  for (const entry of loaded) if (entry?.collection.rules) for (const record of entry.records) merge(runRules(entry.collection.rules, record.data, content, record.path));
   return { errors: ctx.errors, warnings: ctx.warnings };
 };

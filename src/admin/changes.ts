@@ -84,6 +84,7 @@ export const summarizeChanges = ({ fields, before, after, references = {}, newRe
       case "reference": return Array.isArray(value) ? value.map((id) => refLabel(field.to, id)).join(", ") : refLabel(field.to, value);
       case "object": return isRecord(value) ? short(Object.values(value).filter((entry) => typeof entry === "string").join(", ")) : "";
       case "list": return Array.isArray(value) ? `${value.length} item${value.length === 1 ? "" : "s"}` : "";
+      case "tuple": return Array.isArray(value) ? short(field.items.map((item, index) => show(item, value[index])).filter(Boolean).join(" · ")) : "";
     }
   };
   const itemSummary = (field: Field, value: unknown) => {
@@ -94,6 +95,7 @@ export const summarizeChanges = ({ fields, before, after, references = {}, newRe
       }
       return "";
     }
+    if (field.type === "tuple" && Array.isArray(value)) return show(field.items[0], value[0]);
     return show(field, value);
   };
   const push = (change: Change) => out.push(change);
@@ -134,6 +136,10 @@ export const summarizeChanges = ({ fields, before, after, references = {}, newRe
         if (pb.mobile !== pa.mobile) push({ path: `${where}.mobile`, label: `${label} › image for phones`, kind: kindOf(pb.mobile, pa.mobile), before: pb.mobile, after: pa.mobile, ...(isLocked ? { locked: true } : {}) });
         return;
       }
+      case "tuple":
+        // P12d: each place is its own field: "Service 2 › Price: $17 → $19".
+        if ((Array.isArray(b) || empty(b)) && (Array.isArray(a) || empty(a))) { field.items.forEach((item, index) => compare(item, Array.isArray(b) ? b[index] : undefined, Array.isArray(a) ? a[index] : undefined, `${label} › ${item.label}`, [...path, index], isLocked)); return; }
+        break;
       case "list":
         if ((Array.isArray(b) || empty(b)) && (Array.isArray(a) || empty(a))) { compareList(field.of, field.itemLabel ?? field.of.label, Array.isArray(b) ? b : [], Array.isArray(a) ? a : [], label, path, isLocked); return; }
         break;
@@ -181,9 +187,9 @@ export const summarizeChanges = ({ fields, before, after, references = {}, newRe
     restB = restB.filter((index) => !paired.some(([ib]) => ib === index));
     restA = restA.filter((index) => !paired.some(([, ia]) => ia === index));
     pairs.sort((x, y) => x[1] - y[1]);
-    const itemName = (value: unknown, index: number) => { const summary = itemSummary(of, value); return `${itemLabel} ${index + 1}${summary && of.type === "object" ? ` (${summary})` : ""}`; };
+    const itemName = (value: unknown, index: number) => { const summary = itemSummary(of, value); return `${itemLabel} ${index + 1}${summary && (of.type === "object" || of.type === "tuple") ? ` (${summary})` : ""}`; };
     for (const [ib, ia] of pairs) if (!same(b[ib], a[ia])) {
-      if (of.type === "object" || of.type === "list" || of.type === "hours" || of.type === "image") compare(of, b[ib], a[ia], `${label} › ${itemName(a[ia], ia)}`, [...path, ia], locked);
+      if (of.type === "object" || of.type === "list" || of.type === "hours" || of.type === "image" || of.type === "tuple") compare(of, b[ib], a[ia], `${label} › ${itemName(a[ia], ia)}`, [...path, ia], locked);
       else push({ path: pathText([...path, ia]), label: `${label} › ${itemLabel} ${ia + 1}`, kind: kindOf(b[ib], a[ia]), before: show(of, b[ib]), after: show(of, a[ia]), ...(locked || of.locked ? { locked: true } : {}) });
     }
     for (const index of restA) push({ path: pathText([...path, index]), label: `${label} › ${itemLabel}`, kind: "added", after: itemSummary(of, a[index]) || `${itemLabel} ${index + 1}`, ...(locked ? { locked: true } : {}) });

@@ -308,6 +308,19 @@ nên Ctrl+Z / Ctrl+Y vẫn chạy, dán chỉ giữ chữ), thêm phần ảnh m
   thành câu ("Published Salon info (abc1234)", "Refused to save Service · x: Price is for owners only"). Không có nội dung
   (audit không bao giờ giữ nội dung).
 
+## C.9 Kiểu field + luật của site (P12d)
+
+- **`f.tuple(items)`**: mảng JSON độ dài cố định, mỗi chỗ là 1 field thường (ô khoá, pattern, rich text… áp từng chỗ);
+  kiểm: đúng số phần tử, từng phần tử theo field của nó. Đường dẫn `items[0][1]`.
+- **Text `pattern`** (khớp cả giá trị, biểu thức chính quy Unicode) + **`patternHint`** (câu nói cho người dùng);
+  **`tokens`**: chỉ các `{từ}` này được có trong chữ (code của site điền vào).
+- **Rich text `allow`**: tập con danh sách thẻ chung (§F.2) — server lọc theo nó, thanh công cụ chỉ hiện nút hợp.
+- **`rules` (chỗ cắm plugin):** hàm `(value, content) => [{ path, message, hint?, warning? }]` trên file / collection,
+  chạy lúc build (`checkContent`), khi lưu nháp và lại khi publish (Worker). `content` đọc nội dung khác **đang live**
+  (không gồm các nháp đang publish cùng). Lỗi hiện cạnh field; `warning` không chặn; hàm ném lỗi = 1 lỗi có tên, không sập.
+  Hàm sống trong `cms.config.ts` → Worker nhận qua module ảo; boot của admin (JSON) không mang hàm.
+- **Hoãn sang P12g (trước Innovate):** field "chữ hoặc tham chiếu" (giá `{ "of": … }`) và ảnh theo tên trong manifest.
+
 ## C.8 History + Restore as draft (P12c)
 
 - **Nguồn:** lịch sử git của nhánh production (GitHub `GET /commits?sha=<branch>&path=<file>`) → có cả các lần publish
