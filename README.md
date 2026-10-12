@@ -5,14 +5,15 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.18.0 · P12e.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
+> Status: **0.19.0 · P12f.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
 > fields on the server, CMS API + one-commit GitHub publishing, sign-in, and the editor at `/admin` (lists, forms
 > generated from `cms.config`, a visual rich-text editor, a live preview of the draft on the real page, drafts, review
 > of changes, publish, live status, People, My account), rich text cleaned on the server, images (upload to R2, picker,
 > inline images resized by dragging, published in the same commit), and the `vibe-cms` command (setup, migrate, check,
 > export / import, update, reset-owner-password), fixed lists / collections, owner-only sections, the Activity log, History (restore an older version as a draft),
-> tuples, text patterns / tokens, per-field rich-text tags and site `rules`. Also: importing the people of an older CMS.
-> Next: image crop, either-fields and images by name (P12f–P12g), then
+> tuples, text patterns / tokens, per-field rich-text tags and site `rules`. Also: importing the people of an older CMS, cropping an image
+> into a new copy. Next: moving the first sites onto the package (P13–P18; either-fields and images by name, P12g,
+> before the second), then
 > moving them onto the package (P13–P18;
 > [docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
 
@@ -257,6 +258,8 @@ until a publish puts it into the same commit as the content that uses it. The si
 
 - **R2 binding `CMS_MEDIA`** — the site's `<site>-media` bucket. Without it everything else works and the picker says
   uploading is not set up (images already in `public/` can still be chosen).
+- **Crop / resize** in the sheet makes a **new copy** (shape presets, move the crop, choose the width) — the original
+  is never changed. It is made in the browser; no Cloudflare `IMAGES` binding.
 - Optional `media: { dir: "public/assets/uploads", maxBytes: 10 * 1024 * 1024 }` in `cms.config.ts` (these are the
   defaults; `maxBytes` at most 25 MiB).
 

@@ -3,6 +3,16 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.19.0 — unreleased (P12f)
+
+- **Crop / resize = a new copy.** In the image sheet every image (the site's own or an upload) has "Crop / resize":
+  pick a shape first (Original, Square, Landscape 4:3, Wide 16:9, Portrait 4:5), then move the crop (drag, or the arrow
+  keys; Shift = bigger steps), make it smaller with "Crop size", and choose the width of the copy (only widths smaller
+  than the crop). "Save as a new image" makes it in the browser (canvas → WebP, at most 2400 px), uploads it like any
+  image and chooses it — the original is never changed, and an original nobody uses is not committed. A failure changes
+  nothing: "Adjustment failed. Your original image is unchanged — try again." No Cloudflare `IMAGES` binding.
+- Site action: none (uploads must be on: the site's R2 bucket).
+
 ## 0.18.0 — unreleased (P12e)
 
 - **`npx vibe-cms import-legacy-users --from <old D1> [--from-config <file>] [--local] [--dry-run]`** — the people of

@@ -253,13 +253,27 @@ try {
   await shot("p10-image-sheet");
   await sheet.locator("input[type=file]").setInputFiles({ name: "Sam at the desk.png", mimeType: "image/png", buffer: Buffer.from(tinyPng(2600, 1300)) });
   await sheet.waitFor({ state: "detached", timeout: 20_000 });
-  const samPhoto = await field("photo").getByLabel("Image address").inputValue();
+  let samPhoto = await field("photo").getByLabel("Image address").inputValue();
   check("upload: picked at its final address (month folder, name, hash, .webp)", /^\/assets\/uploads\/20\d\d\/\d\d\/sam-at-the-desk-[0-9a-f]{8}\.webp$/.test(samPhoto), samPhoto);
   const library = await api("/api/cms/media");
   check("upload: resized in the browser to 2400 px wide, WebP", assertEqual(library.uploads.map((image) => [image.src, image.width, image.height]), [[samPhoto, 2400, 1200]]) && library.uploads[0].bytes < 2_000_000, library.uploads);
   const staged = await page.evaluate(async (url) => { const response = await fetch(url); const bytes = new Uint8Array(await response.arrayBuffer()); return { status: response.status, type: response.headers.get("content-type"), from: response.headers.get("x-vibe-cms-upload"), head: String.fromCharCode(...bytes.slice(0, 4), ...bytes.slice(8, 12)) }; }, samPhoto);
   check("upload: served from staging before it is published", assertEqual(staged, { status: 200, type: "image/webp", from: "staging", head: "RIFFWEBP" }), staged);
   check("upload: the thumbnail shows it", (await field("photo").locator(".vc-thumb").getAttribute("src")) === samPhoto);
+  // P12f: crop the upload to a square — a NEW image made by the browser's canvas, uploaded and chosen; the original stays.
+  const originalPhoto = samPhoto;
+  await field("photo").getByRole("button", { name: "Choose the image for Photo" }).click();
+  const adjustSheet = page.getByRole("dialog", { name: "Choose an image" });
+  await adjustSheet.locator(`[role=listitem]:has(.vc-tile[data-src="${originalPhoto}"]) .vc-tile-adjust`).click();
+  await adjustSheet.getByRole("button", { name: "Square" }).click();
+  check("crop: Square on a 2400 × 1200 photo makes 1200 × 1200, the original stays", /Makes a new image of 1200 × 1200 px\. The original stays as it is\./.test(await adjustSheet.locator(".vc-adjust").innerText()));
+  await adjustSheet.getByRole("button", { name: "Save as a new image" }).click();
+  await adjustSheet.waitFor({ state: "detached", timeout: 20_000 });
+  samPhoto = await field("photo").getByLabel("Image address").inputValue();
+  check("crop: the new copy is chosen, named after the original", /^\/assets\/uploads\/20\d\d\/\d\d\/sam-at-the-desk-1200x1200-[0-9a-f]{8}\.webp$/.test(samPhoto), samPhoto);
+  const decoded = await page.evaluate(async (url) => { const bitmap = await createImageBitmap(await (await fetch(url)).blob()); return [bitmap.width, bitmap.height]; }, samPhoto);
+  const libraryAfter = await api("/api/cms/media");
+  check("crop: the copy really is 1200 × 1200 (decoded); the original is still in the library at 2400 × 1200", assertEqual(decoded, [1200, 1200]) && libraryAfter.uploads.some((image) => image.src === originalPhoto && image.width === 2400 && image.height === 1200), { decoded, uploads: libraryAfter.uploads });
   await shot("p10-picked");
   await input("specialty").selectOption("classic-manicure");
   await save();
@@ -367,6 +381,7 @@ try {
   check("services.json: only the changed / added lines move", servicesDiff.removed.length <= 2 && servicesDiff.added.length <= 3, servicesDiff);
   check("published team = the drafts", assertEqual(JSON.parse(published["src/data/team.json"]), [alex.draft.content, sam.draft.content]));
   const committedImage = github.bytes(`public${samPhoto}`);
+  check("P12f: the original upload nobody uses is not committed", !github.changedPaths(head).includes(`public${originalPhoto}`), github.changedPaths(head));
   check("P10: the uploaded image is in the same commit, exact bytes (WebP)", committedImage && committedImage.subarray(0, 4).toString("latin1") === "RIFF" && committedImage.subarray(8, 12).toString("latin1") === "WEBP" && github.changedPaths(head).includes(`public${samPhoto}`), github.changedPaths(head));
   check("published post: front matter + body", /title: Welcome!/.test(published["src/content/posts/welcome.md"]) && published["src/content/posts/welcome.md"].endsWith(postBody));
   check("P8d: the image in the post body is in the same commit", github.bytes(`public${postImageSrc}`)?.subarray(8, 12).toString("latin1") === "WEBP");

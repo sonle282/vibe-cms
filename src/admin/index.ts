@@ -8,7 +8,7 @@ export { createForm, LOCK_HELP, OWNER_NOTE, type Form, type FormOptions, type Pr
 export { accountScreen, peopleScreen, ROLE_HELP, type PublicUser, type ScreenKit } from "./people.js";
 export { createClient, humanMessage, type ApiResult, type Client, type Fetch } from "./api.js";
 export { adminBoot, bootJson, type AdminBoot, type BootCollection, type BootFile, type BootMedia, type BootUser } from "./boot.js";
-export { ACCEPTED_TYPES, openImagePicker, prepareImage, type LibraryImage, type PickerOptions, type Prepare, type PreparedImage } from "./media.js";
+export { ACCEPTED_TYPES, adjustImage, CROP_PRESETS, cropRect, measureImage, openImagePicker, outputSize, prepareImage, RESIZE_WIDTHS, type Adjust, type CropRect, type LibraryImage, type Measure, type PickerOptions, type Prepare, type PreparedImage } from "./media.js";
 // P8d. The Markdown converter (./markdown.js) is not exported here on purpose: the editor loads it only when needed.
 export { createRichEditor, type PickedImage, type RichEditor, type RichEditorOptions } from "./rich-editor.js";
 export { cleanRichDom, isEmptyRich, normalizeBlocks } from "./clean.js";
