@@ -340,5 +340,8 @@ export const createCmsAuth = (deps: CmsAuthDeps) => {
     }
   };
 
-  return { identify, handleAuth, people, session, ready };
+  /** P12b: names for the Activity screen (owner-only route). */
+  const names = async () => (await db().prepare("SELECT id, username, display_name FROM cms_users").all<{ id: string; username: string; display_name: string }>()).results.map((row) => ({ id: row.id, username: row.username, displayName: row.display_name }));
+
+  return { identify, handleAuth, people, names, session, ready };
 };

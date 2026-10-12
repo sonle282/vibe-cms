@@ -293,6 +293,21 @@ nên Ctrl+Z / Ctrl+Y vẫn chạy, dán chỉ giữ chữ), thêm phần ảnh m
 - **Xem lại (P8):** dòng thay đổi của richText đọc như chữ thường (bỏ ký hiệu Markdown), và mỗi ảnh có dòng riêng:
   thêm, xoá, đổi cỡ ("438 px wide → original size"), đổi alt; chỉ đổi định dạng → "(new formatting)".
 
+## C.7 List / collection cố định, mục chỉ owner, Activity (P12b)
+
+- **`fixed: true` trên list:** code của site quyết định có những phần tử nào → **không ai** (kể cả owner) thêm / xoá / đổi
+  chỗ; giá trị bên trong vẫn sửa được (ô khoá vẫn theo §C.1). So với nội dung nháp bắt đầu (lưu) và với nhánh (publish):
+  cùng số phần tử, phần tử có `id` giữ đúng chỗ; list không cố định bên trong phần tử theo luật của nó; phần tử mới (không
+  có bản trước) không bị so. Sai → 422 `fixed_list`. Form không có nút thêm / xoá / đổi chỗ và nói lý do.
+- **`fixed: true` trên collection:** không tạo bản ghi mới (422 `fixed_collection`, không có nút "Add"); bản ghi có sẵn vẫn sửa.
+- **`access: "owner"` trên file / collection:** editor không thấy (overview, điều hướng, nháp, cấu hình trong boot), mọi
+  route của mục đó trả 403 `owner_only`; lưu / publish bị từ chối ghi 1 dòng audit `denied` (`reason: owner_only`), đọc
+  thì không. Khác `locked: "owner"` (§C.1): ô khoá vẫn hiện cho editor, mờ đi. Site chọn kiểu nào bằng config.
+- **Activity (owner):** `GET /api/cms/activity?kind=all|publish|signin|people|denied&before=<id>` — 50 dòng / trang, mới
+  nhất trước, không có dòng `started`; kèm tên người (D1 `cms_users`) và nhãn mục (từ cms.config). Màn `#/activity` viết
+  thành câu ("Published Salon info (abc1234)", "Refused to save Service · x: Price is for owners only"). Không có nội dung
+  (audit không bao giờ giữ nội dung).
+
 ## D. Hợp đồng visual editing (P9)
 
 **Binding:** thuộc tính trong template (quyết định 6), không đổi gì với khách xem trang:
@@ -555,8 +570,8 @@ thay đổi lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tà
 | **P9** | Bridge trên iframe cùng origin (§D: chạy trong admin, không script trên trang), `data-cms-*` + selector, SECTION_MAP, khung 2 cấp, không render khi gõ | preview demo chọn / hover / focus đúng, HTML public không đổi | test bridge + đo khi gõ |
 | **P10** | Ảnh: upload R2 staging, sheet chọn ảnh, alt (§C.5) | đổi ảnh demo + publish | test upload pipeline |
 | **P11** | CLI `setup` (idempotent, `--account`) / `migrate` / `check` / `export` + `import` / `update` / `reset-owner-password` (đặt mật khẩu tạm cho owner quên mật khẩu, không sửa D1 tay) + tài liệu cài | cài demo từ đầu theo tài liệu **bằng URL release, không token**; `setup` lần 2 = không đổi gì; `update` đổi URL sang bản mới | chạy local (miniflare); xuất / nhập D1 demo khớp số dòng |
-| P12–P15 | Site pilot 1: tách nội dung → JSON; adapter cho route gói; cài gói + config + ô khoá; setup + kiểm production | **P15: Workers Builds của site build xanh không có biến môi trường token nào** (gói cài từ URL release) + 1 cặp publish + **lưu và đọc lại 1 nháp > 100 KB trên D1 THẬT** | so HTML public; Workers Builds log |
-| P16–P18 | Site 2: như trên | như P15 | như P15 |
+| P12b–P12f | (Viết lại 2026-10-12: 2 site pilot đã chạy CMS chép tay) tuỳ chọn / plugin chung mà site thật cần: list / collection cố định, mục chỉ owner, Activity (P12b, §C.7); History đọc từ git (P12c); plugin kiểu field riêng (P12d); CLI nhập users từ CMS chép (P12e); cắt / đổi cỡ ảnh = bản sao (P12f) | mỗi mục chạy trên demo | test + e2e demo |
+| P13–P18 | Site 2 (chưa go-live) trước rồi site 1: config trên JSON có sẵn + plugin, chạy song song CMS chép ở local, chuyển (D1 mới + nhập users), dọn CMS chép | **mỗi site: Workers Builds build xanh không có biến môi trường token nào** (gói cài từ URL release) + 1 cặp publish + **lưu và đọc lại 1 nháp > 100 KB trên D1 THẬT** | so HTML public; Workers Builds log |
 | P19 | Plugin catalog + redirects-check | test plugin trên fixture catalog nhỏ | test plugin |
 | P20–P22 | Site cũ chuyển sang gói (config đầy đủ → bật, HTML public giống từng byte → dọn CMS cũ) | CMS mới làm được mọi việc CMS cũ làm | so HTML + kiểm production |
 

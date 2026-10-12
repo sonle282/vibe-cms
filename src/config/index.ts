@@ -7,6 +7,8 @@
 
 /** The only lock level: the field is shown to editors but only the owner may change it (checked on the server, P4). */
 export type Locked = "owner";
+/** P12b: a whole file / collection only owners see and change (editors get 403; it is not in their navigation). */
+export type Access = "owner";
 
 type Base = {
   label: string;
@@ -24,7 +26,8 @@ export type SelectField = Base & { type: "select"; options: readonly string[] };
 /** Content: [{ days: [1, 2, 3, 4, 5], label?, open: "09:00", close: "19:00" }, { days: [0], closed: true }] (0 = Sunday). */
 export type HoursField = Base & { type: "hours" };
 export type ObjectField = Base & { type: "object"; fields: Record<string, Field> };
-export type ListField = Base & { type: "list"; of: Field; ordered?: boolean; min?: number; max?: number; itemLabel?: string };
+/** P12b: fixed = the site's code owns the shape — nobody (owner included) adds, removes or moves items; values inside stay editable. */
+export type ListField = Base & { type: "list"; of: Field; ordered?: boolean; min?: number; max?: number; itemLabel?: string; fixed?: boolean };
 export type ReferenceField = Base & { type: "reference"; to: string; multiple?: boolean; ordered?: boolean };
 
 export type Field = TextField | RichTextField | ImageField | SelectField | HoursField | ObjectField | ListField | ReferenceField;
@@ -41,6 +44,7 @@ export type CmsFile = {
   format: "json";
   preview?: string;
   sections?: Section[];
+  access?: Access;
   fields: Record<string, Field>;
 };
 
@@ -53,6 +57,9 @@ export type CmsCollection = {
   status?: { field: string; live: string; draft: string };
   preview?: string;
   order?: "file" | { by: string };
+  access?: Access;
+  /** P12b: no record is added (the site's code expects exactly these); the records stay editable. */
+  fixed?: boolean;
   fields: Record<string, Field>;
 };
 

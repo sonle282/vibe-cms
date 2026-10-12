@@ -7,6 +7,7 @@
  *   #/collections/<key>/items/<id>       edit a record
  *   #/collections/<key>/new              a new record
  *   #/people · #/account                 P8b: people (owners only) · my account (change my password)
+ *   #/activity · #/activity/<kind>       P12b: the activity log (owners only)
  *   #/publish  ·  #/publish/<resource>   P8: review my drafts (what each changes, in plain words) and publish them in
  *                                        one commit; then watch /live-version until the website serves them ("Live")
  * Preview (P9) and images (P10) build on this. Nothing is saved without "Save draft"; leaving with unsaved changes asks
@@ -23,6 +24,7 @@ import { openImagePicker, prepareImage, type LibraryImage, type Prepare } from "
 import { configBinds, fieldAt, type PreviewOwner } from "./bridge.js";
 import { createPreview, previewUrl, type Preview } from "./preview.js";
 import { accountScreen, peopleScreen, type ScreenKit } from "./people.js";
+import { activityScreen } from "./activity.js";
 import { clone, countChanges, getAt, ID_PATTERN, parsePathText, pathText, slugify, type Path } from "./value.js";
 
 export type AdminOptions = {
@@ -111,7 +113,7 @@ export const startAdmin = (options: AdminOptions) => {
   const publishLink = h(doc, "a", { href: "#/publish", "data-route": "#/publish", class: "vc-nav-publish" }, "Review & publish ", draftBadge);
   navItems.push(publishLink);
   // P8b: People, for owners only (the server refuses editors anyway).
-  if (user.role === "owner") navItems.push(link("#/people", "People", { "data-route": "#/people" }));
+  if (user.role === "owner") navItems.push(link("#/people", "People", { "data-route": "#/people" }), link("#/activity", "Activity", { "data-route": "#/activity" }));
   const refreshDrafts = async () => {
     const result = await api.get<{ drafts: DraftRow[] }>("/api/cms/drafts");
     const count = result.ok ? result.data.drafts.length : 0;
@@ -165,7 +167,7 @@ export const startAdmin = (options: AdminOptions) => {
     clear(body);
     body.append(...content);
     doc.title = `${screen.title} · ${boot.site.name} · Vibe CMS`;
-    const route = currentHash.startsWith("#/publish") ? "#/publish" : currentHash.split("/").slice(0, 3).join("/") || "#/";
+    const route = currentHash.startsWith("#/publish") ? "#/publish" : currentHash.startsWith("#/activity") ? "#/activity" : currentHash.split("/").slice(0, 3).join("/") || "#/";
     for (const item of navItems) { if (item.dataset.route === route) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current"); }
   };
   const heading = (text: string) => h(doc, "h1", { class: "vc-title", tabindex: "-1" }, text);
@@ -196,6 +198,7 @@ export const startAdmin = (options: AdminOptions) => {
       else if (parts[0] === "collections" && parts.length === 4 && parts[2] === "items") await editItem(parts[1], parts[3], stillHere);
       else if (parts[0] === "publish" && parts.length <= 2) await review(parts[1] || undefined, stillHere);
       else if (parts[0] === "people" && parts.length === 1) await peopleScreen(kit, stillHere);
+      else if (parts[0] === "activity" && parts.length <= 2) await activityScreen(kit, stillHere, parts[1]);
       else if (parts[0] === "account" && parts.length === 1) await accountScreen(kit, stillHere);
       else show({ title: "Not found", crumbs: [["Overview", "#/"], ["Not found"]] }, message("Not found", "There is nothing at this address in the CMS.", link("#/", "Go to the overview")));
     } catch {
@@ -264,7 +267,7 @@ export const startAdmin = (options: AdminOptions) => {
     };
     search.addEventListener("input", render);
     render();
-    actions.append(link(`#/collections/${key}/new`, `Add ${noun}`, { class: "vc-button vc-primary" }));
+    if (!collection.fixed) actions.append(link(`#/collections/${key}/new`, `Add ${noun}`, { class: "vc-button vc-primary" }));
     show({ title: collection.label, crumbs: crumbsFor }, [
       heading(collection.label),
       h(doc, "div", { class: "vc-toolbar" }, search, count),
@@ -302,6 +305,7 @@ export const startAdmin = (options: AdminOptions) => {
   const editItem = async (key: string, id: string | undefined, stillHere: () => boolean) => {
     const collection = collectionOf(key);
     if (!collection) return show({ title: "Not found", crumbs: [["Overview", "#/"], ["Not found"]] }, message("Not found", `There is no "${key}" in this site's CMS.`));
+    if (id === undefined && collection.fixed) return show({ title: collection.label, crumbs: [["Overview", "#/"], [collection.label, `#/collections/${key}`]] }, message(`${collection.label} is a fixed set`, `A new ${collection.itemLabel.toLowerCase()} cannot be added here — which ones exist is decided in the website's code. Open one to change it.`, link(`#/collections/${key}`, `Back to ${collection.label}`)));
     await editor({ kind: "item", collection, id, url: id === undefined ? undefined : `/api/cms/collections/${encodeURIComponent(key)}/items/${encodeURIComponent(id)}`, crumbs: [["Overview", "#/"], [collection.label, `#/collections/${key}`]], stillHere });
   };
 

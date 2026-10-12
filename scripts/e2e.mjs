@@ -194,7 +194,9 @@ try {
   await preview.locator("footer h2").first().click();
   await page.waitForURL(/#\/files\/site$/);
   await page.locator(".vc-form").waitFor();
-  check("preview: clicking the footer opens the salon info at that field", await page.evaluate(() => document.activeElement?.closest("[data-path]")?.getAttribute("data-path")) === "footerLinks[0].title");
+  // The field is focused after the form renders (it may be a moment after .vc-form appears): wait for it, up to 5 s.
+  const focusedFooter = await page.waitForFunction(() => document.activeElement?.closest("[data-path]")?.getAttribute("data-path") === "footerLinks[0].title", null, { timeout: 5_000 }).then(() => true, () => false);
+  check("preview: clicking the footer opens the salon info at that field", focusedFooter, await page.evaluate(() => document.activeElement?.closest("[data-path]")?.getAttribute("data-path") ?? document.activeElement?.tagName));
   const spa = await api("/api/cms/collections/services/items/spa-pedicure");
   check("service: every field in the draft", assertEqual(spa.draft?.content, { ...services[1], name: "Spa Pedicure Deluxe", price: "$40", category: "Nails", extras: ["Paraffin", "Foot mask"], description: "Warm soak and massage." }), spa.draft);
 

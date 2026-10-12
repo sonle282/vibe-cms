@@ -294,9 +294,9 @@ export const createForm = (options: FormOptions): Form => {
         const keepsLocked = !owner && holdsLockedValue(field.of, value);
         const removeLabel = keepsLocked ? `Only the owner can delete ${name}: it holds owner-only values` : `Delete ${name}`;
         const actions = h(doc, "div", { class: "vc-item-actions" },
-          field.ordered ? button(`Move ${name} up`, "up", () => { const next = clone(values); [next[index - 1], next[index]] = [next[index], next[index - 1]]; write(next, { index: index - 1, action: "up" }); }, locked || index === 0) : null,
-          field.ordered ? button(`Move ${name} down`, "down", () => { const next = clone(values); [next[index + 1], next[index]] = [next[index], next[index + 1]]; write(next, { index: index + 1, action: "down" }); }, locked || index === values.length - 1) : null,
-          button(removeLabel, "remove", () => { const next = clone(values); next.splice(index, 1); write(next, next.length ? { index: Math.min(index, next.length - 1), action: "remove" } : undefined); if (!next.length) add.focus(); }, locked || keepsLocked || values.length <= (field.min ?? 0)));
+          field.ordered && !field.fixed ? button(`Move ${name} up`, "up", () => { const next = clone(values); [next[index - 1], next[index]] = [next[index], next[index - 1]]; write(next, { index: index - 1, action: "up" }); }, locked || index === 0) : null,
+          field.ordered && !field.fixed ? button(`Move ${name} down`, "down", () => { const next = clone(values); [next[index + 1], next[index]] = [next[index], next[index + 1]]; write(next, { index: index + 1, action: "down" }); }, locked || index === values.length - 1) : null,
+          field.fixed ? null : button(removeLabel, "remove", () => { const next = clone(values); next.splice(index, 1); write(next, next.length ? { index: Math.min(index, next.length - 1), action: "remove" } : undefined); if (!next.length) add.focus(); }, locked || keepsLocked || values.length <= (field.min ?? 0)));
         // The card already says "Group 2": the item's own label is for screen readers only.
         const body = renderField(field.of, [...path, index], locked, { hideLabel: true, label: name });
         const summary = summaryOf(field.of, value);
@@ -306,13 +306,13 @@ export const createForm = (options: FormOptions): Form => {
             h(doc, "div", { class: "vc-item-head" }, h(doc, "span", { class: "vc-item-title" }, name), summary ? h(doc, "span", { class: "vc-item-summary" }, summary) : null, actions), body));
       });
       const count = values.length;
-      note.textContent = field.max ? `${count} of ${field.max} allowed.` : count ? "" : `No ${itemLabel.toLowerCase()} yet.`;
+      note.textContent = field.fixed ? "A fixed list: change the items here — adding, removing or moving them is done in the website's code." : field.max ? `${count} of ${field.max} allowed.` : count ? "" : `No ${itemLabel.toLowerCase()} yet.`;
       note.hidden = !note.textContent;
       add.disabled = locked || (field.max !== undefined && count >= field.max);
     };
     add.addEventListener("click", () => { const next = clone(list()); next.push(emptyValue(field.of)); write(next, { index: next.length - 1, action: "add" }); });
     render();
-    return { control: h(doc, "div", { class: "vc-list" }, note, items, add) };
+    return { control: h(doc, "div", { class: "vc-list" }, note, items, field.fixed ? null : add) };
   };
 
   const referenceInput = (field: ReferenceField, path: Path, disabled: boolean) => {

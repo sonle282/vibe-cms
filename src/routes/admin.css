@@ -314,3 +314,12 @@ a.vc-user-name { color: var(--vc-fg); text-decoration: none; } a.vc-user-name:ho
   .vc-editor-split.vc-preview-on { grid-template-columns: 1fr; }
   .vc-editor-split.vc-preview-on .vc-preview { position: relative; top: 0; height: 70vh; }
 }
+
+/* P12b: Activity — filters and the outcome colour of each row. */
+.vc-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 16px; }
+.vc-filter { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--vc-border-input); color: var(--vc-fg); text-decoration: none; font-size: 13px; }
+.vc-filter[aria-current="page"] { background: var(--vc-accent); border-color: var(--vc-accent); color: #fff; }
+.vc-activity-when { white-space: nowrap; color: var(--vc-fg-muted); font-size: 13px; }
+.vc-activity-ok { color: var(--vc-success); }
+.vc-activity-bad { color: var(--vc-danger); }
+.vc-activity + .vc-error + .vc-button { margin-top: 12px; }
