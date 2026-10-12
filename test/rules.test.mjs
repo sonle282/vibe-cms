@@ -70,8 +70,10 @@ rule('repo.branch: no ".."', (c) => { c.repo.branch = "feature..x"; }, "repo.bra
 rule("repo.branch: no spaces", (c) => { c.repo.branch = "my branch"; }, "repo.branch", /space/);
 rule('repo.branch: no ".lock" part', (c) => { c.repo.branch = "release/x.lock"; }, "repo.branch", /\.lock/);
 rule("roles are fixed to owner + editor", (c) => { c.roles = ["owner", "admin"]; }, "roles", /must be \["owner", "editor"\]/);
-rule("media.dir is a folder inside public/", (c) => { c.media.dir = "src/uploads"; }, "media.dir", /folder inside public\//);
-rule("media.dir has no '..'", (c) => { c.media.dir = "public/../secrets"; }, "media.dir", /folder inside public\//);
+rule("media.dir outside public/ needs the address it is served at (base)", (c) => { c.media.dir = "src/uploads"; }, "media.dir", /is outside public\/, so the address uploads are served at is needed/);
+rule("media.dir has no '..'", (c) => { c.media.dir = "public/../secrets"; }, "media.dir", /must be a folder of the repository/);
+rule("P12h: media.names needs its manifest (.json)", (c) => { c.media.names = { manifest: "src/data/images.txt" }; }, "media.names.manifest", /required — the site's image manifest/);
+rule("P12h: media.names.url holds {path} and {width}", (c) => { c.media.names = { manifest: "src/data/m.json", url: "{path}.webp" }; }, "media.names.url", /must hold \{path\} and \{width\}/);
 rule("media.maxBytes at most 25 MiB", (c) => { c.media.maxBytes = 100_000_000; }, "media.maxBytes", /1 to 26214400/);
 rule("media has no unknown settings", (c) => { c.media.bucketPrefix = "demo/"; }, "media.bucketPrefix", /not a media setting/);
 rule("U2: a collection icon is one of the admin's icons", (c) => { c.collections[0].icon = "rocket"; }, "collections[0].icon", /"rocket" is not an icon of the admin → use one of list, box/);

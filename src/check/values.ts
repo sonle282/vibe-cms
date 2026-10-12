@@ -6,9 +6,10 @@
 import type { Field } from "../config/index.js";
 import type { CheckResult, Problem } from "../config/validate.js";
 import { toTree, type FieldTree } from "../config/tree.js";
+import { isImageName, type ImageNames } from "../media/names.js";
 
 /** P12g: root = the whole record (pick choices are computed from it); picks = those choices, once per field. */
-export type ValueCtx = CheckResult & { ids: Map<string, Set<string>>; root?: Record<string, unknown>; picks?: Map<Field, Set<string> | null> };
+export type ValueCtx = CheckResult & { ids: Map<string, Set<string>>; root?: Record<string, unknown>; picks?: Map<Field, Set<string> | null>; imageNames?: ImageNames };
 type Ctx = ValueCtx;
 type Tree = FieldTree;
 
@@ -79,13 +80,18 @@ export const checkValue = (ctx: Ctx, field: Field, value: unknown, path: string)
     case "richText":
       if (typeof value !== "string") add(ctx.errors, path, `expected rich text (a string), got ${describe(value)}`);
       return;
-    case "image":
-      if (typeof value === "string") return;
+    case "image": {
+      // P12h: images by name — a name of the manifest, or an upload's name.
+      const named = (name: unknown, at: string) => { if (ctx.imageNames && typeof name === "string" && name && !isImageName(ctx.imageNames, name)) add(ctx.errors, at, `${describe(name)} is not an image of the site's manifest`, "choose an image from the library"); };
+      if (typeof value === "string") { named(value, path); return; }
       if (!isRecord(value) || typeof value.src !== "string" || !value.src) { add(ctx.errors, path, `expected an image path or { "src": … }, got ${describe(value)}`, 'e.g. "/images/hero.jpg" or { "src": "/images/hero.jpg", "alt": "…" }'); return; }
       for (const key of Object.keys(value)) if (!["src", "alt", "mobile"].includes(key)) add(ctx.warnings, `${path}.${key}`, "is not part of an image", "images have src, alt, mobile");
       for (const key of ["alt", "mobile"] as const) if (value[key] !== undefined && typeof value[key] !== "string") add(ctx.errors, `${path}.${key}`, `expected text, got ${describe(value[key])}`);
       if (field.alt && !value.alt) add(ctx.warnings, `${path}.alt`, "is empty", "describe the image for people using screen readers");
+      named(value.src, `${path}.src`);
+      named(value.mobile, `${path}.mobile`);
       return;
+    }
     case "select":
       if (typeof value !== "string" || !field.options.includes(value)) add(ctx.errors, path, `${describe(value)} is not one of the options`, `use ${field.options.map((option) => JSON.stringify(option)).join(", ")}`);
       return;
@@ -140,8 +146,8 @@ export const checkValue = (ctx: Ctx, field: Field, value: unknown, path: string)
  * reference checks (a collection missing from the map is not checked); system = properties that are not fields
  * (the id field, status field, Markdown body).
  */
-export const checkRecordValues = ({ fields, record, path = "", ids = new Map(), system = [] }: { fields: Record<string, Field>; record: unknown; path?: string; ids?: Map<string, Set<string>>; system?: string[] }): CheckResult => {
-  const ctx: Ctx = { errors: [], warnings: [], ids, ...(isRecord(record) ? { root: record } : {}) };
+export const checkRecordValues = ({ fields, record, path = "", ids = new Map(), system = [], imageNames }: { fields: Record<string, Field>; record: unknown; path?: string; ids?: Map<string, Set<string>>; system?: string[]; imageNames?: ImageNames }): CheckResult => {
+  const ctx: Ctx = { errors: [], warnings: [], ids, ...(isRecord(record) ? { root: record } : {}), ...(imageNames ? { imageNames } : {}) };
   if (!isRecord(record)) add(ctx.errors, path || "(content)", `expected an object ({ … }), got ${describe(record)}`);
   else checkRecord(ctx, record, toTree(fields), path, system);
   return { errors: ctx.errors, warnings: ctx.warnings };

@@ -207,6 +207,25 @@ fromPrice: f.object({ label: "From price", fields: {
 } }),
 ```
 
+## Images by name (P12h)
+
+A site whose build makes its image sizes from a manifest stores images by **name** (`"nails/nails-01"`), not by path:
+
+```ts
+media: {
+  dir: "assets-src/images/uploads",   // where a publish commits an upload (outside public/: the build makes its sizes)
+  base: "/assets/uploads",             // where an upload is served from the bucket until then
+  names: { manifest: "src/data/image-manifest.json", root: "assets-src/images", exclude: ["brand/"] },
+},
+```
+
+The manifest is `{ "nails/nails-01": { width, height, widths: [400, 800, 1600], path: "/assets/img/nails/nails-01" } }`;
+an address is `url` (default `"{path}-{width}.webp"`) at the largest size ≤ `width` (default 1600). The admin works
+with addresses as on any site; the API turns them into names on save and back on read, so drafts, publish, History
+and the files hold names. An upload is named by where it is committed, from `root`: `uploads/2026/10/chair-1a2b3c4d`.
+The library lists the manifest (`exclude` hides logos and the like). The build and every save refuse a name that is
+neither in the manifest nor an upload.
+
 ## History (P12c)
 
 Owners have **History** in the editor: every version of that file or record, newest first, read from the site's

@@ -3,8 +3,14 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## 0.21.0 — unreleased (P12g)
+## 0.21.0 — unreleased (P12g, P12h)
 
+- **Images by name** (`media.names`): for a site whose build makes its image sizes from a manifest, content holds
+  names (`"nails/nails-01"`); the admin shows and sends addresses and the API converts both ways; an upload is named
+  by where the publish commits it (`media.dir`, which may now be outside public/ with `media.base` = where it is
+  served until the build has it). The library lists the manifest (`exclude` hides folders); the build and every save
+  refuse an unknown name.
+- New: `media.base`; `media.dir` may be any folder of the repository when `base` is set.
 - **`f.pick`**: a value chosen from a list the site computes from the record's own content (`choices`), for a price
   written once in the menu and used elsewhere by its place (`{ "of": "packages/the-essential-reset" }`). Checked at
   build, save and publish; the admin shows the choices grouped and keeps a value that is no longer listed; the review

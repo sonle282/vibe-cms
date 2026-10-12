@@ -19,6 +19,7 @@ import { createBundledSource, createD1AuditLog, createD1DraftStore, type D1Like 
 import { createCmsApi, devIdentity } from "./index.js";
 import { createGitHubPublisher } from "./github.js";
 import { createMediaStore, mediaSettings, type MediaBucket } from "../media/index.js";
+import { imageNamesOf, type ImageManifest } from "../media/names.js";
 
 export type SiteEnv = {
   CMS_DB?: D1Like; SESSION?: SessionKv; CMS_MEDIA?: MediaBucket; CMS_LOGIN_LIMITER?: RateLimiter; CMS_PUBLISH_LIMITER?: RateLimiter;
@@ -34,10 +35,12 @@ export const loopbackApiUrl = (value: unknown) => {
   } catch { return undefined; }
 };
 
-export const createSiteRuntime = ({ config, content, env, dev, githubApiUrl, images = [] }: {
+export const createSiteRuntime = ({ config, content, env, dev, githubApiUrl, images = [], names = null }: {
   config: CmsConfig; content: Record<string, string>; env: SiteEnv;
   /** P10: the site's own images (virtual:vibe-cms/images). */
-  images?: Array<{ src: string; width?: number; height?: number; bytes: number }>;
+  images?: Array<{ src: string; width?: number; height?: number; bytes: number; name?: string }>;
+  /** P12h: the site's image manifest when images are stored by name (virtual:vibe-cms/images `names`). */
+  names?: ImageManifest | null;
   /** import.meta.env.DEV — false in every production build. */
   dev: boolean;
   /** Tests only (fake GitHub). Routes never pass it. */
@@ -58,6 +61,7 @@ export const createSiteRuntime = ({ config, content, env, dev, githubApiUrl, ima
     drafts: env.CMS_DB ? createD1DraftStore(env.CMS_DB) : undefined, audit,
     publisher: env.VIBE_GITHUB_TOKEN ? createGitHubPublisher({ token: env.VIBE_GITHUB_TOKEN, repo: config.repo, ...(apiUrl ? { apiUrl } : {}) }) : undefined,
     identify: auth.identify, people: auth.people, userNames: env.CMS_DB ? auth.names : undefined, media, siteImages: images,
+    imageNames: imageNamesOf(config.media, names, mediaSettings(config.media).base),
     publishLimiter: env.CMS_PUBLISH_LIMITER, requirePublishLimiter: !dev,
   });
   return { api, auth, media };

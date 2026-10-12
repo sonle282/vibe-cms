@@ -259,10 +259,31 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
   dirs = [...new Set(dirs)];
 
   if (config.media !== undefined) {
-    if (!isRecord(config.media)) err(context, "media", "must be { dir?, maxBytes? }");
+    if (!isRecord(config.media)) err(context, "media", "must be { dir?, base?, maxBytes?, names? }");
     else {
-      for (const key of Object.keys(config.media)) if (!["dir", "maxBytes"].includes(key)) err(context, `media.${key}`, "is not a media setting", "media has dir and maxBytes");
-      if (config.media.dir !== undefined && (typeof config.media.dir !== "string" || !/^public(\/[a-z0-9][a-z0-9_-]*)+$/.test(config.media.dir))) err(context, "media.dir", `must be a folder inside public/ in lowercase letters, digits, "-" and "_" (got ${show(config.media.dir)})`, 'e.g. "public/assets/uploads"');
+      const media = config.media;
+      for (const key of Object.keys(media)) if (!["dir", "base", "maxBytes", "names"].includes(key)) err(context, `media.${key}`, "is not a media setting", "media has dir, base, maxBytes and names");
+      const FOLDER = /^[a-z0-9][a-z0-9_-]*(\/[a-z0-9][a-z0-9_-]*)*$/;
+      if (media.base !== undefined && (typeof media.base !== "string" || !/^(\/[a-z0-9][a-z0-9_-]*)+$/.test(media.base))) err(context, "media.base", `must be an address like "/assets/uploads" (got ${show(media.base)})`);
+      if (media.dir !== undefined) {
+        if (typeof media.dir !== "string" || !FOLDER.test(media.dir)) err(context, "media.dir", `must be a folder of the repository in lowercase letters, digits, "-" and "_" (got ${show(media.dir)})`, 'e.g. "public/assets/uploads"');
+        else if (!/^public\//.test(media.dir) && media.base === undefined) err(context, "media.dir", "is outside public/, so the address uploads are served at is needed", 'add base, e.g. base: "/assets/uploads"');
+      }
+      // P12h: images by name in the site's manifest.
+      const names = media.names;
+      if (names !== undefined) {
+        if (!isRecord(names)) err(context, "media.names", "must be { manifest, url?, width?, root?, exclude? }");
+        else {
+          for (const key of Object.keys(names)) if (!["manifest", "url", "width", "root", "exclude"].includes(key)) err(context, `media.names.${key}`, "is not a names setting", "names has manifest, url, width, root and exclude");
+          if (typeof names.manifest !== "string" || !/^[A-Za-z0-9_.\/-]+\.json$/.test(names.manifest) || names.manifest.includes("..")) err(context, "media.names.manifest", `required — the site's image manifest, a .json file of the repository (got ${show(names.manifest)})`, 'e.g. "src/data/image-manifest.json"');
+          if (names.url !== undefined && (typeof names.url !== "string" || !names.url.includes("{path}") || !names.url.includes("{width}"))) err(context, "media.names.url", `must hold {path} and {width} (got ${show(names.url)})`, 'e.g. "{path}-{width}.webp"');
+          if (names.width !== undefined && !(Number.isInteger(names.width) && (names.width as number) >= 100 && (names.width as number) <= 4000)) err(context, "media.names.width", `must be a whole number of pixels from 100 to 4000 (got ${show(names.width)})`);
+          if (names.root !== undefined && (typeof names.root !== "string" || !FOLDER.test(names.root))) err(context, "media.names.root", `must be a folder of the repository (got ${show(names.root)})`, 'e.g. "assets-src/images"');
+          if (names.exclude !== undefined && (!Array.isArray(names.exclude) || names.exclude.some((entry) => typeof entry !== "string" || !entry))) err(context, "media.names.exclude", "must be a list of name beginnings", 'e.g. ["brand/"]');
+          const dir = typeof media.dir === "string" ? media.dir : "public/assets/uploads";
+          if (typeof names.root !== "string" || !dir.startsWith(`${names.root}/`)) warn(context, "media.names.root", `uploads cannot be named: media.dir (${dir}) is not inside root`, "set root to the folder the site's build makes images from, and dir inside it");
+        }
+      }
       if (config.media.maxBytes !== undefined && !(Number.isInteger(config.media.maxBytes) && (config.media.maxBytes as number) > 0 && (config.media.maxBytes as number) <= 25 * 1024 * 1024)) err(context, "media.maxBytes", `must be a whole number of bytes from 1 to 26214400 (25 MiB) (got ${show(config.media.maxBytes)})`, "e.g. 10485760 (10 MiB)");
     }
   }

@@ -115,7 +115,14 @@ export type CmsConfig = {
    * at the same path without "public"); `maxBytes` = largest file after the browser has prepared it (default 10 MiB).
    * The site's R2 bucket <site>-media (binding CMS_MEDIA) holds them until they are published.
    */
-  media?: { dir?: string; maxBytes?: number };
+  media?: {
+    dir?: string;
+    /** P12h: the address uploads are served at until the site is built with them (default: dir without "public"). */
+    base?: string;
+    maxBytes?: number;
+    /** P12h: images stored by name in the site's image manifest (src/media/names.ts). */
+    names?: { manifest: string; url?: string; width?: number; root?: string; exclude?: readonly string[] };
+  };
 };
 
 /** Identity helper so a site's config is type-checked in the editor. */
