@@ -75,7 +75,7 @@ export const checkValue = (ctx: Ctx, field: Field, value: unknown, path: string)
       if (!field.multiline && value.includes("\n")) add(ctx.warnings, path, "has a line break but the field is single-line", "remove the line break or set multiline: true");
       // P12d: the whole value must match the pattern; only the site's own {tokens} may appear between braces.
       if (field.pattern && !patternOf(field.pattern).test(value)) add(ctx.errors, path, `${describe(value)} is not ${field.patternHint ?? `in the form ${field.pattern}`}`, field.patternHint ? `write ${field.patternHint}` : "change it to match the pattern");
-      if (field.tokens) for (const match of value.matchAll(TOKEN)) if (!field.tokens.includes(match[1])) add(ctx.errors, path, `{${match[1]}} is not filled in by the website`, `use ${field.tokens.map((token) => `{${token}}`).join(", ")}`);
+      if (field.tokens) for (const match of value.matchAll(TOKEN)) if (!field.tokens.includes(match[1])) add(ctx.errors, path, `{${match[1]}} is not filled in by the website`, field.tokens.length ? `use ${field.tokens.map((token) => `{${token}}`).join(", ")}` : "this text cannot hold {words}");
       return;
     case "richText":
       if (typeof value !== "string") add(ctx.errors, path, `expected rich text (a string), got ${describe(value)}`);

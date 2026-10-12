@@ -10,7 +10,8 @@ export type Problem = { path: string; message: string; hint?: string };
 export type CheckResult = { errors: Problem[]; warnings: Problem[] };
 
 /** Deepest allowed nesting of object / list fields (a list of objects that hold a list of objects = 4). */
-export const MAX_DEPTH = 4;
+// P16a: 8 (was 4) — a real menu is services[] › menu parts[] › packages[] › what is included[] (7 levels).
+export const MAX_DEPTH = 8;
 /** Content may live only under these folders (a site can add more with contentDirs). */
 export const DEFAULT_CONTENT_DIRS: readonly string[] = ["src/data", "src/content"];
 
@@ -120,7 +121,8 @@ export const checkField = (context: Context, field: unknown, at: string, depth: 
       }
       if (field.patternHint !== undefined && (!filled(field.patternHint) || field.pattern === undefined)) err(context, `${at}.patternHint`, field.pattern === undefined ? "needs a pattern" : "must be non-empty text", 'e.g. patternHint: "a time like 09:30"');
       if (field.tokens !== undefined) {
-        if (!Array.isArray(field.tokens) || !field.tokens.length) err(context, `${at}.tokens`, "must be a non-empty list of words", 'e.g. tokens: ["phone", "city"]');
+        // P16a: [] = this text holds no {words} at all (a leftover {word} would be printed to visitors).
+        if (!Array.isArray(field.tokens)) err(context, `${at}.tokens`, "must be a list of words ([] = none)", 'e.g. tokens: ["phone", "city"]');
         else field.tokens.forEach((token, index) => { if (typeof token !== "string" || !/^[A-Za-z][A-Za-z0-9_]*$/.test(token)) err(context, `${at}.tokens[${index}]`, `must be a word (letters, digits, _), got ${show(token)}`, "write it without the braces: phone, not {phone}"); });
       }
       break;

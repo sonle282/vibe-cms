@@ -10,6 +10,9 @@ migration that is not automatic. Each entry says what a site has to do.
 - **Text `from`** (P16a): an item's id made from another field of the same object while the item is new
   (`id: f.text({ label: "ID", from: "name" })`: "Classic Manicure" → `classic-manicure`, `-2` when the list already has
   it); typing the id stops it; an existing id never changes (prices elsewhere point to it).
+- **Text `tokens: []`** (P16a): this text holds no {words} at all — a leftover {word} would be printed to visitors.
+- **Deeper content** (P16a): object / list nesting up to 8 levels (was 4) — a real menu is services › menu parts ›
+  packages › what is included.
 - **Images by name** (`media.names`): for a site whose build makes its image sizes from a manifest, content holds
   names (`"nails/nails-01"`); the admin shows and sends addresses and the API converts both ways; an upload is named
   by where the publish commits it (`media.dir`, which may now be outside public/ with `media.base` = where it is

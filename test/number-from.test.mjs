@@ -34,6 +34,13 @@ test("values: a number is a JSON number, whole when integer, inside min / max", 
   assert.match(checkRecordValues({ fields, record: { items: [] } }).errors[0].message, /required \("Stamps"\) but missing/);
 });
 
+test("text tokens: [] = this text holds no {words} at all (a leftover {word} would be printed to visitors)", () => {
+  const none = { lead: f.text({ label: "Introduction", tokens: [] }), free: f.text({ label: "Free text" }) };
+  assert.deepEqual(configProblems(none), []);
+  const errors = checkRecordValues({ fields: none, record: { lead: "Book a {blowout} today", free: "braces {kept} here" } }).errors;
+  assert.deepEqual(errors.map((problem) => `${problem.path}: ${problem.message} (${problem.hint})`), ["lead: {blowout} is not filled in by the website (this text cannot hold {words})"]);
+});
+
 test("form: a number input writes numbers; emptied, the value is left out; the review reads the number", () => {
   const { window } = new Window();
   const form = createForm({ doc: window.document, fields, value: { priority: 2, stamps: 8, items: [] }, role: "owner" });
