@@ -6,6 +6,7 @@
 import { parseArgs } from "node:util";
 import { check } from "./check.js";
 import { exportData, importData } from "./data.js";
+import { importLegacyUsers } from "./legacy.js";
 import { resetOwnerPassword } from "./owner.js";
 import { setup } from "./setup.js";
 import { update } from "./update.js";
@@ -32,10 +33,12 @@ export const HELP = `vibe-cms ${"<version>"} — run in the site's folder
   update [version]                  Point package.json at that release (default: the latest), npm install.
   reset-owner-password [--username <name>] [--local]
       A temporary password for the owner, shown once; they change it at the next sign-in.
+  import-legacy-users --from <old D1> [--from-config <file>] [--local] [--dry-run]
+      The people of the CMS the site ran before → this empty CMS database: same passwords, admin → owner.
 
 Common: --config <wrangler.jsonc> · --account <id> (default: the account wrangler is signed in to — npx wrangler login).`;
 
-const COMMANDS = ["setup", "migrate", "check", "export", "import", "update", "reset-owner-password"] as const;
+const COMMANDS = ["setup", "migrate", "check", "export", "import", "update", "reset-owner-password", "import-legacy-users"] as const;
 
 export const run = async (argv: string[], { root = process.cwd(), log = console.log as Log, error = console.error as Log } = {}) => {
   const [command, ...rest] = argv;
@@ -45,7 +48,7 @@ export const run = async (argv: string[], { root = process.cwd(), log = console.
     if (!(COMMANDS as readonly string[]).includes(command)) throw new CliError(`unknown command "${command}"`, "npx vibe-cms help");
     const { values, positionals } = parseArgs({
       args: rest, allowPositionals: command === "update", strict: true,
-      options: { site: { type: "string" }, account: { type: "string" }, local: { type: "boolean" }, config: { type: "string" }, out: { type: "string" }, file: { type: "string" }, username: { type: "string" } },
+      options: { site: { type: "string" }, account: { type: "string" }, local: { type: "boolean" }, config: { type: "string" }, out: { type: "string" }, file: { type: "string" }, username: { type: "string" }, from: { type: "string" }, "from-config": { type: "string" }, "dry-run": { type: "boolean" } },
     });
     if (values.account !== undefined && !/^[0-9a-f]{32}$/.test(values.account)) throw new CliError("--account must be a Cloudflare account id (32 hex characters)");
     const local = values.local ?? false;
@@ -73,6 +76,10 @@ export const run = async (argv: string[], { root = process.cwd(), log = console.
       case "update":
         if (positionals.length > 1) throw new CliError("update takes one version", "npx vibe-cms update 0.14.0");
         await update({ root, version: positionals[0], log });
+        return 0;
+      case "import-legacy-users":
+        if (!values.from) throw new CliError("import-legacy-users needs --from <the old CMS's D1 name or binding>");
+        importLegacyUsers({ root, from: values.from, fromConfig: values["from-config"], local, config: values.config, dryRun: values["dry-run"] ?? false, wrangler: wrangler(), log });
         return 0;
       case "reset-owner-password":
         await resetOwnerPassword({ root, username: values.username, local, config: values.config, wrangler: wrangler(), log });

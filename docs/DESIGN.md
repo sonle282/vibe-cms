@@ -521,7 +521,9 @@ vai trò D1 — đã xét ở P6 Bước 0, không chọn.)
 | `created_at`, `updated_at`, `last_login_at`, `password_changed_at` | cùng tên | Giữ nguyên |
 | `cms_auth_state` (key, value, updated_at) | `cms_auth_state` cùng cấu trúc | |
 
-Hàm `userFromLegacyRow()` + `insertUser()` trong gói làm việc chuyển. ⚠ Tên bảng trùng với CMS cũ: P21 phải dùng **D1
+Hàm `userFromLegacyRow()` + `insertUser()` trong gói làm việc chuyển; P12e: lệnh `vibe-cms import-legacy-users --from <D1 cũ>`
+(đọc `cms_users` + `cms_auth_state` cũ: `password_reset_required:<id>` → `must_change_password`, có owner → đánh dấu
+`bootstrap_completed`; 1 dòng audit / người; đích phải rỗng; `--dry-run`). ⚠ Tên bảng trùng với CMS cũ: P21 phải dùng **D1
 mới** cho gói rồi nhập users sang (không chạy migration của gói lên D1 cũ).
 
 ### Route

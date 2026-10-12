@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startWranglerDev } from "./lib/wrangler-dev.mjs";
+import { legacyHashPassword } from "../test/helpers/sqlite-d1.mjs";
 
 const windows = process.platform === "win32";
 const repo = fileURLToPath(new URL("../", import.meta.url));
@@ -134,6 +135,27 @@ try {
   assert.equal(again.status, 1);
   assert.match(again.stderr, /already has data/, "a second import is refused");
 
+  // 4b. P12e: the people of an older CMS (the first site's tables: numeric ids, admin / editor) → a new, empty CMS
+  // database on real local wrangler; the built Worker on that database signs them in with their OLD password.
+  writeFileSync(join(site, "wrangler.legacy.jsonc"), wrangler1.replace('"local-demo-cms"', '"local-old-cms"'));
+  writeFileSync(join(site, "legacy.sql"), `CREATE TABLE cms_users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL COLLATE NOCASE UNIQUE, password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK (role IN ('admin', 'editor')), status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, last_login_at TEXT, password_changed_at TEXT NOT NULL, session_version INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE cms_auth_state (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL);
+INSERT INTO cms_users (username, password_hash, role, status, created_at, updated_at, password_changed_at) VALUES ('linh', '${await legacyHashPassword("linh-old-password-1")}', 'admin', 'active', '2026-09-29T08:00:00Z', '2026-09-29T08:00:00Z', '2026-09-29T08:00:00Z');
+INSERT INTO cms_auth_state VALUES ('bootstrap_completed', 'true', '2026-09-29T08:00:00Z');\n`);
+  ok(await sh("npx", ["--no-install", "wrangler", "d1", "execute", "CMS_DB", "--local", "--config", "wrangler.legacy.jsonc", "--file", "legacy.sql", "-y"], site), "create the older CMS's database");
+  writeFileSync(join(site, "wrangler.newcms.jsonc"), wrangler1.replace('"local-demo-cms"', '"local-new-cms"'));
+  ok(await vibe(["migrate", "--local", "--config", "wrangler.newcms.jsonc"], site), "vibe-cms migrate (new database)");
+  const legacyDry = ok(await vibe(["import-legacy-users", "--from", "CMS_DB", "--from-config", "wrangler.legacy.jsonc", "--local", "--config", "wrangler.newcms.jsonc", "--dry-run"], site), "import-legacy-users --dry-run");
+  assert.match(legacyDry, /Would import 1 person[\s\S]*linh\s+owner\s+active[\s\S]*nothing was written/);
+  ok(await vibe(["import-legacy-users", "--from", "CMS_DB", "--from-config", "wrangler.legacy.jsonc", "--local", "--config", "wrangler.newcms.jsonc"], site), "import-legacy-users");
+  writeFileSync(join(site, "dist/server/wrangler.newcms.json"), readFileSync(join(site, "dist/server/wrangler.json"), "utf8").replace('"local-demo-cms"', '"local-new-cms"'));
+  const legacyServer = await startWranglerDev({ cwd: site, config: "dist/server/wrangler.newcms.json", ready: "/api/cms/health", args: ["--persist-to", persist] });
+  stops.push(legacyServer.stop);
+  const legacyLogin = await fetch(`${legacyServer.base}/api/auth/login`, { method: "POST", headers: { origin: legacyServer.base, "content-type": "application/json" }, body: JSON.stringify({ username: "linh", password: "linh-old-password-1" }) });
+  const legacyBody = await legacyLogin.json();
+  assert.deepEqual([legacyLogin.status, legacyBody.user?.role, legacyBody.mustChangePassword], [200, "owner", false], "the imported admin signs in as an owner with the old password");
+  legacyServer.stop();
+
   // 5. update: latest (fake GitHub API) → X.Y.(Z+1), its site action printed; same version again = nothing; unknown = nothing.
   const overrides = { VIBE_CMS_RELEASES_URL: base, VIBE_CMS_GITHUB_API_URL: base };
   const updated = ok(await vibe(["update"], site, overrides), "vibe-cms update");
@@ -147,7 +169,7 @@ try {
   assert.match(missing.stderr, /release v9\.9\.9 not found .* nothing changed/);
   assert.equal(readFileSync(join(site, "package.json"), "utf8"), before);
 
-  console.log(`Install (local) OK in ${Math.round((Date.now() - started) / 1000)} s: npm i <release URL> with no token → setup ×2 (second: no change) → check → build → bootstrap owner signs in → reset-owner-password (old password 401, temporary 200 + must change) → export / import ${Object.values(counts.tables).reduce((a, b) => a + b, 0)} rows match → update ${pkg.version} → ${next} (latest, site action shown).`);
+  console.log(`Install (local) OK in ${Math.round((Date.now() - started) / 1000)} s: npm i <release URL> with no token → setup ×2 (second: no change) → check → build → bootstrap owner signs in → reset-owner-password (old password 401, temporary 200 + must change) → export / import ${Object.values(counts.tables).reduce((a, b) => a + b, 0)} rows match → import-legacy-users (old password signs in) → update ${pkg.version} → ${next} (latest, site action shown).`);
 } finally {
   stops.forEach((stop) => stop());
   server.close();

@@ -54,9 +54,9 @@ export const jsonOutput = <T>(stdout: string, what: string): T => {
 
 type D1Rows<T> = Array<{ results: T[]; success: boolean }>;
 
-/** Rows of one SELECT on the site's CMS database (binding CMS_DB), remote or local. */
-export const query = <T>(wrangler: Wrangler, config: string, local: boolean, sql: string): T[] => {
-  const out = must(wrangler, ["d1", "execute", "CMS_DB", local ? "--local" : "--remote", "--config", config, "--json", "--command", sql], "reading the CMS database");
+/** Rows of one SELECT on the site's CMS database (binding CMS_DB) — or `database` (a name or binding; P12e: an older CMS's D1). */
+export const query = <T>(wrangler: Wrangler, config: string | undefined, local: boolean, sql: string, database = "CMS_DB"): T[] => {
+  const out = must(wrangler, ["d1", "execute", database, local ? "--local" : "--remote", ...(config ? ["--config", config] : []), "--json", "--command", sql], "reading the CMS database");
   return jsonOutput<D1Rows<T>>(out, "reading the CMS database").flatMap((part) => part.results ?? []);
 };
 
