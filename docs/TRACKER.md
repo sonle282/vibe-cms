@@ -2,7 +2,7 @@
 
 > Nguồn: [DESIGN.md](DESIGN.md) §I. Quy tắc: 1 task = 1 commit; mỗi task REPORT → DỪNG chờ review. Test của gói **không đọc
 > dữ liệu site khách**. Task có sửa repo site: đầu task `git status` sạch + pull nhánh production của site; có thay đổi
-> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (release v0.21.0 · P15 xong).
+> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (release v0.21.0 · P15, P16a xong).
 
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
@@ -37,6 +37,7 @@
 | **U3** | UI: thành phần như Mr Spa — hộp thoại thay `window.confirm` (Esc / Cancel / bấm ngoài = không đổi; nút phá huỷ màu đỏ), Publish trong editor mở hộp review của đúng bản nháp → "Publish to website", toast có icon + 1 hành động (Undo), tooltip cho nút icon, thẻ ảnh (contain, tên + cỡ, Replace khi hover, ⋯ Copy link / Remove, Desktop / Phone), sheet ảnh (Library / Upload, bấm = chọn, double-click / Use image = dùng, Crop ở chân sheet) | 10–16 | ✅ Xong (merge 2026-10-12; 3e91798, PR #18) |
 | **U4** | UI: màn hình như Mr Spa — Pages dạng danh sách (tên, địa chỉ, trạng thái), danh sách collection có ảnh + "+ New …", **Drafts** (mỗi nháp: thay đổi gì, Open / Publish / ⋯ Discard, Recently published) + "Review & publish all", **Media** (thư viện, lọc, chi tiết, Upload images), **People & activity** 2 tab (form thêm người bên phải, vai trò dạng thẻ), History, Sign-in, chặn < 900 px. Sau đó: release + `vibe-cms update` cho Novelle | 12–18 | ✅ Xong (merge 2026-10-12; 4a7f713, PR #19); release v0.20.0 |
 | **P15** | Innovate: tách nốt `site.ts` → JSON (reviews, FAQ, membership, chính sách, Journal…) — HTML giống từng byte | 8–14 | ✅ Xong (merge 2026-10-12; innovate PR #8, 26b0f6a — 358/358 file giống từng byte) |
+| **P16a** | Gói (tìm ra khi viết cms.config Innovate): `f.number` (offers.priority, cashCard.stamps) + text `from` (id món / gói tự sinh từ tên khi thêm mới) — vào v0.21.0 (SonLe duyệt 2026-10-12) | 3–5 | ✅ Xong (merge 2026-10-12; 8025fc6, PR #24) + giới hạn lồng 8 cấp, `tokens: []`; release v0.21.0 |
 | P16 | Innovate: `cms.config` + plugin + collection cho các mục vừa tách; `wrangler.toml` → `wrangler.jsonc`; song song ở local | 12–18 | ⏳ |
 | P17 | Innovate: chuyển production trong khung giờ báo chủ (publish hết nháp trước, nhập users), G.2 trên `main`; lưu + đọc 1 nháp > 100 KB trên D1 THẬT | 8–12 | ⏳ |
 | P18 | Innovate: dọn CMS chép; D1 / R2 cũ giữ 30 ngày rồi chủ xoá | 4–8 | ⏳ |
