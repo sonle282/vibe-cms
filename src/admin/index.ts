@@ -14,4 +14,7 @@ export { createRichEditor, type PickedImage, type RichEditor, type RichEditorOpt
 export { cleanRichDom, isEmptyRich, normalizeBlocks } from "./clean.js";
 export { attachBridge, bindingPath, configBinds, fieldAt, resolveBinding, resolveList, type Bridge, type BridgeOptions, type PreviewOwner, type PreviewSelection } from "./bridge.js";
 export { createPreview, framedUrl, previewUrl, type Preview, type PreviewOptions } from "./preview.js";
+// U3: the dialog and the toast of the Mr Spa CMS.
+export { confirmDialog, openDialog, type ConfirmOptions, type DialogButton, type DialogOptions, type OpenDialog } from "./dialog.js";
+export { createToast, type Tone, type ToastAction } from "./toast.js";
 export { clone, countChanges, emptyValue, getAt, holdsLockedValue, ID_PATTERN, keyPath, parsePathText, pathText, same, setAt, slugify, type Path } from "./value.js";

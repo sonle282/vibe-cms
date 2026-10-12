@@ -29,11 +29,11 @@ export const historyScreen = async (kit: ScreenKit, stillHere: () => boolean, re
 
   const error = h(doc, "p", { class: "vc-error", role: "alert" });
   const restore = async (version: HistoryVersion, button: HTMLButtonElement) => {
-    if (!kit.ask(`Restore the version of ${when(version.date)} as your draft?\n\nThe website does not change until you review and publish it.`)) return;
+    if (!(await kit.ask(`Restore the version of ${when(version.date)} as your draft?\n\nThe website does not change until you review and publish it.`, { confirm: "Restore as draft" }))) return;
     error.textContent = "";
     button.disabled = true;
     let done = await api.post<{ resource: string }>("/api/cms/history/restore", { resource, commit: version.commit });
-    if (!done.ok && done.error === "draft_exists" && kit.ask("You already have a draft of this. Replace it with the older version?")) done = await api.post<{ resource: string }>("/api/cms/history/restore", { resource, commit: version.commit, replace: true });
+    if (!done.ok && done.error === "draft_exists" && (await kit.ask("You already have a draft of this. Replace it with the older version?", { confirm: "Replace draft", danger: true }))) done = await api.post<{ resource: string }>("/api/cms/history/restore", { resource, commit: version.commit, replace: true });
     button.disabled = false;
     if (!done.ok) { if (done.error !== "draft_exists") error.textContent = done.message; return; }
     kit.say(`The version of ${when(version.date)} is now your draft. Review it, then publish.`);

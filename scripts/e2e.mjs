@@ -39,7 +39,7 @@ const browser = await chromium.launch({ executablePath: findChrome(), headless: 
 const problems = [];
 try {
   const { base } = server;
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: "reduce" });
   const page = await context.newPage();
   page.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`));
   page.on("console", (message) => { if (message.type() === "error" && !/Failed to load resource|Blocked form submission to '\/contact' because the form's frame is sandboxed/.test(message.text())) problems.push(`console: ${message.text()}`); });
@@ -250,7 +250,7 @@ try {
   // browser, uploaded to the local R2 bucket, picked, and served at its final address until it is published.
   await open("#/collections/team/items/sam");
   await field("photo").getByRole("button", { name: "Choose the image for Photo" }).click();
-  const sheet = page.getByRole("dialog", { name: "Choose an image" });
+  const sheet = page.getByRole("dialog", { name: "Choose image for Photo" });
   await sheet.locator('.vc-tile[data-src="/images/team-alex.svg"]').waitFor();
   check("image sheet: the site's own images are in the library", (await sheet.locator(".vc-tile").count()) === 3);
   await shot("p10-image-sheet");
@@ -266,8 +266,10 @@ try {
   // P12f: crop the upload to a square — a NEW image made by the browser's canvas, uploaded and chosen; the original stays.
   const originalPhoto = samPhoto;
   await field("photo").getByRole("button", { name: "Choose the image for Photo" }).click();
-  const adjustSheet = page.getByRole("dialog", { name: "Choose an image" });
-  await adjustSheet.locator(`[role=listitem]:has(.vc-tile[data-src="${originalPhoto}"]) .vc-tile-adjust`).click();
+  const adjustSheet = page.getByRole("dialog", { name: "Choose image for Photo" });
+  // U3: select the image, then Crop / resize in the footer.
+  await adjustSheet.locator(`.vc-tile[data-src="${originalPhoto}"]`).click();
+  await adjustSheet.locator(".vc-sheet-adjust").click();
   await adjustSheet.getByRole("button", { name: "Square" }).click();
   check("crop: Square on a 2400 × 1200 photo makes 1200 × 1200, the original stays", /Makes a new image of 1200 × 1200 px\. The original stays as it is\./.test(await adjustSheet.locator(".vc-adjust").innerText()));
   await adjustSheet.getByRole("button", { name: "Save as a new image" }).click();
@@ -326,7 +328,9 @@ try {
   check("editor: dragging the corner resizes the image, ratio kept, width written", Math.abs(postWidth - (before.width - 200)) <= 2 && Math.abs(after.width - postWidth) <= 1 && Math.abs(after.height / after.width - 0.75) < 0.01 && !(await postImage.getAttribute("height")), { before, after, postWidth });
   await shot("p8d-editor");
   await tool("body", "Insert an image").click();
-  await page.getByRole("dialog", { name: "Choose an image" }).locator('.vc-tile[data-src="/images/hero.svg"]').click();
+  const insertSheet = page.getByRole("dialog", { name: "Choose an image" });
+  await insertSheet.locator('.vc-tile[data-src="/images/hero.svg"]').click();
+  await insertSheet.getByRole("button", { name: "Use image" }).click();
   check("editor: a library image is inserted", (await rich("body").locator("img").count()) === 2);
   await field("body").getByRole("button", { name: "Remove image" }).click();
   check("editor: Remove image takes it out", (await rich("body").locator("img").count()) === 1 && (await rich("body").locator('img[src="/images/hero.svg"]').count()) === 0);
@@ -343,21 +347,32 @@ try {
   await open("#/collections/posts/items/spring-colours");
   await input("title").fill("Spring colours");
   await save();
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Discard draft" }).click();
+  // U3: the editor's Publish opens the review dialog of this draft (what changes); Cancel leaves it a draft.
+  await page.locator('[data-action="publish"]').click();
+  const publishDialog = page.getByRole("alertdialog", { name: /^Publish .+\?$/ });
+  const publishText = await publishDialog.innerText();
+  await shot("u3-publish-dialog");
+  check("publish dialog: lists this draft's change and publishes to the website", /These changes go live on .+ in a few minutes/.test(publishText) && /Title: Spring colours \(draft\)\s*→\s*Spring colours/.test(publishText) && await publishDialog.getByRole("button", { name: "Publish to website" }).isVisible(), publishText);
+  await publishDialog.getByRole("button", { name: "Cancel" }).click();
+  // U3: the CMS dialog, not the browser's confirm().
+  await page.locator('[data-action="discard"]').click();
+  const discardDialog = page.getByRole("alertdialog", { name: "Discard your draft?" });
+  check("discard: asks in the CMS dialog, the red button discards", /The website stays as it is./.test(await discardDialog.innerText()) && await discardDialog.getByRole("button", { name: "Discard draft" }).evaluate((button) => button.classList.contains("vc-danger-fill")));
+  await discardDialog.getByRole("button", { name: "Discard draft" }).click();
   await page.waitForFunction(() => document.querySelector(".vc-save-state")?.textContent === "No changes");
   check("discard: the draft is gone, the live title is back", (await api("/api/cms/collections/posts/items/spring-colours")).draft === null && (await input("title").inputValue()) === "Spring colours (draft)");
 
   // Leaving with unsaved changes asks first.
   await open("#/collections/services/items/classic-manicure");
   await input("name").fill("Classic Manicure (changed)");
-  let asked = "";
-  page.once("dialog", (dialog) => { asked = dialog.message(); void dialog.dismiss(); });
   await page.locator(".vc-nav-list").getByRole("link", { name: "Team" }).click();
-  await page.waitForTimeout(300);
-  check("unsaved changes: leaving asks, staying keeps them", /Leave without saving\?/.test(asked) && page.url().endsWith("#/collections/services/items/classic-manicure") && (await input("name").inputValue()) === "Classic Manicure (changed)", { asked, url: page.url() });
-  page.once("dialog", (dialog) => dialog.accept());
+  const leaveDialog = page.getByRole("alertdialog", { name: "Leave without saving?" });
+  const asked = await leaveDialog.innerText();
+  await leaveDialog.getByRole("button", { name: "Keep editing" }).click();
+  await page.waitForFunction(() => location.hash === "#/collections/services/items/classic-manicure");
+  check("unsaved changes: leaving asks, staying keeps them", /You have 1 unsaved change on /.test(asked) && page.url().endsWith("#/collections/services/items/classic-manicure") && (await input("name").inputValue()) === "Classic Manicure (changed)", { asked, url: page.url() });
   await page.locator(".vc-nav-list").getByRole("link", { name: "Team" }).click();
+  await page.getByRole("alertdialog", { name: "Leave without saving?" }).getByRole("button", { name: "Discard changes" }).click();
   await page.locator(".vc-table").waitFor();
 
   // ---------------------------------------------------------------- P8: review every draft, publish them in one commit

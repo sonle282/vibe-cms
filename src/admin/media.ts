@@ -116,6 +116,8 @@ export type PickerOptions = {
   upload: (prepared: PreparedImage) => Promise<{ ok: true; image: LibraryImage } | { ok: false; message: string }>;
   current?: string;
   onPick: (image: LibraryImage) => void;
+  /** U3: the field the image is for ("Choose image for Photo"). */
+  label?: string;
   /** P12f: crop / resize an image into a new copy (needs uploads). Without them there is no "Crop / resize". */
   adjust?: Adjust;
   measure?: Measure;
@@ -129,23 +131,34 @@ export const openImagePicker = (options: PickerOptions) => {
   const grid = h(doc, "div", { class: "vc-picker-grid", role: "list" });
   const search = h(doc, "input", { type: "search", class: "vc-input vc-search", placeholder: "Search images", "aria-label": "Search images" });
   let images: LibraryImage[] = [];
+  // U3 (Mr Spa 02): a click selects an image, a double-click or "Use image" uses it.
+  let selected: LibraryImage | undefined;
 
   const close = () => { doc.removeEventListener("keydown", onKey, true); overlay.remove(); opener?.focus?.(); };
   const pick = (image: LibraryImage) => { close(); options.onPick(image); };
   const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); close(); } };
 
+  const select = (image: LibraryImage | undefined) => {
+    selected = image;
+    for (const tile of grid.querySelectorAll<HTMLElement>(".vc-tile")) { const on = tile.dataset.src === image?.src; tile.classList.toggle("vc-tile-selected", on); tile.setAttribute("aria-pressed", String(on)); }
+    const label = image ? image.name || image.src.split("/").pop() || image.src : "";
+    chosenText.textContent = image ? `1 selected · ${label}` : "Nothing selected";
+    useButton.disabled = !image;
+    if (adjustButton) { adjustButton.hidden = !image; adjustButton.setAttribute("aria-label", `Crop or resize ${label}`); }
+  };
   const render = () => {
     clear(grid);
     const query = search.value.trim().toLowerCase();
     const shown = images.filter((image) => !query || image.src.toLowerCase().includes(query) || (image.name ?? "").toLowerCase().includes(query));
     for (const image of shown) {
       const label = image.name || image.src.split("/").pop() || image.src;
-      grid.append(h(doc, "div", { role: "listitem" }, h(doc, "button", { type: "button", class: `vc-tile${image.src === options.current ? " vc-tile-current" : ""}`, "data-src": image.src, "aria-label": `Use ${label}`, onclick: () => pick(image) },
-        h(doc, "img", { src: image.src, alt: "", loading: "lazy", decoding: "async" }),
+      const current = image.src === options.current;
+      grid.append(h(doc, "div", { role: "listitem" }, h(doc, "button", { type: "button", class: `vc-tile${current ? " vc-tile-current" : ""}${selected?.src === image.src ? " vc-tile-selected" : ""}`, "data-src": image.src, "aria-pressed": String(selected?.src === image.src), "aria-label": label, onclick: () => select(image), ondblclick: () => pick(image) },
+        h(doc, "span", { class: "vc-tile-picture" }, h(doc, "img", { src: image.src, alt: "", loading: "lazy", decoding: "async" }),
+          current ? h(doc, "span", { class: "vc-tile-flag" }, "Current") : null,
+          h(doc, "span", { class: "vc-tile-check", "aria-hidden": "true" }, "✓")),
         h(doc, "span", { class: "vc-tile-name" }, label),
-        h(doc, "span", { class: "vc-tile-meta" }, [image.width && image.height ? `${image.width}×${image.height}` : "", sizeText(image.bytes)].filter(Boolean).join(" · ")),
-        image.source === "upload" ? h(doc, "span", { class: "vc-tile-badge" }, "Uploaded") : null),
-        canAdjust ? h(doc, "button", { type: "button", class: "vc-button vc-quiet vc-tile-adjust", "aria-label": `Crop or resize ${label}`, onclick: () => openAdjust(image, label) }, "Crop / resize") : null));
+        h(doc, "span", { class: "vc-tile-meta" }, [image.width && image.height ? `${image.width} × ${image.height}` : "", sizeText(image.bytes), image.source === "upload" ? "Uploaded" : ""].filter(Boolean).join(" · ")))));
     }
     if (!shown.length) grid.append(h(doc, "p", { class: "vc-note" }, images.length ? "No image matches." : "No images yet."));
   };
@@ -206,7 +219,7 @@ export const openImagePicker = (options: PickerOptions) => {
       doc.addEventListener("pointermove", onMove); doc.addEventListener("pointerup", onUp);
       event.preventDefault();
     });
-    back.addEventListener("click", () => { adjustBox.hidden = true; library.hidden = false; clear(adjustBox); status.textContent = ""; search.focus(); });
+    back.addEventListener("click", () => { adjustBox.hidden = true; library.hidden = false; foot.hidden = false; clear(adjustBox); status.textContent = ""; search.focus(); });
     save.addEventListener("click", async () => {
       const r = rect(); const out = outputSize(r, maxWidth);
       const base = (image.name || image.src.split("/").pop() || "image").replace(/\.[A-Za-z0-9]{1,5}$/, "").replace(/-[0-9a-f]{8}$/, "");
@@ -226,7 +239,7 @@ export const openImagePicker = (options: PickerOptions) => {
     });
     clear(adjustBox);
     adjustBox.append(h(doc, "h3", { class: "vc-section-title" }, `Crop or resize · ${label}`), presets, picture, h(doc, "div", { class: "vc-adjust-controls" }, h(doc, "label", { class: "vc-note" }, "Crop size ", zoomInput), widthSelect), info, h(doc, "div", { class: "vc-adjust-actions" }, back, save));
-    library.hidden = true; adjustBox.hidden = false;
+    library.hidden = true; uploadPanel.hidden = true; foot.hidden = true; adjustBox.hidden = false;
     draw();
     frame.focus();
   };
@@ -252,13 +265,26 @@ export const openImagePicker = (options: PickerOptions) => {
   drop.addEventListener("drop", (event) => { event.preventDefault(); drop.classList.remove("vc-drop-over"); void uploadFile((event as DragEvent).dataTransfer?.files?.[0]); });
 
   const titleId = "vc-picker-title";
+  // U3: Library / Upload tabs, the grid, and a footer with what is selected · Cancel · Use image.
+  const uploadPanel = media.uploads ? h(doc, "div", { class: "vc-sheet-upload", hidden: true }, fileInput, drop) : h(doc, "p", { class: "vc-note", hidden: true }, "Uploading is not set up on this site (its image storage is missing); you can use images that are already on the website.");
+  const tab = (name: "library" | "upload", text: string) => h(doc, "button", { type: "button", class: "vc-segment-item", "data-tab": name, "aria-pressed": String(name === "library"), onclick: () => {
+    for (const button of tabs.querySelectorAll<HTMLElement>("button")) button.setAttribute("aria-pressed", String(button.dataset.tab === name));
+    library.hidden = name !== "library"; uploadPanel.hidden = name !== "upload"; adjustBox.hidden = true; foot.hidden = name !== "library";
+  } }, text);
+  const tabs = h(doc, "div", { class: "vc-segment vc-sheet-tabs", role: "group", "aria-label": "Where the image comes from" }, tab("library", "Library"), tab("upload", "Upload"));
+  const chosenText = h(doc, "span", { class: "vc-sheet-chosen" }, "Nothing selected");
+  const useButton = h(doc, "button", { type: "button", class: "vc-button vc-primary", "data-action": "use-image", disabled: true, onclick: () => { if (selected) pick(selected); } }, "Use image");
+  const adjustButton = canAdjust ? h(doc, "button", { type: "button", class: "vc-button vc-sheet-adjust", hidden: true, onclick: () => { if (selected) void openAdjust(selected, selected.name || selected.src.split("/").pop() || selected.src); } }, "Crop / resize") : null;
+  const foot = h(doc, "div", { class: "vc-sheet-foot" }, chosenText, h(doc, "span", { class: "vc-sheet-foot-actions" }, adjustButton, h(doc, "button", { type: "button", class: "vc-button", onclick: close }, "Cancel"), useButton));
   const sheet = h(doc, "div", { class: "vc-sheet", role: "dialog", "aria-modal": "true", "aria-labelledby": titleId },
-    h(doc, "div", { class: "vc-sheet-head" }, h(doc, "h2", { id: titleId }, "Choose an image"), h(doc, "button", { type: "button", class: "vc-icon-button", "aria-label": "Close", onclick: close }, icon(doc, "remove"))),
-    media.uploads ? h(doc, "div", { class: "vc-sheet-upload" }, fileInput, drop) : h(doc, "p", { class: "vc-note" }, "Uploading is not set up on this site (its image storage is missing); you can use images that are already on the website."),
+    h(doc, "div", { class: "vc-sheet-head" }, h(doc, "h2", { id: titleId }, options.label ? `Choose image for ${options.label}` : "Choose an image"), h(doc, "button", { type: "button", class: "vc-icon-button", "aria-label": "Close", "data-tip": "Close", onclick: close }, icon(doc, "remove"))),
+    h(doc, "div", { class: "vc-sheet-bar" }, tabs, search),
     status,
     library,
-    adjustBox);
-  library.append(h(doc, "div", { class: "vc-toolbar" }, search), grid);
+    uploadPanel,
+    adjustBox,
+    foot);
+  library.append(grid);
   const overlay = h(doc, "div", { class: "vc-overlay", onclick: (event: Event) => { if (event.target === overlay) close(); } }, sheet);
   doc.body.append(overlay);
   doc.addEventListener("keydown", onKey, true);

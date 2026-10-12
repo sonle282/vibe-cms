@@ -19,6 +19,8 @@ import { checkRecordValues } from "../check/values.js";
 import { createClient, humanMessage, type ApiFail, type Client, type Fetch } from "./api.js";
 import type { AdminBoot, BootCollection, BootFile } from "./boot.js";
 import { clear, h, icon } from "./dom.js";
+import { confirmDialog, openDialog, type ConfirmOptions } from "./dialog.js";
+import { createToast } from "./toast.js";
 import { summarizeChanges, type Change, type ReferenceLabels } from "./changes.js";
 import { createForm, type Form, type ReferenceTarget } from "./form.js";
 import { adjustImage, measureImage, openImagePicker, prepareImage, type Adjust, type LibraryImage, type Measure, type Prepare } from "./media.js";
@@ -34,8 +36,8 @@ export type AdminOptions = {
   boot: AdminBoot;
   /** Injectable for tests; the page's fetch otherwise. */
   fetch?: Fetch;
-  /** Injectable for tests; window.confirm otherwise. */
-  confirm?: (message: string) => boolean;
+  /** Injectable for tests (sync or not); the CMS dialog otherwise (U3, never the browser's confirm). */
+  confirm?: (message: string, options?: ConfirmOptions) => boolean | Promise<boolean>;
   window?: Window;
   /** P8: how often to ask /live-version after publishing, and for how long before saying "still publishing". */
   pollMs?: number;
@@ -85,7 +87,9 @@ export const startAdmin = (options: AdminOptions) => {
   const win = options.window ?? (root.ownerDocument.defaultView as Window);
   const doc = root.ownerDocument;
   const api: Client = createClient(options.fetch ?? ((input, init) => win.fetch(input, init)));
-  const ask = options.confirm ?? ((message: string) => win.confirm(message));
+  const ask = (message: string, choice?: ConfirmOptions) => Promise.resolve(options.confirm ? options.confirm(message, choice) : confirmDialog(doc, message, choice));
+  /** U3: leaving with unsaved changes — "Keep editing" is the safe choice, "Discard changes" is red. */
+  const askLeave = (count: number) => ask(leaveMessage(count), { cancel: "Keep editing", confirm: "Discard changes", danger: true });
   const now = options.now ?? (() => Date.now());
   const pollMs = options.pollMs ?? 10_000;
   const maxWaitMs = options.maxWaitMs ?? 15 * 60_000;
@@ -97,8 +101,8 @@ export const startAdmin = (options: AdminOptions) => {
   // P12f: crop / resize in the browser (canvas); tests pass their own.
   const adjust = options.adjustImage ?? adjustImage(win);
   const measure = options.measureImage ?? measureImage(win);
-  const pickImage = (current: string, done: (image: { src: string }) => void) => openImagePicker({
-    doc, api, media, prepare, current, onPick: done, adjust, measure,
+  const pickImage = (current: string, done: (image: { src: string }) => void, label?: string) => openImagePicker({
+    doc, api, media, prepare, current, onPick: done, adjust, measure, label,
     upload: async (prepared) => {
       const headers: Record<string, string> = { "x-file-name": encodeURIComponent(prepared.name) };
       if (prepared.width && prepared.height) { headers["x-image-width"] = String(prepared.width); headers["x-image-height"] = String(prepared.height); }
@@ -136,7 +140,7 @@ export const startAdmin = (options: AdminOptions) => {
   const liveBox = h(doc, "div", { class: "vc-live", role: "status", "aria-live": "polite", hidden: true });
   const signOut = h(doc, "button", { type: "button", class: "vc-menu-item", role: "menuitem", onclick: async () => {
     closeMenu();
-    if (current?.dirty?.() && !ask(leaveMessage(current.dirty()))) return;
+    if (current?.dirty?.() && !(await askLeave(current.dirty()))) return;
     dirtyGuard = false;
     await api.post("/api/auth/logout", {});
     win.location.assign("/admin");
@@ -168,15 +172,15 @@ export const startAdmin = (options: AdminOptions) => {
   const topCenter = h(doc, "div", { class: "vc-top-center" });
   const actions = h(doc, "div", { class: "vc-actions" });
   const body = h(doc, "div", { class: "vc-body" });
-  const toast = h(doc, "div", { class: "vc-toast", role: "status", "aria-live": "polite", "aria-atomic": "true", hidden: true });
+  const toasts = createToast(doc);
+  const toast = toasts.element;
   const main = h(doc, "main", { class: "vc-main", id: "vc-main" }, h(doc, "header", { class: "vc-top" }, crumbs, topCenter, h(doc, "div", { class: "vc-top-right" }, saveState, actions)), liveBox, body);
   clear(root);
   root.append(h(doc, "a", { class: "vc-skip", href: "#vc-main", onclick: (event: Event) => { event.preventDefault(); main.querySelector<HTMLElement>("h1")?.focus(); } }, "Skip to content"), h(doc, "div", { class: "vc-app" }, nav, main), toast);
 
-  let toastTimer: ReturnType<typeof setTimeout> | undefined;
-  const say = (text: string) => { toast.textContent = text; toast.hidden = false; if (toastTimer) clearTimeout(toastTimer); toastTimer = setTimeout(() => { toast.hidden = true; }, 4000); };
+  const say = toasts.say;
   const setState = (kind: "idle" | "dirty" | "saved" | "busy" | "error", text: string) => { saveState.textContent = text; saveState.dataset.state = kind; };
-  const leaveMessage = (count: number) => `Leave without saving?\n\nYou have ${plural(count, "unsaved change")}. If you leave, they are lost.`;
+  const leaveMessage = (count: number) => `Leave without saving?\n\nYou have ${plural(count, "unsaved change")}${current?.title ? ` on ${current.title}` : ""}. If you leave, they are lost.`;
 
   // ---------------------------------------------------------------- routing
 
@@ -184,6 +188,7 @@ export const startAdmin = (options: AdminOptions) => {
   let currentHash = "";
   let dirtyGuard = true;
   let ignoreHash = false;
+  let asking = false;
   let generation = 0;
 
   const show = (screen: Screen, content: Node[]) => {
@@ -205,10 +210,16 @@ export const startAdmin = (options: AdminOptions) => {
   const route = async () => {
     const hash = win.location.hash || "#/";
     if (ignoreHash) { ignoreHash = false; return; }
-    if (current?.dirty?.() && hash !== currentHash && dirtyGuard && !ask(leaveMessage(current.dirty()))) {
-      ignoreHash = true;
-      win.location.hash = currentHash;
-      return;
+    if (asking) return;
+    if (current?.dirty?.() && hash !== currentHash && dirtyGuard) {
+      // The address already shows where the person is going; the screen stays until they answer.
+      asking = true;
+      const leave = await askLeave(current.dirty());
+      asking = false;
+      if (!leave) {
+        if ((win.location.hash || "#/") !== currentHash) { ignoreHash = true; win.location.hash = currentHash; }
+        return;
+      }
     }
     current?.leave?.();
     currentHash = hash;
@@ -429,7 +440,8 @@ export const startAdmin = (options: AdminOptions) => {
     const save = h(doc, "button", { type: "button", class: "vc-button", "data-action": "save" }, "Save draft");
     const discard = h(doc, "button", { type: "button", class: "vc-button vc-quiet", "data-action": "discard" }, "Discard draft");
     const resourceOf = () => (input.kind === "file" ? `file:${input.file.key}` : `item:${input.collection.key}:${input.id ?? String(form.value()[input.collection.idField] ?? "")}`);
-    const publish = h(doc, "button", { type: "button", class: "vc-button vc-primary", "data-action": "publish", onclick: () => { win.location.hash = `#/publish/${encodeURIComponent(resourceOf())}`; } }, "Review & publish");
+    // U3: Publish opens the review dialog of this draft (Mr Spa 03) — what changes, then "Publish to website".
+    const publish = h(doc, "button", { type: "button", class: "vc-button vc-primary", "data-action": "publish", onclick: () => publishHere() }, "Publish");
 
     const dirty = () => countChanges(saved, form.value());
     const refresh = () => {
@@ -440,7 +452,7 @@ export const startAdmin = (options: AdminOptions) => {
       discard.disabled = saving;
       publish.hidden = !hasDraft && !count;
       publish.disabled = saving || count > 0 || !hasDraft;
-      publish.title = count ? "Save a draft first" : "";
+      if (count) publish.dataset.tip = "Save a draft first"; else delete publish.dataset.tip;
       if (saving) setState("busy", "Saving…");
       else if (count) setState("dirty", count === 1 ? "1 unsaved change" : `${count} unsaved changes`);
       else if (hasDraft) setState("saved", "Draft saved · not live yet");
@@ -448,7 +460,7 @@ export const startAdmin = (options: AdminOptions) => {
     };
 
     const form: Form = createForm({
-      doc, fields, sections: input.kind === "file" ? input.file.sections : undefined, value: saved, role: user.role, references, readOnly, pickImage,
+      doc, fields, sections: input.kind === "file" ? input.file.sections : undefined, value: saved, role: user.role, references, readOnly, pickImage, notify: (text, action) => say(text, "info", action),
       markdown: collection?.markdown && !("body" in collection.fields) ? ["body"] : [],
       onChange: (value, path) => {
         if (collection && isNew && path.length === 1 && path[0] === collection.idField && !autoId) idTouched = true;
@@ -487,7 +499,7 @@ export const startAdmin = (options: AdminOptions) => {
           suppressScroll = false;
         },
       });
-      previewToggle = h(doc, "button", { type: "button", class: "vc-button vc-quiet vc-toggle", "data-action": "preview", "aria-pressed": "false", title: "Show or hide the preview" }, "Preview");
+      previewToggle = h(doc, "button", { type: "button", class: "vc-button vc-quiet vc-toggle", "data-action": "preview", "aria-pressed": "false", "data-tip": "Show or hide the preview" }, "Preview");
     }
     /** Focus a field (or the closest one that has its own control). */
     const reveal = (text: string) => {
@@ -524,7 +536,7 @@ export const startAdmin = (options: AdminOptions) => {
       if (problems.length) {
         form.showErrors(problems);
         setState("error", "Needs attention");
-        say(problems.length === 1 ? "One field needs attention." : `${problems.length} fields need attention.`);
+        say(problems.length === 1 ? "One field needs attention." : `${problems.length} fields need attention.`, "error");
         form.focus(problems[0].path.replace(/\[\d+\].*$/, "")) || form.focus(problems[0].path);
         return;
       }
@@ -549,7 +561,7 @@ export const startAdmin = (options: AdminOptions) => {
           const where = (path: string) => { const label = (path.split(/[.[]/)[0] && fields[path.split(/[.[]/)[0]]?.label) || path; return path.includes(".") || path.includes("[") ? `${label} (${path})` : label; };
           showBanner(`Saved, with some HTML removed for safety: ${unsafe.map((entry) => `${where(entry.path)} — ${entry.removed.join(", ")}`).join("; ")}. Scripts, event handlers (onclick…), styles, frames and javascript: links are never kept.`);
           say("Draft saved; some HTML was removed for safety.");
-        } else say("Draft saved. The website has not changed.");
+        } else say("Draft saved. The website has not changed.", "success");
         void refreshDrafts();
         if (isNew && collection) { dirtyGuard = false; win.location.hash = `#/collections/${collection.key}/items/${encodeURIComponent(id!)}`; dirtyGuard = true; }
         return;
@@ -563,9 +575,49 @@ export const startAdmin = (options: AdminOptions) => {
       else showBanner(result.message);
     };
 
+    const publishHere = () => {
+      if (publish.disabled || dirty()) return;
+      const resource = resourceOf();
+      const labels: ReferenceLabels = Object.fromEntries(Object.entries(references).map(([key, target]) => [key, Object.fromEntries(target.items.map((item) => [item.id, item.label]))]));
+      const live = view?.content ?? undefined;
+      const changes = summarizeChanges({ fields, before: live, after: saved, references: labels, ...(collection && !live ? { newRecord: { itemLabel: collection.itemLabel, title: titleText() } } : {}) });
+      const problem = h(doc, "div", { class: "vc-dialog-problem", role: "alert", hidden: true });
+      let host = boot.site.url;
+      try { host = new URL(boot.site.url).host; } catch { /* the address as written */ }
+      openDialog(doc, {
+        title: `Publish ${titleText()}?`,
+        text: `These changes go live on ${host} in a few minutes. Other pages are not affected.`,
+        body: [changes.length ? h(doc, "ul", { class: "vc-changes vc-dialog-changes" }, changes.map(changeItem)) : h(doc, "p", { class: "vc-note" }, "No differences from the website. Publishing it only clears the draft."), problem],
+        buttons: [{ label: "Cancel", value: "cancel" }, { label: "Publish to website", kind: "primary", value: "publish" }],
+        onButton: async (value, dialog) => {
+          if (value !== "publish") return true;
+          dialog.busy(true);
+          problem.hidden = true;
+          setState("busy", "Publishing…");
+          const result = await api.post<PublishResult>("/api/cms/publish", { resources: [resource] });
+          dialog.busy(false);
+          if (!result.ok) {
+            refresh();
+            setState("error", "Not published");
+            clear(problem);
+            problem.append(h(doc, "p", {}, publishProblem(result)), h(doc, "a", { href: `#/publish/${encodeURIComponent(resource)}`, onclick: () => dialog.close("cancel") }, "Open in Review & publish"));
+            problem.hidden = false;
+            return false;
+          }
+          if (result.data.commitSha) watchLive({ expected: result.data.expectedLiveVersion, at: now(), userId: user.id, labels: [titleText()] });
+          say(result.data.commitSha ? `Published. Live on ${host} in a few minutes.` : "Nothing changed on the website; the draft is cleared.", "success");
+          void refreshDrafts();
+          dirtyGuard = false;
+          pending = route();
+          dirtyGuard = true;
+          return true;
+        },
+      });
+    };
+
     save.addEventListener("click", () => { void doSave(); });
     discard.addEventListener("click", async () => {
-      if (!input.url || !ask(`Discard your draft?\n\nYour saved changes to ${titleText()} are deleted. The website does not change.`)) return;
+      if (!input.url || !(await ask(`Discard your draft?\n\nThe website stays as it is. The changes saved in this ${titleText()} draft are deleted.`, { confirm: "Discard draft", danger: true }))) return;
       const result = await api.delete(input.url);
       if (!result.ok) { showBanner(result.message); return; }
       say("Draft discarded.");
@@ -579,7 +631,7 @@ export const startAdmin = (options: AdminOptions) => {
     doc.addEventListener("keydown", onKey);
 
     // P12c: History, for owners, once the resource exists on the website.
-    const historyLink = user.role === "owner" && !isNew && view?.content ? h(doc, "a", { href: `#/history/${encodeURIComponent(resourceOf())}`, class: "vc-icon-button vc-top-icon", "data-action": "history", "aria-label": "Version history", title: "Version history" }, icon(doc, "history")) : null;
+    const historyLink = user.role === "owner" && !isNew && view?.content ? h(doc, "a", { href: `#/history/${encodeURIComponent(resourceOf())}`, class: "vc-icon-button vc-top-icon", "data-action": "history", "aria-label": "Version history", "data-tip": "Version history" }, icon(doc, "history")) : null;
     actions.append(...(previewToggle ? [previewToggle] : []), ...(historyLink ? [historyLink] : []), discard, save, publish);
     if (view?.draft?.stale) showBanner("The website changed after this draft was started (someone published). Publishing this draft is refused until you discard it and make your change again on the current content.");
     const intro = isNew ? `Fill in the new ${collection!.itemLabel.toLowerCase()} and save a draft. It is not on the website until it is published.`
@@ -621,6 +673,14 @@ export const startAdmin = (options: AdminOptions) => {
     return h(doc, "li", { class: `vc-change vc-change-${change.kind}`, "data-path": change.path }, ...parts);
   };
 
+  /** U3: why the editor's Publish dialog could not publish, in plain words. */
+  const publishProblem = (result: ApiFail) => {
+    if (result.status === 401) return "You are signed out. Sign in again, then publish.";
+    if (result.error === "source_changed") return "Not published: the website changed after you started editing. Discard the draft and make your change again on the current content.";
+    if (result.error === "locked_field") return "Not published: only the owner can change some of these fields.";
+    if (result.error === "invalid_content") return `Not published: some fields need attention — ${(Array.isArray(result.data.errors) ? (result.data.errors as Array<{ message: string }>) : []).map((entry) => entry.message).join(" ") || result.message}`;
+    return `Not published. ${result.message}`;
+  };
   const urlOfDraft = (row: DraftRow) => (row.kind === "file" ? `/api/cms/files/${encodeURIComponent(row.key)}` : `/api/cms/collections/${encodeURIComponent(row.key)}/items/${encodeURIComponent(row.id ?? "")}`);
   const hrefOfDraft = (row: DraftRow) => (row.kind === "file" ? `#/files/${row.key}` : `#/collections/${row.key}/items/${encodeURIComponent(row.id ?? "")}`);
   /** P12c: what the History screen needs for a resource id ("file:site", "item:services:<id>"). */
@@ -765,7 +825,7 @@ export const startAdmin = (options: AdminOptions) => {
       if (result.ok && result.data.liveVersion === pending.expected) {
         remember(null);
         showLive("live", `Live on the website: ${pending.labels.join(", ")}.`);
-        say("Your changes are live on the website.");
+        say("Your changes are live on the website.", "success");
         return;
       }
       if (now() - pending.at >= maxWaitMs) {

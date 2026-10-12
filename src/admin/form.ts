@@ -32,7 +32,9 @@ export type FormOptions = {
   /** After every change, with the whole current value. */
   onChange?: (value: Record<string, unknown>, path: Path) => void;
   /** P10: open the image picker for an image field; `done` receives the chosen image. Without it, only the address. */
-  pickImage?: (current: string, done: (image: { src: string; width?: number; height?: number }) => void) => void;
+  pickImage?: (current: string, done: (image: { src: string; width?: number; height?: number }) => void, label?: string) => void;
+  /** U3: a short message for the person (a toast), with at most one action (e.g. Undo after replacing an image). */
+  notify?: (text: string, action?: { label: string; run: () => void }) => void;
   /** P8d: top-level keys whose rich text is Markdown (a Markdown record's body); the rest is HTML. */
   markdown?: string[];
   /** P8d tests: how the visual editor loads its Markdown converter. */
@@ -72,7 +74,7 @@ export const createForm = (options: FormOptions): Form => {
   // ---------------------------------------------------------------- shared pieces
 
   const button = (label: string, name: string, onClick: () => void, disabled: boolean, extra: Record<string, string> = {}) =>
-    h(doc, "button", { type: "button", class: `vc-icon-button vc-${name}`, "aria-label": label, title: label, disabled, onclick: (event: Event) => { event.preventDefault(); onClick(); }, ...extra }, icon(doc, name));
+    h(doc, "button", { type: "button", class: `vc-icon-button vc-${name}`, "aria-label": label, "data-tip": label, disabled, onclick: (event: Event) => { event.preventDefault(); onClick(); }, ...extra }, icon(doc, name));
 
   const labelContent = (field: Field, locked: boolean, text = field.label): Child[] => [
     text,
@@ -168,18 +170,75 @@ export const createForm = (options: FormOptions): Form => {
     const srcPart = part("Image address", src, "/images/photo.jpg");
     const altPart = field.alt || typeof record.alt === "string" ? part("Alt text (describes the image)", typeof record.alt === "string" ? record.alt : "", "e.g. Pedicure chair by the window") : null;
     const mobilePart = field.mobile || typeof record.mobile === "string" ? part("Image for phones (optional)", typeof record.mobile === "string" ? record.mobile : "", "/images/photo-mobile.jpg") : null;
+    // U3: the image card of the Mr Spa CMS — the picture as it is (contain, on the canvas colour), its file name and
+    // size; hover / focus shows Replace; ⋯ = Copy image link · Remove image; Desktop / Phone when there is a phone image.
+    // The address inputs stay under it (an address can also be typed).
+    const usable = (value: string) => /^(\/(?!\/)|https:\/\/)/.test(value);
     const thumb = h(doc, "img", { class: "vc-thumb", alt: "", hidden: true });
-    const showThumb = (value: string) => { const ok = /^(\/(?!\/)|https:\/\/)/.test(value); thumb.hidden = !ok; if (ok) thumb.setAttribute("src", value); else thumb.removeAttribute("src"); };
-    showThumb(src);
-    // P10: "Choose image…" opens the library / upload sheet; "Remove" empties the address (alt and phone image stay).
-    const pickers = (target: { input: HTMLInputElement; element: HTMLElement }, label: string, afterPick?: () => void) => {
-      if (!options.pickImage || disabled) return;
-      const choose = h(doc, "button", { type: "button", class: "vc-button", "aria-label": `Choose ${label}`, onclick: () => options.pickImage?.(target.input.value, (image) => { target.input.value = image.src; update(); afterPick?.(); }) }, "Choose image…");
-      const remove = h(doc, "button", { type: "button", class: "vc-button vc-quiet", "aria-label": `Remove ${label}`, onclick: () => { target.input.value = ""; update(); target.input.focus(); } }, "Remove");
-      target.element.append(h(doc, "div", { class: "vc-image-actions" }, choose, remove));
+    const empty = h(doc, "span", { class: "vc-image-empty" }, "No image yet");
+    const fileName = h(doc, "span", { class: "vc-image-name" });
+    const fileSize = h(doc, "span", { class: "vc-image-size" });
+    let target = srcPart;
+    const describe = () => (target === srcPart ? `the image for ${field.label}` : `the phone image for ${field.label}`);
+    const showThumb = () => {
+      const value = target.input.value;
+      const ok = usable(value);
+      thumb.hidden = !ok; empty.hidden = ok;
+      if (ok) { if (thumb.getAttribute("src") !== value) { fileSize.textContent = ""; thumb.setAttribute("src", value); } } else { thumb.removeAttribute("src"); fileSize.textContent = ""; }
+      fileName.textContent = value ? decodeURIComponent(value.split(/[?#]/)[0].split("/").pop() || value) : "";
+      for (const button of card.querySelectorAll<HTMLElement>("[data-image-action]")) {
+        const action = button.dataset.imageAction;
+        button.setAttribute("aria-label", `${action === "choose" ? "Choose" : action === "remove" ? "Remove" : "Copy the link of"} ${describe()}`);
+        if (action === "choose" && button.classList.contains("vc-image-replace")) button.textContent = value ? "Replace" : "Choose image";
+      }
+      menuButton.hidden = !value;
+      metaReplace.hidden = !value;
     };
-    pickers(srcPart, `the image for ${field.label}`, () => { if (altPart && !altPart.input.value) altPart.input.focus(); });
-    if (mobilePart) pickers(mobilePart, `the phone image for ${field.label}`);
+    thumb.addEventListener("load", () => { if (thumb.naturalWidth) fileSize.textContent = `${thumb.naturalWidth} × ${thumb.naturalHeight}`; });
+    const choose = () => {
+      const before = target.input.value;
+      const which = target;
+      options.pickImage?.(before, (image) => {
+        which.input.value = image.src;
+        update();
+        if (which === srcPart && altPart && !altPart.input.value) altPart.input.focus();
+        if (before && before !== image.src) options.notify?.("Image replaced", { label: "Undo", run: () => { which.input.value = before; update(); } });
+      }, field.label);
+    };
+    const menu = h(doc, "div", { class: "vc-menu vc-image-menu", role: "menu", hidden: true });
+    const closeMenu = () => { menu.hidden = true; menuButton.setAttribute("aria-expanded", "false"); };
+    const menuButton = h(doc, "button", { type: "button", class: "vc-icon-button vc-image-more", "aria-haspopup": "menu", "aria-expanded": "false", "aria-label": "More for this image", "data-tip": "More", onclick: (event: Event) => { event.stopPropagation(); menu.hidden = !menu.hidden; menuButton.setAttribute("aria-expanded", String(!menu.hidden)); if (!menu.hidden) menu.querySelector<HTMLElement>("button")?.focus(); } }, h(doc, "span", { "aria-hidden": "true" }, "⋯"));
+    menu.addEventListener("keydown", (event) => { if (event.key === "Escape") { event.stopPropagation(); closeMenu(); menuButton.focus(); } });
+    menu.append(
+      h(doc, "button", { type: "button", class: "vc-menu-item", role: "menuitem", "data-image-action": "copy", onclick: async () => {
+        closeMenu();
+        const value = target.input.value;
+        const address = /^https:\/\//.test(value) ? value : `${doc.defaultView?.location.origin ?? ""}${value}`;
+        try { await doc.defaultView?.navigator.clipboard.writeText(address); options.notify?.("Image link copied"); } catch { options.notify?.(`Image link: ${address}`); }
+      } }, "Copy image link"),
+      h(doc, "button", { type: "button", class: "vc-menu-item vc-danger", role: "menuitem", "data-image-action": "remove", onclick: () => {
+        closeMenu();
+        const before = target.input.value;
+        const which = target;
+        which.input.value = ""; update(); which.input.focus();
+        if (before) options.notify?.("Image removed", { label: "Undo", run: () => { which.input.value = before; update(); } });
+      } }, "Remove image"));
+    const canPick = Boolean(options.pickImage) && !disabled;
+    const metaReplace = h(doc, "button", { type: "button", class: "vc-link-button", tabindex: "-1", "aria-hidden": "true", onclick: choose }, "Replace");
+    const stage = h(doc, "div", { class: "vc-image-stage" }, thumb, empty,
+      canPick ? h(doc, "div", { class: "vc-image-overlay" }, h(doc, "button", { type: "button", class: "vc-button vc-image-replace", "data-image-action": "choose", onclick: choose }, "Replace")) : null);
+    if (canPick) thumb.addEventListener("click", choose);
+    const devices = mobilePart ? h(doc, "div", { class: "vc-segment vc-image-devices", role: "group", "aria-label": "Which image" },
+      ...([["Desktop", srcPart], ["Phone", mobilePart]] as const).map(([label, part]) => h(doc, "button", { type: "button", class: "vc-segment-item", "aria-pressed": String(part === srcPart), onclick: (event: Event) => {
+        target = part;
+        for (const button of devices!.querySelectorAll("button")) button.setAttribute("aria-pressed", String(button === event.currentTarget));
+        showThumb();
+      } }, label))) : null;
+    const card = h(doc, "div", { class: "vc-image-card" }, stage,
+      h(doc, "div", { class: "vc-image-meta" }, h(doc, "span", { class: "vc-image-file" }, fileName, fileSize), canPick ? metaReplace : null),
+      canPick ? h(doc, "div", { class: "vc-image-tools" }, devices, menuButton, menu) : devices ? h(doc, "div", { class: "vc-image-tools" }, devices) : null);
+    doc.addEventListener("click", (event) => { if (!menu.hidden && !menu.contains(event.target as Node)) closeMenu(); });
+    showThumb();
     const update = () => {
       const now = getAt(state, path);
       const nextSrc = srcPart.input.value;
@@ -192,11 +251,11 @@ export const createForm = (options: FormOptions): Form => {
         for (const [key, value] of [["alt", alt], ["mobile", mobile]] as const) { if (value || key in object) object[key] = value; }
         next = object;
       } else next = nextSrc === "" && wasAbsent ? undefined : nextSrc;
-      showThumb(nextSrc);
+      showThumb();
       set(path, next);
     };
     for (const entry of [srcPart, altPart, mobilePart]) entry?.input.addEventListener("input", update);
-    return { control: h(doc, "div", { class: "vc-image" }, thumb, h(doc, "div", { class: "vc-image-parts" }, srcPart.element, altPart?.element, mobilePart?.element)) };
+    return { control: h(doc, "div", { class: "vc-image" }, card, h(doc, "div", { class: "vc-image-parts" }, srcPart.element, altPart?.element, mobilePart?.element)) };
   };
 
   const hoursInput = (path: Path, disabled: boolean) => {
