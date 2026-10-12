@@ -3,6 +3,23 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.15.0 — unreleased (P12b)
+
+- **Fixed lists:** `f.list(…, { fixed: true })` — the site's code decides which items exist: nobody (owner included)
+  adds, removes or moves them; their values stay editable, and lists inside the items keep their own rules. Checked
+  when a draft is saved and again at publish (422 `fixed_list`); the form shows no add / delete / move buttons and says
+  why.
+- **Fixed collections:** `fixed: true` on a collection — no new record (422 `fixed_collection`, no "Add" button);
+  existing records stay editable.
+- **Owner-only sections:** `access: "owner"` on a file or a collection — editors do not see it (not in the navigation,
+  overview, drafts or the admin's config) and get 403 `owner_only`; a refused save or publish writes one audit row
+  (`denied`, reason `owner_only`). Use it for a section editors should not open at all; `locked: "owner"` on fields
+  still shows them to editors, greyed out.
+- **Activity** (owners): the audit log in plain words — publishes, sign-ins, people changes and what was refused —
+  50 at a time, with filters All · Publishing · Sign-ins · People · Refused. API: `GET /api/cms/activity?kind=&before=`.
+  Contents are never shown (the audit never holds them).
+- Site action: none. Add `fixed` / `access` to `cms.config.ts` where the site needs them.
+
 ## 0.14.0 — unreleased (P11)
 
 - **The `vibe-cms` command** (`npx vibe-cms help`, run in the site's folder):

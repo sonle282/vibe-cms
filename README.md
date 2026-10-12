@@ -5,12 +5,14 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.14.0 · P11.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
+> Status: **0.15.0 · P12b.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
 > fields on the server, CMS API + one-commit GitHub publishing, sign-in, and the editor at `/admin` (lists, forms
 > generated from `cms.config`, a visual rich-text editor, a live preview of the draft on the real page, drafts, review
 > of changes, publish, live status, People, My account), rich text cleaned on the server, images (upload to R2, picker,
 > inline images resized by dragging, published in the same commit), and the `vibe-cms` command (setup, migrate, check,
-> export / import, update, reset-owner-password). Next: the first site (P12–P15;
+> export / import, update, reset-owner-password), fixed lists / collections, owner-only sections and the Activity log.
+> Next: the rest of what the first real sites use (history, field plugins, CLI import, image crop — P12c–P12f), then
+> moving them onto the package (P13–P18;
 > [docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
 
 ## Install in a site (5 steps, no token)
@@ -130,9 +132,9 @@ All problems are listed at once, each with its place and a fix; warnings are pri
 | `repo` | `owner` a GitHub user / organisation name; `name` a repository name (no `.git`); `branch` required and a valid git branch name (no space, `..`, `~^:?*[\`, `@{`, `.lock`, empty parts) |
 | Keys | file / collection keys: lowercase `a-z0-9-`, unique across files **and** collections; field keys: identifiers, dotted keys allowed (`"about.title"`) but not clashing with a field at the same level; section keys unique; a field in one section only (a field in no section = warning) |
 | Paths | relative, `/` separators, no `..`, not absolute, inside `src/data/` or `src/content/` (add more with `contentDirs`); one entry per path; files are `.json` — **YAML is not supported**; `preview` starts with `/` and its `{placeholders}` are fields of the entry |
-| Collections | `store.kind` is `"json-array"` (needs `path` to a `.json` file + `idField`) or `"markdown-dir"` (needs `dir` + `slugField`); the id field, if declared, is text; `order.by` is a field; `status.live` ≠ `status.draft` and both are options of a `status` select |
+| Collections | `store.kind` is `"json-array"` (needs `path` to a `.json` file + `idField`) or `"markdown-dir"` (needs `dir` + `slugField`); the id field, if declared, is text; `order.by` is a field; `status.live` ≠ `status.draft` and both are options of a `status` select; `fixed` is true / false; `access` (files too) only `"owner"` |
 | Every field | known type; `label` required; no unknown options; `required` is true / false; `locked` only `"owner"` |
-| Per type | `text.maxLength` ≥ 1; `select.options` non-empty and unique; `list.of` required (checked too), `min` ≤ `max`; `object.fields` non-empty; `reference.to` names an existing collection (`ordered` without `multiple` = warning); `hours` takes no options; object / list nesting at most **4** levels |
+| Per type | `text.maxLength` ≥ 1; `select.options` non-empty and unique; `list.of` required (checked too), `min` ≤ `max`, `fixed` true / false (with `min` / `max` = warning); `object.fields` non-empty; `reference.to` names an existing collection (`ordered` without `multiple` = warning); `hours` takes no options; object / list nesting at most **4** levels |
 | Content | every declared file / folder exists and parses (JSON; Markdown front matter); json-array files hold a list of records with unique ids; each value matches its field — text is a string (`maxLength`), select is one of the options, hours rows are `{ days: [0–6], open: "HH:MM", close: "HH:MM" }` or `{ days, closed: true }` (each day once, close after open), lists respect `min` / `max`, references point to existing ids, images are a path or `{ src, alt }`; missing **required** values are errors; properties the config does not declare are **warnings** |
 
 Example — a real build of the demo site with a price written as a number, an unknown category and an extra property
@@ -163,6 +165,20 @@ Fields with `locked: "owner"` are enforced on the server when a draft is saved *
 not change them (at any depth), may add an item only with its locked fields empty, may re-order items, and may not remove
 an item whose locked fields hold a value. A refusal is a 403 `locked_field` with the field paths and labels
 ("Only the owner can change Price") and one audit row — never the values. Rules in detail: docs/DESIGN.md §C.1.
+
+## Fixed lists, owner-only sections, Activity (P12b)
+
+```ts
+groups: f.list(f.object({ label: "Group", fields: { … } }), { label: "Menu groups", fixed: true }), // items: edit only
+// a collection:  { key: "services", …, fixed: true }   — no new record
+// a file / collection:  { key: "salon", …, access: "owner" }   — editors do not see it
+```
+
+- `fixed: true` on a list: nobody (owner included) adds, removes or moves its items — the site's code decides which
+  exist; their values stay editable. On a collection: no new record. Checked at save and at publish.
+- `access: "owner"`: the whole file / collection is hidden from editors (403 `owner_only`, audited). `locked: "owner"`
+  on a field is the softer form: editors see it, greyed out.
+- **Activity** (owners, in the navigation): publishes, sign-ins, people changes and refusals in plain words, 50 at a time.
 
 ## CMS API and publishing (P5)
 

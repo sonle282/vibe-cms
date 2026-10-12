@@ -1,8 +1,8 @@
-# Vibe CMS — Tracker (P1–P22)
+# Vibe CMS — Tracker (P1–P22, P12b–P12f)
 
 > Nguồn: [DESIGN.md](DESIGN.md) §I. Quy tắc: 1 task = 1 commit; mỗi task REPORT → DỪNG chờ review. Test của gói **không đọc
 > dữ liệu site khách**. Task có sửa repo site: đầu task `git status` sạch + pull nhánh production của site; có thay đổi
-> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-11 (P11).
+> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (P12b).
 
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
@@ -21,14 +21,19 @@
 | **P8d** | Trình soạn thảo richText trực quan (SonLe thêm 2026-10-08): thanh định dạng (đoạn, H2 / H3, đậm, nghiêng, danh sách, trích dẫn, link) thay ô HTML; **chèn / xoá ảnh trong bài**, **kéo đổi cỡ ảnh giữ nguyên tỉ lệ** (ghi `width`), sửa alt; dán chỉ giữ chữ. Chèn ảnh từ thư viện / tải lên dùng bộ chọn ảnh của P10 | 12–20 | ✅ Xong (merge 2026-10-09; 8e91b7f, CI 37884855754) |
 | **P9** | Bridge chung (iframe cùng origin — bridge chạy trong admin, không script trên trang; `data-cms-*` + selector, SECTION_MAP, U23, F-15) + pane preview cạnh form | 16–24 | ✅ Xong (merge 2026-10-09; a6c1c0d, CI 37889486648) |
 | **P10** | Ảnh (upload R2 staging, sheet chọn ảnh, alt) — SonLe duyệt làm trước P8d (2026-10-08) | 16–24 | ✅ Xong (merge 2026-10-09; 9be4829, CI 37717835049) |
-| **P11** | CLI `vibe-cms setup` (idempotent, `--account`) / `migrate` / `check` / `export` + `import` / `update` (đổi URL release) + `reset-owner-password` (owner quên mật khẩu → mật khẩu tạm, không sửa D1 tay) + tài liệu cài không token | 16–24 | 🔎 Chờ review (commit + CI: xem PR) |
-| P12 | Innovate Bước 0 + tách nội dung → JSON (HTML public giống từng byte) | 10–16 | ⏳ |
-| P13 | Innovate: adapter Cloudflare cho route gói, gộp worker form liên hệ | 8–14 | ⏳ |
-| P14 | Innovate: cài gói (URL release) + `cms.config` + `data-cms-*` + ô khoá | 10–16 | ⏳ |
-| P15 | Innovate: setup tài nguyên + token 1 repo + owner / editor + G.2; Workers Builds xanh không biến môi trường token nào; lưu + đọc 1 nháp > 100 KB trên D1 THẬT | 8–12 | ⏳ |
-| P16 | Novelle Bước 0 + tách nội dung → JSON | 8–12 | ⏳ |
-| P17 | Novelle: cài gói + config + `data-cms-*` + ô khoá | 10–16 | ⏳ |
-| P18 | Novelle: setup + G.2 (Workers Builds, không token) | 8–12 | ⏳ |
+| **P11** | CLI `vibe-cms setup` (idempotent, `--account`) / `migrate` / `check` / `export` + `import` / `update` (đổi URL release) + `reset-owner-password` (owner quên mật khẩu → mật khẩu tạm, không sửa D1 tay) + tài liệu cài không token | 16–24 | ✅ Xong (merge 2026-10-12; 6ec2860, CI 38186633041) |
+| **P12** | Bước 0 (chỉ đọc 2 site pilot): cả hai đã chạy CMS chép tay (Innovate đã go-live) → viết lại P12–P18 (chi tiết: tài liệu private). SonLe duyệt 2026-10-12: thay cả 2 bản chép bằng gói, **Novelle trước** | — | ✅ Xong (duyệt 2026-10-12) |
+| **P12b** | Gói: list cố định (`fixed: true`), collection cố định, mục chỉ owner (`access: "owner"`, 403 + audit), màn **Activity** (owner) | 12–18 | 🔎 Chờ review (commit + CI: xem PR) |
+| P12c | Gói: **History + Restore as draft** — đọc lịch sử commit của file trên GitHub (gồm cả các lần publish bằng CMS cũ, không cần chuyển dữ liệu) | 10–16 | ⏳ |
+| P12d | Gói: plugin kiểu field riêng của site (giá tham chiếu, token trong chữ, ảnh theo tên manifest + kích thước do build tạo) — dời 1 phần P19 lên | 14–22 | ⏳ |
+| P12e | CLI: `import-legacy-users` từ D1 của CMS chép (cùng định dạng hash → không đặt lại mật khẩu; admin → owner) | 6–10 | ⏳ |
+| P12f | Gói: cắt / đổi cỡ ảnh = **bản sao mới**, giữ ảnh gốc (như Mr Spa), làm trong trình duyệt — không binding `IMAGES` | 8–14 | ⏳ |
+| P13 | Novelle: `cms.config` trên JSON có sẵn (không đổi nội dung) + plugin + `bind` selector; chạy song song CMS chép ở local | 10–16 | ⏳ |
+| P14 | Novelle: chuyển (`setup --site novelle`, nhập users, gỡ CMS chép), G.2 1 cặp trên `dev`, Workers Builds không biến token | 10–16 | ⏳ |
+| P15 | Innovate: tách nốt `site.ts` → JSON (reviews, FAQ, membership, chính sách, Journal…) — HTML giống từng byte | 8–14 | ⏳ |
+| P16 | Innovate: `cms.config` + plugin + collection cho các mục vừa tách; `wrangler.toml` → `wrangler.jsonc`; song song ở local | 12–18 | ⏳ |
+| P17 | Innovate: chuyển production trong khung giờ báo chủ (publish hết nháp trước, nhập users), G.2 trên `main`; lưu + đọc 1 nháp > 100 KB trên D1 THẬT | 8–12 | ⏳ |
+| P18 | Innovate: dọn CMS chép; D1 / R2 cũ giữ 30 ngày rồi chủ xoá | 4–8 | ⏳ |
 | P19 | Plugin catalog + redirects-check | 16–24 | ⏳ |
 | P20 | Mr Spa: `cms.config` đầy đủ (chưa bật) | 16–24 | ⏳ |
 | P21 | Mr Spa: bật gói thay CMS cũ, HTML public giống từng byte | 20–32 | ⏳ |
@@ -61,6 +66,15 @@
   "Contact & hours · Address › Street"; bấm số điện thoại trên trang → form focus đúng ô; link ngoài + form không chạy;
   footer (list lồng nhau) thêm / bớt / đổi chỗ theo form; dịch vụ sửa và dịch vụ mới hiện trong list; bấm footer từ
   trang dịch vụ → mở Salon info đúng field; bài blog: thân Markdown + ảnh đã đổi cỡ hiện trên trang bài.
+- **Kế hoạch P12–P18 viết lại (2026-10-12):** 2 site pilot đã tự chép CMS của site đầu tiên vào (mỗi bản ~10k dòng) trong
+  lúc gói được làm → không còn "cài mới" mà là thay một CMS đang chạy. Nguyên tắc (SonLe): gói **cắm vào web nào cũng
+  dùng được, tuỳ biến dễ (config + plugin, không sửa lõi theo site), nâng phiên bản là site nâng theo**. Vì vậy các thứ
+  bản chép có mà gói thiếu được làm thành tuỳ chọn / plugin chung (P12b–P12f) trước khi chuyển site nào.
+- **P12b:** `test/structure.test.mjs` — config, `checkFixedLists` (thêm / bớt / đổi chỗ / thay id; list không cố định bên
+  trong item; item mới), API thật (owner cũng bị chặn list cố định khi lưu và lại khi publish — nháp lưu trước khi list
+  thành cố định bị từ chối lúc publish, audit `failed`, không commit; collection cố định không thêm bản ghi; mục chỉ
+  owner: editor không thấy trong overview / nháp / boot, 403 + 1 dòng audit khi lưu / publish), `/activity` (editor 403,
+  bộ lọc, 50 / trang + `before`, tên người + nhãn mục), admin trên DOM giả, audit D1 bằng SQL thật (node:sqlite + migration).
 - **CLI (P11):** `test/cli.test.mjs` chạy `setup` với wrangler GIẢ (`test/helpers/fake-wrangler.mjs`, account trong file
   JSON): lần 1 tạo D1 / KV / R2 + ghi 5 binding + 5 migration; lần 2 không tạo gì, `wrangler.jsonc` giống từng byte;
   `--account` khác → mọi lệnh chạy ở account đó, id đổi theo, tên + rate limit giữ; binding trỏ site khác → từ chối,

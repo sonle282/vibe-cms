@@ -16,12 +16,16 @@
  *   POST   /media                           P10: upload one prepared image (raw bytes; x-file-name header)
  *   POST   /publish                         { resources: [...] } → exactly one commit (with the uploads it uses)
  *   GET    /live-version                    the version of the content this Worker serves
+ *   GET    /activity?kind=&before=          P12b: the audit log in pages, for owners (kind: all | publish | signin | people | denied)
+ * P12b: a file / collection with access: "owner" answers 403 owner_only to editors (and is not listed for them); lists
+ * with fixed: true and collections with fixed: true keep their shape for everyone (422 fixed_list / fixed_collection).
  * Every GET answers with the header x-cms-live-version (F-16).
  */
 import type { CmsCollection, CmsConfig, CmsFile } from "../config/index.js";
 import { checkRecordValues } from "../check/values.js";
+import { checkFixedLists } from "../check/structure.js";
 import { describeCleaned, RICH_TEXT_MAX_CHARS, sanitizeRecord, unsafeOnly, type CleanedField } from "../check/rich-text.js";
-import { checkPublishLocks, LockedFieldError, lockedFieldBody, saveDraftChecked, type AuditLog, type Role } from "../locks/index.js";
+import { checkPublishLocks, LockedFieldError, lockedFieldBody, saveDraftChecked, type AuditEntry, type AuditLog, type Role } from "../locks/index.js";
 import {
   assertUserId, createContentReader, DraftConflictError, DraftTooLargeError, MAX_DRAFT_BYTES, parseResourceId, resourceId, textVersion, valueVersion,
   type ContentSource, type Draft, type DraftStore,
@@ -92,6 +96,8 @@ export type CmsApiDeps = {
   publishLimiter?: RateLimiter | undefined;
   /** true in production builds: no publish limiter → publish answers 503. */
   requirePublishLimiter?: boolean;
+  /** P12b: names for the Activity screen (id → username / display name). */
+  userNames?: () => Promise<Array<{ id: string; username: string; displayName: string }>>;
   /** Test seam: the writer used at publish (default: the P3 writer). */
   write?: (collectionOrFile: { kind: "file" } | { kind: "json-array"; idField: string } | { kind: "markdown" }, text: string | undefined, id: string | undefined, content: unknown) => WriteResult;
 };
@@ -138,6 +144,21 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     return { kind: "item", collection, id: parsed.id, resource, label: collection.itemLabel };
   };
   const pathOf = (target: Target) => (target.kind === "file" ? target.file.path : recordPath(target.collection, target.id));
+
+  // P12b: owner-only files / collections. A refused save or publish writes one audit "denied" row (reads do not).
+  const mayOpen = (user: Identity, entry: CmsFile | CmsCollection) => entry.access !== "owner" || user.role === "owner";
+  const entryOf = (target: Target) => (target.kind === "file" ? target.file : target.collection);
+  const requireAccess = async (user: Identity, target: Target, stage?: "draft" | "publish") => {
+    const entry = entryOf(target);
+    if (mayOpen(user, entry)) return;
+    if (stage && deps.audit) await deps.audit.record({ at: now(), userId: user.userId, role: user.role, action: "denied", stage, resource: target.resource, detail: { reason: "owner_only" } });
+    fail(403, "owner_only", `Only an owner can open or change ${entry.label}.`);
+  };
+  /** P12b: fixed lists keep their items; a fixed collection gets no new record. before undefined = a new record. */
+  const structureProblems = (target: Target, before: unknown, content: unknown) => {
+    if (target.kind === "item" && target.collection.fixed && before === undefined) return [{ path: "", message: `${target.collection.label} has a fixed set of records — a new ${target.collection.itemLabel.toLowerCase()} cannot be added`, hint: "edit one of the existing records; which records exist is decided in the site's code" }];
+    return checkFixedLists(entryOf(target).fields, before, content);
+  };
 
   // Live content (what this Worker was built with).
   let liveFiles: Promise<Record<string, string>> | undefined;
@@ -220,8 +241,8 @@ export const createCmsApi = (deps: CmsApiDeps) => {
   const listContent = async (user: Identity) => {
     const drafts = need(deps.drafts, "storage");
     const mine = await drafts.mine(user.userId);
-    const files = config.files.map((file) => ({ kind: "file", key: file.key, label: file.label, resource: resourceId({ kind: "file", key: file.key }), hasDraft: mine.some((row) => row.resource === resourceId({ kind: "file", key: file.key })) }));
-    const collections = await Promise.all(config.collections.map(async (collection) => ({
+    const files = config.files.filter((file) => mayOpen(user, file)).map((file) => ({ kind: "file", key: file.key, label: file.label, resource: resourceId({ kind: "file", key: file.key }), hasDraft: mine.some((row) => row.resource === resourceId({ kind: "file", key: file.key })) }));
+    const collections = await Promise.all(config.collections.filter((collection) => mayOpen(user, collection)).map(async (collection) => ({
       kind: "collection", key: collection.key, label: collection.label, itemLabel: collection.itemLabel,
       count: (await reader.items(collection.key)).length, drafts: mine.filter((row) => row.kind === "item" && row.resourceKey === collection.key).length,
     })));
@@ -230,6 +251,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
 
   const listItems = async (user: Identity, key: string) => {
     const collection = collectionOf(key);
+    if (!mayOpen(user, collection)) fail(403, "owner_only", `Only an owner can open or change ${collection.label}.`);
     const drafts = need(deps.drafts, "storage");
     const mine = (await drafts.mine(user.userId)).filter((row) => row.kind === "item" && row.resourceKey === key);
     const records = await reader.items(key);
@@ -244,6 +266,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
   };
 
   const getResource = async (user: Identity, target: Target) => {
+    await requireAccess(user, target);
     const drafts = need(deps.drafts, "storage");
     const current = await live(target);
     const draft = await drafts.get(user.userId, target.resource);
@@ -254,6 +277,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
   const putDraft = async (request: Request, user: Identity, target: Target) => {
     const drafts = need(deps.drafts, "storage");
     const audit = need(deps.audit, "storage");
+    await requireAccess(user, target, "draft");
     const body = await readBody(request);
     const expectedRevision = body.expectedRevision;
     if (typeof expectedRevision !== "number" || !Number.isInteger(expectedRevision) || expectedRevision < 0) fail(400, "expected_revision_required", "expectedRevision is required: 0 for a new draft, else the revision you loaded.");
@@ -261,6 +285,8 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     const checked = await checkValues(target, body.content);
     if (checked.errors.length) fail(422, "invalid_content", "The content does not match cms.config.", { errors: checked.errors });
     const current = await live(target);
+    const fixed = structureProblems(target, current.value, body.content);
+    if (fixed.length) fail(422, target.kind === "item" && target.collection.fixed && current.value === undefined ? "fixed_collection" : "fixed_list", fixed[0].message, { errors: fixed });
     // The version the user OPENED, not the live one at save time: a publish by someone else in between must still be
     // caught at publish (409). A new draft must say it; an existing draft keeps the version it started from.
     const existing = await drafts.get(user.userId, target.resource);
@@ -291,6 +317,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     for (const row of rows) {
       let target: Target;
       try { target = targetOf(row.resource); } catch { continue; } // a file / collection removed from cms.config
+      if (!mayOpen(user, entryOf(target))) continue; // owner-only, and this user is an editor now
       const current = await live(target);
       out.push({
         resource: row.resource, kind: row.kind, key: row.resourceKey, id: row.itemId, label: row.label || target.label,
@@ -301,7 +328,10 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     return json({ drafts: out });
   };
 
-  const deleteDraft = async (user: Identity, target: Target) => json({ resource: target.resource, deleted: await need(deps.drafts, "storage").discard(user.userId, target.resource) });
+  const deleteDraft = async (user: Identity, target: Target) => {
+    await requireAccess(user, target);
+    return json({ resource: target.resource, deleted: await need(deps.drafts, "storage").discard(user.userId, target.resource) });
+  };
 
   const publish = async (request: Request, user: Identity) => {
     const drafts = need(deps.drafts, "storage");
@@ -324,6 +354,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
       if (!draft) fail(404, "no_draft", `You have no draft of ${target.resource}.`, { resource: target.resource });
       loaded.push({ target, draft: draft! });
     }
+    for (const { target } of loaded) await requireAccess(user, target, "publish");
     const publishId = crypto.randomUUID();
     const record = (action: "started" | "succeeded" | "failed", detail: Record<string, unknown>) =>
       Promise.all(loaded.map(({ target }) => audit.record({ at: now(), userId: user.userId, role: user.role, action, stage: "publish", resource: target.resource, detail: { publishId, ...detail } })));
@@ -367,6 +398,8 @@ export const createCmsApi = (deps: CmsApiDeps) => {
         for (const { target, draft } of loaded) {
           const checked = await checkValues(target, draft.content, newIds);
           if (checked.errors.length) return await failWith(422, "invalid_content", `${target.resource} does not match cms.config.`, { resource: target.resource, errors: checked.errors });
+          const fixed = structureProblems(target, befores.get(target.resource), draft.content);
+          if (fixed.length) return await failWith(422, target.kind === "item" && target.collection.fixed && befores.get(target.resource) === undefined ? "fixed_collection" : "fixed_list", fixed[0].message, { resource: target.resource, errors: fixed });
         }
 
         // 4. Write with the format-keeping writer (several records of one file are applied in turn).
@@ -461,6 +494,47 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     }
   };
 
+  // ---------------------------------------------------------------- activity (P12b)
+
+  /** What each filter of the Activity screen shows. "started" publish rows are never listed (the outcome row is). */
+  const ACTIVITY: Record<string, { stages?: Array<AuditEntry["stage"]>; actions: Array<AuditEntry["action"]> }> = {
+    all: { actions: ["succeeded", "failed", "denied", "login", "login_failed", "logout", "password_change", "bootstrap", "user_create", "user_disable", "user_enable", "user_password_reset", "user_role_change"] },
+    publish: { stages: ["publish"], actions: ["succeeded", "failed"] },
+    signin: { stages: ["auth"], actions: ["login", "login_failed", "logout", "password_change", "bootstrap"] },
+    people: { stages: ["people"], actions: ["user_create", "user_disable", "user_enable", "user_password_reset", "user_role_change"] },
+    denied: { actions: ["denied", "login_failed"] },
+  };
+  const ACTIVITY_PAGE = 50;
+
+  /** "Salon info", "Service · nail-art", a person's name — the label of an audit row's resource, from cms.config. */
+  const resourceLabel = (resource: string, names: Map<string, string>) => {
+    if (resource.startsWith("user:")) return names.get(resource.slice(5)) ?? "A person";
+    try {
+      const parsed = parseResourceId(resource);
+      if (parsed.kind === "file") return config.files.find((entry) => entry.key === parsed.key)?.label ?? parsed.key;
+      const collection = config.collections.find((entry) => entry.key === parsed.key);
+      return collection ? `${collection.itemLabel} · ${parsed.id}` : parsed.id;
+    } catch { return resource; }
+  };
+
+  const activity = async (request: Request, user: Identity) => {
+    if (user.role !== "owner") fail(403, "owner_only", "Only an owner can see the activity log.");
+    const audit = need(deps.audit, "storage");
+    const params = new URL(request.url).searchParams;
+    const kind = params.get("kind") ?? "all";
+    const filter = ACTIVITY[kind] ?? fail(400, "bad_request", `kind must be one of ${Object.keys(ACTIVITY).join(", ")}.`);
+    const beforeText = params.get("before");
+    const before = beforeText === null ? undefined : Number(beforeText);
+    if (before !== undefined && !(Number.isSafeInteger(before) && before > 0)) fail(400, "bad_request", "before must be the id of an activity row.");
+    const rows = await audit.list({ limit: ACTIVITY_PAGE, before, ...filter });
+    const names = new Map((await (deps.userNames?.() ?? Promise.resolve([]))).map((person) => [person.id, person.displayName || person.username]));
+    const entries = rows.map((row) => ({
+      id: row.id, at: row.at, userId: row.userId, who: names.get(row.userId) ?? (row.userId === "anonymous" ? null : row.userId), role: row.role,
+      action: row.action, stage: row.stage, resource: row.resource, what: resourceLabel(row.resource, names), detail: row.detail,
+    }));
+    return json({ kind, entries, next: rows.length === ACTIVITY_PAGE ? rows[rows.length - 1].id : null });
+  };
+
   // ---------------------------------------------------------------- router
 
   const routes: Array<{ pattern: RegExp; methods: Record<string, (request: Request, user: Identity, match: RegExpMatchArray) => Promise<Response>> }> = [
@@ -473,6 +547,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
       PATCH: (request, user, match) => (deps.people ?? fail(404, "not_found", "People are not available on this site."))(request, user, match[1]),
     } },
     { pattern: /^\/drafts$/, methods: { GET: (_request, user) => listDrafts(user) } },
+    { pattern: /^\/activity$/, methods: { GET: (request, user) => activity(request, user) } },
     { pattern: /^\/media$/, methods: { GET: (request) => listMedia(request), POST: (request, user) => uploadMedia(request, user) } },
     { pattern: /^\/live-version$/, methods: { GET: async () => json({ liveVersion: await getLiveVersion(), branch: config.repo.branch }) } },
     { pattern: /^\/publish$/, methods: { POST: (request, user) => publish(request, user) } },

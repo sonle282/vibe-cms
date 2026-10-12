@@ -44,7 +44,7 @@ const FIELD_OPTIONS: Record<string, string[]> = {
   select: ["options"],
   hours: [],
   object: ["fields"],
-  list: ["of", "ordered", "min", "max", "itemLabel"],
+  list: ["of", "ordered", "min", "max", "itemLabel", "fixed"],
   reference: ["to", "multiple", "ordered"],
 };
 const TOP_LEVEL = ["configVersion", "site", "repo", "roles", "contentDirs", "files", "collections", "media"];
@@ -79,6 +79,10 @@ const warn = (context: Context, path: string, message: string, hint?: string) =>
 
 const checkBoolean = (context: Context, field: Record<string, unknown>, name: string, at: string) => {
   if (field[name] !== undefined && typeof field[name] !== "boolean") err(context, `${at}.${name}`, `must be true or false (got ${show(field[name])})`);
+};
+/** P12b: access: "owner" — the whole file / collection is for owners only. */
+const checkAccess = (context: Context, entry: Record<string, unknown>, at: string) => {
+  if (entry.access !== undefined && entry.access !== "owner") err(context, `${at}.access`, `only "owner" is allowed (got ${show(entry.access)})`, 'write access: "owner" or remove it');
 };
 const checkCount = (context: Context, field: Record<string, unknown>, name: string, at: string, min: number) => {
   const value = field[name];
@@ -123,6 +127,8 @@ export const checkField = (context: Context, field: unknown, at: string, depth: 
       if (field.of === undefined) err(context, `${at}.of`, "required — the kind of item", 'e.g. f.list(f.text({ label: "Extra" }), { label: "Extras" })');
       else checkField(context, field.of, `${at}.of`, depth + 1);
       checkBoolean(context, field, "ordered", at);
+      checkBoolean(context, field, "fixed", at);
+      if (field.fixed === true && (field.min !== undefined || field.max !== undefined)) warn(context, `${at}.fixed`, "a fixed list keeps its items, so min / max have no effect");
       checkCount(context, field, "min", at, 0);
       checkCount(context, field, "max", at, 1);
       if (Number.isInteger(field.min) && Number.isInteger(field.max) && (field.min as number) > (field.max as number)) err(context, `${at}.min`, `is bigger than max (${field.min} > ${field.max})`);
@@ -240,7 +246,8 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     config.files.forEach((entry, index) => {
       const at = `files[${index}]`;
       if (!isRecord(entry)) { err(context, at, "must be an object", '{ key, label, path, format: "json", fields }'); return; }
-      for (const key of Object.keys(entry)) if (!["key", "label", "path", "format", "preview", "sections", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, path, format, preview, sections, fields");
+      for (const key of Object.keys(entry)) if (!["key", "label", "path", "format", "preview", "sections", "access", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, path, format, preview, sections, access, fields");
+      checkAccess(context, entry, at);
       if (!filled(entry.key)) err(context, `${at}.key`, "required — a short id", 'e.g. "site"');
       else if (!RESOURCE_KEY.test(entry.key)) err(context, `${at}.key`, `${show(entry.key)} is not a valid key`, 'lowercase letters, digits and "-", starting with a letter');
       if (!filled(entry.label)) err(context, `${at}.label`, "required — the name editors see", 'e.g. "Salon info"');
@@ -259,7 +266,9 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     collections.forEach((entry, index) => {
       const at = `collections[${index}]`;
       if (!isRecord(entry)) { err(context, at, "must be an object", "{ key, label, itemLabel, store, fields }"); return; }
-      for (const key of Object.keys(entry)) if (!["key", "label", "itemLabel", "store", "status", "preview", "order", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, itemLabel, store, status, preview, order, fields");
+      for (const key of Object.keys(entry)) if (!["key", "label", "itemLabel", "store", "status", "preview", "order", "access", "fixed", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, itemLabel, store, status, preview, order, access, fixed, fields");
+      checkAccess(context, entry, at);
+      checkBoolean(context, entry, "fixed", at);
       if (!filled(entry.key)) err(context, `${at}.key`, "required — a short id", 'e.g. "services"');
       else if (!RESOURCE_KEY.test(entry.key)) err(context, `${at}.key`, `${show(entry.key)} is not a valid key`, 'lowercase letters, digits and "-", starting with a letter');
       if (!filled(entry.label)) err(context, `${at}.label`, "required — the name editors see", 'e.g. "Services"');

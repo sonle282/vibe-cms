@@ -181,10 +181,11 @@ export type AuditEntry = {
   /** JSON-able detail. Never content values — only paths, labels, reasons, ids. */
   detail: Record<string, unknown>;
 };
+export type AuditQuery = { resource?: string; limit?: number; before?: number; stages?: Array<AuditEntry["stage"]>; actions?: Array<AuditEntry["action"]> };
 export interface AuditLog {
   record(entry: AuditEntry): Promise<void>;
-  /** Newest first. */
-  list(options?: { resource?: string; limit?: number }): Promise<Array<AuditEntry & { id: number }>>;
+  /** Newest first. P12b: `before` = only rows with a smaller id (the next page); `stages` / `actions` = only these. */
+  list(options?: AuditQuery): Promise<Array<AuditEntry & { id: number }>>;
 }
 
 export class LockedFieldError extends Error {
