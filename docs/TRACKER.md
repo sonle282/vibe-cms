@@ -2,7 +2,7 @@
 
 > Nguồn: [DESIGN.md](DESIGN.md) §I. Quy tắc: 1 task = 1 commit; mỗi task REPORT → DỪNG chờ review. Test của gói **không đọc
 > dữ liệu site khách**. Task có sửa repo site: đầu task `git status` sạch + pull nhánh production của site; có thay đổi
-> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (P16a · number + id từ tên).
+> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (release v0.21.0 · P15, P16a xong).
 
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
@@ -28,7 +28,7 @@
 | **P12d** | Gói: `f.tuple`, text `pattern` / `tokens`, rich text `allow`, **`rules` của site** (chỗ cắm plugin: build + lưu + publish) — những gì Novelle cần | 14–22 | ✅ Xong (merge 2026-10-12; 46d74bb, CI 38196413379) |
 | **P12e** | CLI: `import-legacy-users` từ D1 của CMS chép (cùng định dạng hash → không đặt lại mật khẩu; admin → owner) | 6–10 | ✅ Xong (merge 2026-10-12; 8028ab0, CI 38197484347) |
 | **P12g** | Gói (trước Innovate): `f.pick` (giá trị chọn từ danh sách site tính từ chính nội dung — giá `{ "of": … }`) + `f.toggle` (`plain`) | 6–10 | ✅ Xong (merge 2026-10-12; 2061801, PR #21) |
-| **P12h** | Gói (trước Innovate): ảnh theo tên trong manifest của site (`media.names`) — API đổi tên ↔ địa chỉ, upload được đặt tên theo chỗ commit (`media.dir` ngoài public/ + `media.base`), thư viện = manifest, build / lưu từ chối tên lạ | 8–12 | 🔄 Đang review |
+| **P12h** | Gói (trước Innovate): ảnh theo tên trong manifest của site (`media.names`) — API đổi tên ↔ địa chỉ, upload được đặt tên theo chỗ commit (`media.dir` ngoài public/ + `media.base`), thư viện = manifest, build / lưu từ chối tên lạ | 8–12 | ✅ Xong (merge 2026-10-12; aae80c7, PR #22); release v0.21.0 |
 | **P12f** | Gói: cắt / đổi cỡ ảnh = **bản sao mới**, giữ ảnh gốc (như Mr Spa), làm trong trình duyệt — không binding `IMAGES` | 8–14 | ✅ Xong (merge 2026-10-12; 884a683, CI 38198654822) |
 | **P13** | Novelle: `cms.config` trên JSON có sẵn (không đổi nội dung) + plugin + `bind` selector; chạy song song CMS chép ở local | 10–16 | ✅ Xong (merge 2026-10-12; novelle PR #1, cài v0.19.0 từ URL release) |
 | **P14** | Novelle: chuyển (`setup --site novelle`, nhập users, gỡ CMS chép), G.2 1 cặp trên `dev`, Workers Builds không biến token | 10–16 | ✅ Xong (merge 2026-10-12; novelle PR #2, 30af26c; publish 37868c7 + revert a913f91 trên demo) |
@@ -36,8 +36,8 @@
 | **U2** | UI: khung như Mr Spa — rail 64 (Pages = mọi file, mỗi collection 1 chỗ + `icon` trong config, Drafts có số; People / Activity dưới cùng; avatar → menu My account / Sign out), top bar 56 (crumb `Pages / Tên`, chọn thiết bị ở giữa, Publish là nút chính duy nhất), canvas padding 24 + preview bo 12, form trong inspector 360 bên phải; trang không bao giờ cuộn — chỉ canvas / inspector | 10–16 | ✅ Xong (merge 2026-10-12; 982e0f5, PR #17) |
 | **U3** | UI: thành phần như Mr Spa — hộp thoại thay `window.confirm` (Esc / Cancel / bấm ngoài = không đổi; nút phá huỷ màu đỏ), Publish trong editor mở hộp review của đúng bản nháp → "Publish to website", toast có icon + 1 hành động (Undo), tooltip cho nút icon, thẻ ảnh (contain, tên + cỡ, Replace khi hover, ⋯ Copy link / Remove, Desktop / Phone), sheet ảnh (Library / Upload, bấm = chọn, double-click / Use image = dùng, Crop ở chân sheet) | 10–16 | ✅ Xong (merge 2026-10-12; 3e91798, PR #18) |
 | **U4** | UI: màn hình như Mr Spa — Pages dạng danh sách (tên, địa chỉ, trạng thái), danh sách collection có ảnh + "+ New …", **Drafts** (mỗi nháp: thay đổi gì, Open / Publish / ⋯ Discard, Recently published) + "Review & publish all", **Media** (thư viện, lọc, chi tiết, Upload images), **People & activity** 2 tab (form thêm người bên phải, vai trò dạng thẻ), History, Sign-in, chặn < 900 px. Sau đó: release + `vibe-cms update` cho Novelle | 12–18 | ✅ Xong (merge 2026-10-12; 4a7f713, PR #19); release v0.20.0 |
-| P15 | Innovate: tách nốt `site.ts` → JSON (reviews, FAQ, membership, chính sách, Journal…) — HTML giống từng byte | 8–14 | ⏳ |
-| **P16a** | Gói (tìm ra khi viết cms.config Innovate): `f.number` (offers.priority, cashCard.stamps) + text `from` (id món / gói tự sinh từ tên khi thêm mới) — vào v0.21.0 (SonLe duyệt 2026-10-12) | 3–5 | 🔄 Đang review |
+| **P15** | Innovate: tách nốt `site.ts` → JSON (reviews, FAQ, membership, chính sách, Journal…) — HTML giống từng byte | 8–14 | ✅ Xong (merge 2026-10-12; innovate PR #8, 26b0f6a — 358/358 file giống từng byte) |
+| **P16a** | Gói (tìm ra khi viết cms.config Innovate): `f.number` (offers.priority, cashCard.stamps) + text `from` (id món / gói tự sinh từ tên khi thêm mới) — vào v0.21.0 (SonLe duyệt 2026-10-12) | 3–5 | ✅ Xong (merge 2026-10-12; 8025fc6, PR #24) + giới hạn lồng 8 cấp, `tokens: []`; release v0.21.0 |
 | P16 | Innovate: `cms.config` + plugin + collection cho các mục vừa tách; `wrangler.toml` → `wrangler.jsonc`; song song ở local | 12–18 | ⏳ |
 | P17 | Innovate: chuyển production trong khung giờ báo chủ (publish hết nháp trước, nhập users), G.2 trên `main`; lưu + đọc 1 nháp > 100 KB trên D1 THẬT | 8–12 | ⏳ |
 | P18 | Innovate: dọn CMS chép; D1 / R2 cũ giữ 30 ngày rồi chủ xoá | 4–8 | ⏳ |

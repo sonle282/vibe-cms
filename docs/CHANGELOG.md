@@ -3,7 +3,7 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## 0.21.0 — unreleased (P12g, P12h, P16a)
+## 0.21.0 — 2026-10-12 (P12g, P12h, P16a)
 
 - **`f.number`** (P16a): a JSON number — `integer`, `min`, `max`; a number input in the admin; emptied, the value
   is left out. For an offer's order or a card's stamps.
