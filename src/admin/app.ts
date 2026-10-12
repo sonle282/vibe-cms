@@ -21,7 +21,7 @@ import type { AdminBoot, BootCollection, BootFile } from "./boot.js";
 import { clear, h } from "./dom.js";
 import { summarizeChanges, type Change, type ReferenceLabels } from "./changes.js";
 import { createForm, type Form, type ReferenceTarget } from "./form.js";
-import { openImagePicker, prepareImage, type LibraryImage, type Prepare } from "./media.js";
+import { adjustImage, measureImage, openImagePicker, prepareImage, type Adjust, type LibraryImage, type Measure, type Prepare } from "./media.js";
 import { configBinds, fieldAt, type PreviewOwner } from "./bridge.js";
 import { createPreview, previewUrl, type Preview } from "./preview.js";
 import { accountScreen, peopleScreen, type ScreenKit } from "./people.js";
@@ -45,6 +45,9 @@ export type AdminOptions = {
   now?: () => number;
   /** P10: how a chosen file is prepared before uploading (resize + WebP in the browser by default). */
   prepareImage?: Prepare;
+  /** P12f: tests replace the canvas work (happy-dom has no canvas). */
+  adjustImage?: Adjust;
+  measureImage?: Measure;
   /** P9: show the preview next to the form (default: on for wide windows, then as the person last left it). */
   preview?: boolean;
 };
@@ -91,8 +94,11 @@ export const startAdmin = (options: AdminOptions) => {
   const media = boot.media ?? { uploads: false, base: "/assets/uploads", maxBytes: 10 * 1024 * 1024 };
   const prepare = options.prepareImage ?? prepareImage(win);
   /** P10: the image sheet for an image field. */
+  // P12f: crop / resize in the browser (canvas); tests pass their own.
+  const adjust = options.adjustImage ?? adjustImage(win);
+  const measure = options.measureImage ?? measureImage(win);
   const pickImage = (current: string, done: (image: { src: string }) => void) => openImagePicker({
-    doc, api, media, prepare, current, onPick: done,
+    doc, api, media, prepare, current, onPick: done, adjust, measure,
     upload: async (prepared) => {
       const headers: Record<string, string> = { "x-file-name": encodeURIComponent(prepared.name) };
       if (prepared.width && prepared.height) { headers["x-image-width"] = String(prepared.width); headers["x-image-height"] = String(prepared.height); }

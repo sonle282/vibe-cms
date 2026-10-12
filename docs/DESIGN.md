@@ -269,6 +269,15 @@ Cùng cách của CMS cũ (cùng đường dẫn ảnh, giữ tạm ở R2, rout
   `media_missing` + `paths`, không commit gì. Response có `media` (file ảnh đã thêm).
 - **Chưa làm (để sau):** dọn `staging/` sau khi publish, đếm "đang dùng ở đâu", xoá ảnh khỏi thư viện.
 
+## C.5b Cắt / đổi cỡ ảnh = bản sao (P12f)
+
+Theo đáp của site đầu tiên (Discovery media adjustments): **A1** tạo bản sao, giữ ảnh gốc; **A2** preset trước (Original,
+Square, Landscape 4:3, Wide 16:9, Portrait 4:5) rồi kéo vùng cắt (chuột / phím mũi tên, Shift = bước lớn), "Crop size"
+20–100 %, chọn bề rộng (chỉ nhỏ hơn vùng cắt); **A5** lỗi → không tạo / không chọn gì, "Adjustment failed. Your original
+image is unchanged". Làm **trong trình duyệt** (đọc ảnh cùng origin → `createImageBitmap` → canvas → WebP, tối đa 2400 px)
+→ tải lên như mọi ảnh (P10: R2 staging, kiểm loại thật từ byte, publish cùng commit). Không binding `IMAGES`. Ảnh gốc không
+ai dùng không vào commit.
+
 ## C.6 Trình soạn thảo trực quan (P8d)
 
 Thay ô gõ HTML / Markdown của P7, giống CMS cũ (thanh định dạng trên vùng soạn `contenteditable`, lệnh `execCommand`

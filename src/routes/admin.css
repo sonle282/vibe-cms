@@ -331,3 +331,16 @@ a.vc-user-name { color: var(--vc-fg); text-decoration: none; } a.vc-user-name:ho
 .vc-history-actions { margin-left: auto; display: flex; gap: 8px; }
 .vc-history-title { margin: 6px 0 0; color: var(--vc-fg-muted); font-size: 12px; overflow-wrap: anywhere; }
 .vc-history-changes { margin-top: 8px; border-top: 1px solid #f0f0f3; padding-top: 8px; }
+
+/* P12f: crop / resize — the picture with the crop frame over it, presets, size, and what will be made. */
+.vc-tile-adjust { margin-top: 4px; width: 100%; font-size: 12px; }
+.vc-adjust { display: grid; gap: 12px; }
+.vc-adjust-presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.vc-adjust-presets [aria-pressed="true"] { background: var(--vc-accent); color: #fff; }
+.vc-adjust-picture { position: relative; max-width: 100%; width: fit-content; margin: 0 auto; user-select: none; touch-action: none; }
+.vc-adjust-picture img { display: block; max-width: 100%; max-height: 50vh; }
+.vc-adjust-frame { position: absolute; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .45); outline: 2px solid #fff; cursor: move; }
+.vc-adjust-frame:focus-visible { outline: 3px solid var(--vc-accent); }
+.vc-adjust-picture { overflow: hidden; }
+.vc-adjust-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.vc-adjust-actions { display: flex; gap: 8px; justify-content: flex-end; }
