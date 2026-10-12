@@ -11,7 +11,7 @@
 2. Gói là **Astro integration** `vibeCms()`: site thêm vào `astro.config` + 1 file `cms.config.ts` → gói gắn `/admin` và
    `/api/cms/*`. Đích triển khai duy nhất: **Cloudflare Workers** (static assets + `@astrojs/cloudflare`); trang public
    vẫn prerender, chỉ route CMS chạy on-demand.
-3. **Chỉ 2 vai trò: owner, editor.** Ô `locked: "owner"`: editor thấy nhưng không đổi được — **chặn ở server** (PUT nháp
+3. **Chỉ 2 vai trò: owner, editor** (từ M2 đổi tên thành **admin, editor** như Mr Spa, `"owner"` vẫn nhận — §H.1). Ô `locked: "owner"`: editor thấy nhưng không đổi được — **chặn ở server** (PUT nháp
    + publish), audit `denied`, có test. Khoá mặc định cho mọi site: **giá, giờ mở cửa, SĐT, email, địa chỉ** (chốt
    2026-09-28).
 4. CMS publish = commit thẳng vào **nhánh production** khai trong `repo.branch` của site (mỗi publish là 1 deploy thật)
@@ -601,6 +601,243 @@ thoảng, vượt đều thì bị chặn).
 
 ---
 
+## H. Admin giống hệt CMS tham chiếu + sản phẩm chung (M0–M15, chốt 2026-10-12)
+
+**Yêu cầu (SonLe, 2026-10-12):** đóng gói UI/UX của CMS Mr Spa **y chang, không chế thêm**; rồi tối ưu thành phần chung để
+mọi site dùng cùng một admin, tuỳ biến theo web của họ bằng vài bước đơn giản (mẫu tham khảo: CloudCannon). Nguồn sự
+thật: code + ảnh chụp CMS Mr Spa chạy local (2026-10-12; kiểm kê chi tiết trong tài liệu private của Mr Spa).
+
+**Tiêu chuẩn "y chang":** Mr Spa chạy trên gói (P20–P21) phải trông và làm việc **giống CMS hiện tại của nó từng màn
+hình** (cùng chữ, bố cục, thứ tự, trạng thái); kiểm bằng ảnh chụp đặt cạnh nhau. Chữ trên giao diện lấy nguyên văn; chỗ
+nào là tên / host của site thì lấy từ config.
+
+### H.1 Quyết định (SonLe trả lời phỏng vấn 2026-10-12)
+
+1. **Giữ 4 thứ gói có mà Mr Spa không có:**
+   - ô khoá cho admin (`locked` / `access`);
+   - publish nhiều nháp một lần (Review & publish);
+   - preview cho bản ghi collection;
+   - bắt tự đặt mật khẩu khi đăng nhập bằng mật khẩu tạm.
+
+   **Bỏ mọi thứ khác gói tự chế:**
+   - nút bật / tắt Preview, Ctrl+S, link "Skip to content";
+   - dòng trạng thái dưới top bar, thanh trạng thái trên canvas preview;
+   - toast khi lưu / huỷ / publish;
+   - bộ đếm ký tự ở mọi ô;
+   - ô địa chỉ / alt / ảnh điện thoại dưới thẻ ảnh;
+   - cột ID và các ô ID / Status / Text tự thêm vào bản ghi;
+   - Crop trong sheet ảnh, preset Wide;
+   - màn History riêng (→ hộp thoại), màn My account (→ hộp thoại Change password);
+   - đổi vai trò bằng ô chọn, ô Name (optional);
+   - lọc People / Refused và "Show older" ở Activity;
+   - pill "Draft saved" thay "Live", câu dẫn đầu form, bấm nội dung bản ghi khác trong preview để chuyển trang.
+
+   Các kiểu field mà site thật cần (giờ mở cửa, số, pick, toggle, tuple, reference) **giữ**, vẽ lại theo ngôn ngữ của
+   Mr Spa. Những gì SonLe đã yêu cầu riêng trước đây (P8d: kéo đổi cỡ ảnh trong bài) giữ.
+2. **Vai trò = Admin / Editor** (như Mr Spa).
+   - Config nhận `access: "admin"` / `locked: "admin"`; `"owner"` vẫn chạy và có cảnh báo đổi tên.
+   - Migration D1 đổi `owner` → `admin`. Novelle tự chuyển khi `vibe-cms migrate`.
+   - CLI có `reset-admin-password`; `reset-owner-password` là bí danh.
+3. **Lõi chung + plugin.**
+   - Lõi có các khối dùng chung: Link, Phone, Menu nhiều cấp, Price, danh sách có thứ tự + panel, bố cục Record /
+     Document / SEO.
+   - Logic chỉ một site cần nằm trong plugin ở repo của site: giá "Call for price", Categories "On the Products page",
+     menu dropdown riêng, chuyển blog cũ…
+   - Plugin admin = module trình duyệt khai trong config, được bundle vào `/admin`.
+4. **Dev / agency cài và cấu hình**; chủ site chỉ sửa nội dung. Có thêm `vibe-cms init` để sinh nháp `cms.config.ts` từ
+   các file JSON của site.
+
+### H.2 Mô hình chung: mỗi màn của Mr Spa → một khai báo trong config
+
+| Mr Spa | Khai báo chung trong `cms.config.ts` |
+|---|---|
+| Rail: Pages · Products · Projects · Blog · Media · Drafts · (Users) | Pages = mọi `files`; mỗi collection 1 mục (`icon`, `label`); collection có `under: "<collection>"` thành **tab** của mục cha (Products › Categories / Collections) |
+| Pages: "Main pages" / "Across the whole site" / "Policies" | `group` của file (mặc định "Main pages"); `area: true` = khu vực toàn site (vào nhóm "Across the whole site", có `description`) |
+| Sửa trang 2 cấp (section theo thứ tự trên trang) | `sections` như hiện nay; thứ tự lấy theo vị trí trên preview, không theo config |
+| Header / Footer / Popup xem trên Homepage | `area: true` + `previewOn: "<file>"` |
+| Search & sharing (Google + thẻ chia sẻ) | `layout: "seo"` (các field `siteName`, `title`, `description`, `image` ánh xạ bằng `seo: { … }`) |
+| Product / Project: mục lục + form + cột phải | collection `layout: "record"` (mặc định); "Ready to publish" = field bắt buộc + `ready` của site; Hide = field trạng thái `status: { field, live, draft, archived }` |
+| Blog: giấy + thanh định dạng; Policy: chữ thuần | `layout: "document"` (`body`, `cover`, `title`), `plain: true` cho policy |
+| Danh sách: cột, lọc, ⋯ | `list: { columns, filters, search }`; nhãn nút `labels: { add: "Add product" }` |
+| Thiết bị Laptop / Tablet / Mobile | cố định 1280 × 800 / 768 × 1024 / 390 × 844 |
+| "Live on {host}", "5–10 minutes" | `site.host` + `publish.typicalMinutes` |
+| Link Page / Web address / Phone / Email | `f.link()`; danh sách trang = file có `preview` + route của collection |
+| SĐT "(215) 772-1111" | `f.phone()` + `site.phone: { country: "US" }` |
+| Ảnh Desktop / Mobile 1 thẻ | `f.image({ mobile: "mobileImage" })` |
+
+### H.3 Đặc tả UI (nguyên văn Mr Spa; `{…}` = lấy từ config)
+
+**Khung**
+- `/admin` mở thẳng trang đầu (`/admin/pages/<file>`). URL theo đường dẫn, như Mr Spa:
+  - `/admin/pages/<file>`
+  - `/admin/catalog/<collection>[/<id>|/new]`
+  - `/admin/website/<area>`
+  - `/admin/media`, `/admin/drafts`, `/admin/users`, `/admin/audit`
+  - URL `#/…` cũ chuyển sang URL mới.
+- Rail:
+  - Ô logo = chữ đầu tên site.
+  - Badge đỏ ở Drafts ("Drafts, N saved").
+  - Dưới cùng: **Users** (chỉ admin), rồi avatar = 2 chữ đầu username. Menu avatar: tên, vai trò, **Change password**,
+    **Sign out**.
+  - Tooltip JS 400 ms, hiện ngay khi focus.
+- Top bar:
+  - Breadcrumb "Pages / Homepage"; mục cha là nút "Back to Pages", có hỏi trước khi bỏ thay đổi chưa lưu.
+  - Chip trạng thái:
+
+    | Trạng thái | Chấm | Chữ |
+    |---|---|---|
+    | none | xám | "No changes" |
+    | unsaved | cam | "N unsaved changes" |
+    | saved | xanh dương | "Draft saved · not live yet" / "Draft saved · changes not live yet" |
+    | published | xanh lá | "Publishing… this usually takes {5–10} minutes · 1m 5s" → "Live on {host}" |
+    | problem | đỏ | lỗi |
+
+    Có nhãn ngắn khi top bar < 720 px.
+  - Nút icon: View live · Version history (mọi vai trò) · Discard draft · Reload and keep my changes · Check again. Gập
+    vào ⋯ khi top bar < 900 px.
+  - Save draft hiện khi có bản ghi sửa được; tooltip giải thích vì sao bị tắt.
+  - **Publish luôn hiện khi mở bản ghi**, tắt kèm lý do: 10 lý do theo thứ tự của Mr Spa ("Save a draft before
+    publishing."…).
+- Toast: tối, giữa đáy, 4 s, tối đa 1 hành động (Undo), không icon. Chỉ dùng cho ảnh / media.
+
+**Sửa trang (inspector 360 bên phải)**
+- **Cấp 1:**
+  - Crumb "Pages", tiêu đề = tên trang.
+  - Tip ẩn được: "Click any part of the page, or pick a section below."
+  - Hàng section: tên, 1 dòng tóm tắt (tiêu đề → chữ đầu tiên → "2 banners" → "N editable fields"), chấm cam nếu chưa
+    lưu, "›".
+  - Trang 1 section mở thẳng cấp 2.
+- **Cấp 2:**
+  - Nút ← ("Close section"), crumb = tên trang, tiêu đề = tên section.
+  - Esc về cấp 1 (trừ khi đang gõ); trượt 220 ms; nhớ section đang mở.
+- Field:
+  - Nhãn là nút có chấm xám, help **ở dưới nhãn, trên ô nhập**.
+  - Lỗi đỏ dưới ô; hộp "N validation errors" ở đầu, bấm để nhảy tới ô.
+  - Ô `*Href`: "Link destination: not visible in the preview."
+- List:
+  - "N of M allowed."; thẻ "Banner 1" + tóm tắt hoặc "Untitled"; nút ↑ ↓ ×.
+  - Xoá phải xác nhận ("Delete banner 2?").
+  - Thẻ đang chọn đi theo preview.
+  - Ghi chú preview khi list không dựng lại được trên trang.
+  - "Add banner".
+- Preview:
+  - Viền chọn 2 px + chip "Section · Field": đặt trên viền nếu còn chỗ, không thì nằm trong.
+  - Viền section 1 px; hover nét đứt.
+  - Khu vực site: viền teal 3 px.
+  - Chọn section ở cấp 1 → chỉ viền section + tên.
+  - Chỉ cuộn khi ô nằm ngoài màn hình, chớp 1 lần (không chớp khi reduced motion).
+
+**Field Link:**
+- Chọn Page · Web address · Phone · Email.
+- Có ô "Find a page" khi có hơn 8 trang.
+- Dòng "Opens: {host}/about" / "call …" / "email …" / "nothing (no link)".
+- Lỗi bằng lời thường; khi link sai: "Opens: … — until this is fixed" và tắt Save.
+
+**Ảnh**
+- Thẻ ảnh:
+  - Ảnh `contain` trên nền `#F5F5F7`.
+  - Hover: Replace · Adjust (ảnh tải lên) · "or drop an image here".
+  - **Thả file lên thẻ = tải lên** ("Uploading… N%").
+  - Dòng meta: tên cắt giữa · W × H · KB · Replace.
+  - ⋯: Set as main · Copy image link · Remove image (không có Remove khi ảnh bắt buộc).
+  - Desktop | Mobile ("No mobile image — the desktop image is used").
+  - Ô trống: nút nét đứt "Choose image".
+- Sheet chọn ảnh:
+  - Đầu sheet: dòng ngữ cảnh "Homepage › Showroom", "Choose image for {slot}", gợi ý.
+  - Thanh: Library | Upload, tìm "Search by file name, page or product", số ảnh.
+  - Chip: All · {nhóm theo config} · Site | Not used · Not published yet.
+  - Lưới 5 cột, "Current" đứng đầu, "Load more" 40 ảnh một lần.
+  - Chân: "file · 1440 × 990 · 184 KB" / "No image selected" · Cancel · Use image.
+  - Sau khi dùng: toast "Image replaced" / "Image added" + Undo.
+- Adjust:
+  - "Create a new copy for this image area…".
+  - Shape: Original / Square / Landscape / Portrait; bấm để đặt điểm lấy nét + 2 thanh trượt.
+  - Nút "Create adjusted copy". Bản gốc giữ nguyên (P12f giữ cơ chế, đổi giao diện).
+
+**Lưu / Publish**
+- Lưu luôn bằng tay.
+- Bản khôi phục cục bộ: lưu 400 ms sau lần gõ cuối, hết hạn sau 24 h. Mở lại → hỏi "Restore unsaved changes?" /
+  "Restore changes" / "Discard them".
+- Publish = 2 hộp thoại:
+  1. **"Review changes"**: "Review the changes to {name} before publishing.", nhóm theo section, "Changed: / Added: /
+     Removed:", cũ → mới, chữ đổi được `<mark>`, ảnh thu nhỏ 40 × 28; "Cancel" / "Continue to publish".
+  2. **"Publish {name}"**: "This will publish to {host}."; "Cancel" / "Publish".
+- Sau publish:
+  - Theo dõi live ở 0 / 10 / 20 / 30 / 45 s rồi mỗi 60 s, tối đa 20 phút; vẫn theo khi chuyển màn.
+  - Biên nhận lưu localStorage để theo tiếp sau khi tải lại trang.
+  - Live → tải lại bản ghi lặng lẽ.
+  - "The website build failed for this publish (commit …)" khi có `publish.buildCheck`.
+- Rời trang: "Leave without saving?" / "Keep editing" / "Discard changes".
+- Huỷ: "Discard your draft?" / "Discard unsaved changes?"; bản ghi mới: "Discard this new {item}?…".
+- Xung đột 409: "Reload and keep my changes".
+
+**Màn hình**
+- **Pages:**
+  - 2 cột ("Main pages" | "Across the whole site" + nhóm khác), 1 cột khi ≤ 1100 px.
+  - Hàng: ô icon, tên, đường dẫn / mô tả, pill **Live** / **Off**, ghi chú cam "Unpublished changes", "›".
+  - Đếm "N pages · M site-wide areas"; trống: "No page matches that name.".
+- **Danh sách collection:**
+  - Tab nếu có `under`.
+  - Tìm kiếm, ô chọn / nút phân đoạn lọc, đếm "83 products" / "12 of 83 products".
+  - Cột theo config (ảnh 44 px); trạng thái Live / Draft / Archived + "Unpublished changes".
+  - ⋯ Edit · Duplicate · View on website.
+  - Trống: "No products match these filters." / "No products yet.".
+- **Record:**
+  - Mục lục 168 px, form ≤ 680 px, cột phải 300 px. Dưới 1240 px mục lục thành hàng; dưới 1024 px cột phải xuống dưới.
+  - "* Required before you can publish".
+  - Cột phải: "On the website" (pill, link, lời ghi chú), "Ready to publish" / "Before you publish · N to do", Duplicate,
+    Hide from website / Show on website again.
+  - Bản ghi có preview (giữ theo H.1) dùng khung sửa trang.
+- **Document:**
+  - Giấy 760 px + cột 340 px.
+  - Thanh: Paragraph · Heading 2 · Heading 3 · B · I · Bulleted list · Numbered list · Add link · Insert image. Nút
+    khác chỉ hiện khi `allow` của field cần.
+  - Hộp Add link: "Choose a page" / "Or enter a secure HTTPS URL".
+- **Media:**
+  - Chip như sheet + Archived.
+  - Chi tiết 360 px mở khi bấm (×, Esc):
+    - Rename · Copy link · Adjust.
+    - Dimensions / Format / File size / Added.
+    - **Used on**: bấm để mở đúng ô.
+    - Remove image (chỉ ảnh tải lên chưa publish, không dùng), Archive / Unarchive.
+  - ⋯ "Remove unused images…" (ảnh tải lên chưa publish, > 30 ngày, không dùng).
+- **Drafts:**
+  - Thẻ: loại, tên, "N changes: …", "Saved …", pill Live + "Unpublished changes" / Draft + "Not on the website yet".
+  - Nút "See changes" (hộp chỉ đọc "Changes in this draft") · Open · ⋯ Discard draft. Publish nhiều nháp giữ (H.1).
+  - "Recently published" (admin): mã commit 7 ký tự.
+- **People & activity:**
+  - People:
+    - Bảng Person · Role (chữ) · Status · Last sign-in ("Not yet") · ⋯ (Reset password = hộp admin gõ mật khẩu mới ·
+      Disable / Enable).
+    - "N users." + Refresh.
+    - Panel "Add a person": Username ("e.g. lan.showroom"), Temporary password điền sẵn sửa được + Copy, thẻ vai trò
+      Editor / Admin, "Create account".
+  - Activity:
+    - Lọc All · Publishing · Sign-ins · Failed; "From the last N events." + Refresh, 100 dòng.
+    - Cột Date · Person · What happened · Change · Result.
+- **Version history = hộp thoại** (mọi vai trò):
+  - "Published versions for this resource. Choosing Restore creates a draft only.", 10 bản.
+  - Mỗi bản: "Restore as draft"; chỉ hỏi khi đã có nháp ("Replace current draft").
+- **Đăng nhập:**
+  - "Sign in to {name}" / "Edit the website at {host}".
+  - Khi gửi: "Signing in…"; lỗi nằm trên nút.
+  - "Forgot your password? Ask an admin to reset it."
+  - Change password: "Use 12–200 characters. Your current CMS session will stay active after saving."
+- **Màn nhỏ ≤ 900 px:** "Open on a laptop"; không che trang đăng nhập.
+
+### H.4 Thứ tự làm
+
+Các batch:
+- **M1–M6:** khung và sửa nội dung → release **v0.22.0** + `vibe-cms update` cho Novelle.
+- **M7–M12:** các màn hình → **v0.23.0**.
+- **M13–M15:** khối chung, plugin admin, `init` → **v0.24.0**.
+
+Sau đó tiếp **P17** (Innovate dùng giao diện mới ngay khi chuyển) và **P19–P22** (Mr Spa: plugin + config, so ảnh
+chụp từng màn với CMS hiện tại = nghiệm thu "y chang"). Test của gói kiểm **chữ nguyên văn** của từng màn bằng DOM giả;
+e2e chụp ảnh từng màn.
+
+---
+
 ## I. Task (1 task = 1 commit; mỗi task: REPORT → DỪNG)
 
 Test của gói **không đọc dữ liệu site khách**. Task sửa repo site: đầu task `git status` sạch + pull nhánh production;
@@ -624,6 +861,7 @@ thay đổi lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tà
 | **P11** | CLI `setup` (idempotent, `--account`) / `migrate` / `check` / `export` + `import` / `update` / `reset-owner-password` (đặt mật khẩu tạm cho owner quên mật khẩu, không sửa D1 tay) + tài liệu cài | cài demo từ đầu theo tài liệu **bằng URL release, không token**; `setup` lần 2 = không đổi gì; `update` đổi URL sang bản mới | chạy local (miniflare); xuất / nhập D1 demo khớp số dòng |
 | P12b–P12f | (Viết lại 2026-10-12: 2 site pilot đã chạy CMS chép tay) tuỳ chọn / plugin chung mà site thật cần: list / collection cố định, mục chỉ owner, Activity (P12b, §C.7); History đọc từ git (P12c); plugin kiểu field riêng (P12d); CLI nhập users từ CMS chép (P12e); cắt / đổi cỡ ảnh = bản sao (P12f) | mỗi mục chạy trên demo | test + e2e demo |
 | P13–P18 | Site 2 (chưa go-live) trước rồi site 1: config trên JSON có sẵn + plugin, chạy song song CMS chép ở local, chuyển (D1 mới + nhập users), dọn CMS chép | **mỗi site: Workers Builds build xanh không có biến môi trường token nào** (gói cài từ URL release) + 1 cặp publish + **lưu và đọc lại 1 nháp > 100 KB trên D1 THẬT** | so HTML public; Workers Builds log |
+| M1–M15 | Admin giống hệt CMS tham chiếu rồi tách phần chung (§H): khung, sửa trang 2 cấp, Link, ảnh, lưu / publish, các màn, khối chung, plugin admin, `init` | mỗi màn đúng chữ + bố cục §H.3 trên demo | test DOM (chữ nguyên văn) + e2e chụp ảnh từng màn |
 | P19 | Plugin catalog + redirects-check | test plugin trên fixture catalog nhỏ | test plugin |
 | P20–P22 | Site cũ chuyển sang gói (config đầy đủ → bật, HTML public giống từng byte → dọn CMS cũ) | CMS mới làm được mọi việc CMS cũ làm | so HTML + kiểm production |
 
