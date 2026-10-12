@@ -134,7 +134,7 @@ All problems are listed at once, each with its place and a fix; warnings are pri
 | `repo` | `owner` a GitHub user / organisation name; `name` a repository name (no `.git`); `branch` required and a valid git branch name (no space, `..`, `~^:?*[\`, `@{`, `.lock`, empty parts) |
 | Keys | file / collection keys: lowercase `a-z0-9-`, unique across files **and** collections; field keys: identifiers, dotted keys allowed (`"about.title"`) but not clashing with a field at the same level; section keys unique; a field in one section only (a field in no section = warning) |
 | Paths | relative, `/` separators, no `..`, not absolute, inside `src/data/` or `src/content/` (add more with `contentDirs`); one entry per path; files are `.json` — **YAML is not supported**; `preview` starts with `/` and its `{placeholders}` are fields of the entry |
-| Collections | `store.kind` is `"json-array"` (needs `path` to a `.json` file + `idField`) or `"markdown-dir"` (needs `dir` + `slugField`); the id field, if declared, is text; `order.by` is a field; `status.live` ≠ `status.draft` and both are options of a `status` select; `fixed` is true / false; `icon` (its place on the admin rail) is one of `list` (default), `box`, `grid`, `pencil`, `image`, `calendar`, `star`, `tag`, `users`, `file`; `access` (files too) only `"owner"` |
+| Collections | `store.kind` is `"json-array"` (needs `path` to a `.json` file + `idField`) or `"markdown-dir"` (needs `dir` + `slugField`); the id field, if declared, is text; `order.by` is a field; `status.live` ≠ `status.draft` and both are options of a `status` select; `fixed` is true / false; `icon` (its place on the admin rail) is one of `list` (default), `box`, `grid`, `pencil`, `image`, `calendar`, `star`, `tag`, `users`, `file`, `package`, `pen-line`; `under` (the key of another collection, not itself `under` one) shows it as a tab of that collection instead of a place on the rail; `access` (files too) only `"owner"` |
 | Every field | known type; `label` required; no unknown options; `required` is true / false; `locked` only `"owner"` |
 | Per type | `text.maxLength` ≥ 1; `select.options` non-empty and unique; `list.of` required (checked too), `min` ≤ `max`, `fixed` true / false (with `min` / `max` = warning); `object.fields` non-empty; `reference.to` names an existing collection (`ordered` without `multiple` = warning); `hours` takes no options; object / list nesting at most **8** levels |
 | Content | every declared file / folder exists and parses (JSON; Markdown front matter); json-array files hold a list of records with unique ids; each value matches its field — text is a string (`maxLength`), select is one of the options, hours rows are `{ days: [0–6], open: "HH:MM", close: "HH:MM" }` or `{ days, closed: true }` (each day once, close after open), lists respect `min` / `max`, references point to existing ids, images are a path or `{ src, alt }`; missing **required** values are errors; properties the config does not declare are **warnings** |
@@ -279,8 +279,12 @@ password: `npx vibe-cms reset-owner-password` (a temporary one, shown once).
 
 ## The editor (P7, P8)
 
-`/admin` signs people in and opens the editor: every file and collection of `cms.config.ts` in the navigation, lists
-with search, and a form generated from the fields — every field type, sections, nested lists, ordered references.
+`/admin` signs people in and opens the first page's editor. The admin is the CMS of the first site (Mr Spa) packaged
+as it is (docs/DESIGN.md §H): a rail (Pages, one place per collection — `under` makes one a tab of another —, Media,
+Drafts; Users and the account at the bottom), a top bar (breadcrumb, Laptop / Tablet / Mobile, the save state, View
+live, Version history, Discard draft, Save draft, Publish), and every screen at its own address (`/admin/pages/<file>`,
+`/admin/catalog/<collection>/<id>`, `/admin/drafts`, `/admin/media`, `/admin/users`…). Lists have search, and a form
+is generated from the fields — every field type, sections, nested lists, ordered references.
 Saving makes a **draft** (the website does not change); fields with `locked: "owner"` are shown to editors but cannot
 be changed. **Review & publish** lists my drafts with what each changes in plain words ("Price: $35 → $40"); publishing
 the ticked ones makes one commit, and the admin says when the website serves them ("Live"). Rich text people type is
@@ -305,8 +309,8 @@ until a publish puts it into the same commit as the content that uses it. The si
 
 ## Preview (P9)
 
-Next to the form, the admin shows the real page with the draft on it, updated as you type; click something on the
-page to edit it. Templates say which field each element shows (nothing changes for visitors; docs/DESIGN.md §D):
+The canvas shows the real page with the draft on it, updated as you type — at the size of a laptop (1280 × 800), a
+tablet (768 × 1024) or a phone (390 × 844), scaled down to fit; click something on the page to edit it. Templates say which field each element shows (nothing changes for visitors; docs/DESIGN.md §D):
 
 ```astro
 <h1 data-cms-field="site.hero.title">{site.hero.title}</h1>

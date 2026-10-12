@@ -15,6 +15,8 @@ export type BootCollection = {
   fixed?: boolean;
   /** U2: its icon on the rail. */
   icon?: CollectionIcon;
+  /** M1: a tab of this collection instead of a place on the rail. */
+  under?: string;
 };
 export type BootUser = { id: string; username: string; displayName: string; role: Role };
 /** P10: whether uploading works (the site has its R2 bucket), where uploads live, and the largest accepted file. */
@@ -33,6 +35,7 @@ export const adminBoot = (config: CmsConfig, user: BootUser, options: { uploads?
     markdown: collection.store.kind === "markdown-dir",
     ...(collection.fixed ? { fixed: true } : {}),
     ...(collection.icon ? { icon: collection.icon } : {}),
+    ...(collection.under ? { under: collection.under } : {}),
   })),
 });
 

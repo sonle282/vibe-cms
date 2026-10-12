@@ -82,7 +82,7 @@ export type CmsFile = {
 };
 
 /** U2: the icon a collection shows on the rail of the admin (Lucide shapes); "list" when not set. */
-export const COLLECTION_ICONS = ["list", "box", "grid", "pencil", "image", "calendar", "star", "tag", "users", "file"] as const;
+export const COLLECTION_ICONS = ["list", "box", "grid", "pencil", "image", "calendar", "star", "tag", "users", "file", "package", "pen-line"] as const;
 export type CollectionIcon = (typeof COLLECTION_ICONS)[number];
 
 /** Many records: one JSON array file (products.json) or one Markdown file per record (blog). */
@@ -92,6 +92,11 @@ export type CmsCollection = {
   itemLabel: string;
   /** U2: its icon on the rail. */
   icon?: CollectionIcon;
+  /**
+   * M1: shown as a tab of another collection instead of its own place on the rail (Mr Spa: Products · Categories ·
+   * Collections) — the key of a collection that is not itself `under` another.
+   */
+  under?: string;
   store: { kind: "json-array"; path: string; idField: string } | { kind: "markdown-dir"; dir: string; slugField: string };
   status?: { field: string; live: string; draft: string };
   preview?: string;

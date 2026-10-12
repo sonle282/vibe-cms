@@ -1,5 +1,5 @@
 // Smoke: run the built demo site locally (wrangler dev --local — no Cloudflare account, nothing remote) and check
-// GET /admin → 200 with the config summary, GET /api/cms/health → the right counts, and the public pages are prerendered.
+// GET /admin (and every /admin/… address) → 200 with the config summary, GET /api/cms/health → the right counts, and the public pages are prerendered.
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -20,8 +20,14 @@ try {
   const admin = await fetch(`${base}/admin`);
   const html = await admin.text();
   assert.equal(admin.status, 200, "GET /admin → 200");
-  assert.match(html, /<title>Vibe CMS · Demo Salon<\/title>/, "the admin page is the site's CMS");
+  assert.match(html, /<title>Demo Salon CMS<\/title>/, "the admin page is the site's CMS");
   assert.equal(admin.headers.get("x-frame-options"), "DENY", "/admin cannot be framed by another site");
+  // M1: every screen has its own address, served by the same page (a link can be opened in a new tab or reloaded).
+  for (const path of ["/admin/pages/site", "/admin/catalog/services/spa-pedicure", "/admin/drafts"]) {
+    const deep = await fetch(`${base}${path}`);
+    assert.equal(deep.status, 200, `GET ${path} → 200`);
+    assert.equal(deep.headers.get("x-frame-options"), "DENY");
+  }
 
   const health = await fetch(`${base}/api/cms/health`);
   const body = await health.json();

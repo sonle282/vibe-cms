@@ -22,7 +22,7 @@ before(async () => {
   team = JSON.parse(files["src/data/team.json"]);
 });
 
-const dom = () => { const window = new Window({ url: "http://localhost/admin" }); return { window, document: window.document }; };
+const dom = () => { const window = new Window({ url: "http://localhost/admin", settings: { disableIframePageLoading: true } }); return { window, document: window.document }; };
 const type = (window, element, value) => { element.value = value; element.dispatchEvent(new window.Event("input", { bubbles: true })); element.dispatchEvent(new window.Event("change", { bubbles: true })); };
 const choose = (window, element, value) => { element.value = value; element.dispatchEvent(new window.Event("change", { bubbles: true })); };
 const toggle = (window, element, checked) => { element.checked = checked; element.dispatchEvent(new window.Event("change", { bubbles: true })); };
@@ -230,28 +230,45 @@ const shell = async ({ role = "owner", confirm = () => true } = {}) => {
   const root = document.createElement("div");
   document.body.append(root);
   const boot = adminBoot(config, { id: user.userId, username: role, displayName: role === "owner" ? "Owner" : "Editor", role });
-  const go = async (hash) => { window.location.hash = hash; await settle(); await app.idle(); };
+  const go = async (path) => { await app.go(path); await settle(); await app.idle(); };
   const app = startAdmin({ root, boot, fetch, confirm, window });
   await app.ready;
-  return { window, document, root, drafts, calls, app, go, state: () => root.querySelector(".vc-save-state").textContent, button: (name) => [...root.querySelectorAll(".vc-actions button, .vc-actions a")].find((element) => element.textContent === name) };
+  return { window, document, root, drafts, calls, app, go, state: () => (root.querySelector(".vc-save-state").hidden ? "" : root.querySelector(".vc-state-long").textContent), button: (name) => [...root.querySelectorAll(".vc-actions button, .vc-actions a")].find((element) => element.textContent === name) };
 };
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 test("shell: Pages lists the files (U4: one row each, with its address and status); the rail marks the current place", async () => {
   const h = await shell();
+  // M1 (Mr Spa): /admin opens the first page's editor.
+  assert.equal(h.window.location.pathname, "/admin/pages/site");
+  assert.equal(h.root.querySelector('.vc-nav-list a[aria-current="page"]').textContent, "Pages");
+  await h.go("/admin/pages");
+  assert.equal(h.state(), "", "no save state outside a record");
   assert.deepEqual([...h.root.querySelectorAll(".vc-rows .vc-row-title")].map((node) => node.textContent), ["Salon info"]);
   assert.match(h.root.querySelector(".vc-rows").textContent, /Salon info.+Live/);
   assert.equal(h.root.querySelector(".vc-count").textContent, "1 page");
   assert.equal(h.root.querySelector("h1").textContent, "Pages");
-  await h.go("#/collections/services");
+  await h.go("/admin/catalog/services");
   assert.equal(h.root.querySelector('.vc-nav-list a[aria-current="page"]').textContent, "Services");
   assert.deepEqual([...h.root.querySelectorAll(".vc-table tbody tr")].map((row) => row.dataset.id), ["classic-manicure", "spa-pedicure", "nail-art"]);
-  assert.equal(h.document.title, "Services · Demo Salon · Vibe CMS");
+  assert.equal(h.document.title, "Demo Salon CMS");
+  // M1: the breadcrumb's parent is a button back to its screen.
+  await h.go("/admin/catalog/services/spa-pedicure");
+  const back = h.root.querySelector(".vc-crumb-parent");
+  assert.equal(back.getAttribute("aria-label"), "Back to Services");
+  back.click();
+  await settle(); await h.app.idle();
+  assert.equal(h.window.location.pathname, "/admin/catalog/services");
+  // An address of before (#/files/site) opens the same screen at its new address.
+  h.window.location.hash = "#/files/site";
+  await settle(); await settle(); await h.app.idle();
+  assert.equal(h.window.location.pathname, "/admin/pages/site");
+  assert.equal(h.window.location.hash, "");
 });
 
 test("shell: edit → Save draft → PUT with expectedRevision / sourceVersion; the next save uses the new revision", async () => {
   const h = await shell();
-  await h.go("#/files/site");
+  await h.go("/admin/pages/site");
   assert.equal(h.state(), "No changes");
   type(h.window, h.root.querySelector('[data-path="tagline"] input'), "First");
   assert.equal(h.state(), "1 unsaved change");
@@ -273,26 +290,41 @@ test("shell: edit → Save draft → PUT with expectedRevision / sourceVersion; 
 
 test("shell: problems are caught before saving; a save conflict (another tab) shows a reload message", async () => {
   const h = await shell();
-  await h.go("#/files/site");
+  await h.go("/admin/pages/site");
   type(h.window, h.root.querySelector('[data-path="name"] input'), "");
   h.button("Save draft").click();
   await settle();
   assert.equal(h.calls.filter((call) => call.method === "PUT").length, 0, "not sent");
   assert.match(h.root.querySelector('[data-path="name"] .vc-error').textContent, /required/);
-  assert.equal(h.state(), "Needs attention");
+  assert.equal(h.state(), "1 validation error");
+  assert.equal(h.root.querySelector(".vc-state-short").textContent, "Needs attention");
 
   type(h.window, h.root.querySelector('[data-path="name"] input'), "Demo");
   // Another tab saves first.
   await h.drafts.save({ userId: "usr_owner", resource: "file:site", content: site, sourceVersion: "sha256:" + "0".repeat(64), expectedRevision: 0 });
   h.button("Save draft").click();
-  for (let i = 0; i < 20 && !h.root.querySelector(".vc-banner:not([hidden])"); i += 1) await settle();
-  assert.match(h.root.querySelector(".vc-banner").textContent, /saved in another tab or window/);
-  assert.equal(h.state(), "Not saved");
+  for (let i = 0; i < 20 && !/updated elsewhere/.test(h.state()); i += 1) await settle();
+  // M1 (Mr Spa): the save state says so; Save is off; "Reload and keep my changes" reloads and puts my edit back.
+  assert.equal(h.state(), "This page was updated elsewhere. Reload to get the latest version — your unsaved changes will be kept to re-apply.");
+  assert.equal(h.button("Save draft").disabled, true);
+  assert.equal(h.button("Save draft").dataset.tooltip, "Resolve conflicts or loading errors before saving.");
+  const reload = h.root.querySelector('[data-action="reload-keep"]');
+  assert.equal(reload.hidden, false);
+  reload.click();
+  for (let i = 0; i < 20 && h.state() !== "1 unsaved change"; i += 1) await settle();
+  await h.app.idle();
+  assert.equal(h.root.querySelector('[data-path="name"] input').value, "Demo", "my change is back");
+  assert.equal(h.state(), "1 unsaved change");
+  h.button("Save draft").click();
+  for (let i = 0; i < 20 && h.state() !== "Draft saved · not live yet"; i += 1) await settle();
+  const last = h.calls.filter((call) => call.method === "PUT").at(-1);
+  assert.equal(last.body.expectedRevision, 1, "saved on top of the other tab's draft");
+  assert.equal((await h.drafts.get("usr_owner", "file:site")).content.name, "Demo");
 });
 
 test("shell: a new record — id from the name, saved at its own address; an editor's locked price stays empty", async () => {
   const h = await shell({ role: "editor" });
-  await h.go("#/collections/services/new");
+  await h.go("/admin/catalog/services/new");
   const price = h.root.querySelector('[data-path="price"] input');
   assert.equal(price.disabled, true);
   type(h.window, h.root.querySelector('[data-path="name"] input'), "Gel Removal");
@@ -304,24 +336,25 @@ test("shell: a new record — id from the name, saved at its own address; an edi
   type(h.window, h.root.querySelector('[data-path="id"] input'), "gel-off");
   h.button("Save draft").click();
   for (let i = 0; i < 20 && h.state() !== "Draft saved · not live yet"; i += 1) await settle();
+  await h.app.idle();
   const put = h.calls.find((call) => call.method === "PUT");
   assert.equal(put.url, "/api/cms/collections/services/items/gel-off");
   assert.deepEqual([put.body.expectedRevision, put.body.sourceVersion], [0, "new"]);
-  assert.equal(h.window.location.hash, "#/collections/services/items/gel-off");
+  assert.equal(h.window.location.pathname, "/admin/catalog/services/gel-off");
 });
 
 test("shell: leaving with unsaved changes asks; saying no keeps the page and the changes", async () => {
   const asked = [];
   let answer = false;
   const h = await shell({ confirm: (message) => { asked.push(message); return answer; } });
-  await h.go("#/files/site");
+  await h.go("/admin/pages/site");
   type(h.window, h.root.querySelector('[data-path="tagline"] input'), "Unsaved");
-  await h.go("#/collections/team");
+  await h.go("/admin/catalog/team");
   assert.match(asked[0], /Leave without saving\?[\s\S]*1 unsaved change/);
   await settle();
   assert.ok(h.root.querySelector('[data-path="tagline"]'), "still on the form");
   answer = true;
-  await h.go("#/collections/team");
+  await h.go("/admin/catalog/team");
   assert.ok(h.root.querySelector(".vc-table"));
 });
 
@@ -344,11 +377,12 @@ const publishShell = async ({ storage = new Map(), maxWaitMs = 5_000 } = {}) => 
   const store = { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) };
   const app = startAdmin({ root, boot: adminBoot(config, { id: user.userId, username: "owner", displayName: "Owner", role: "owner" }), fetch, window, confirm: () => true, pollMs: 5, maxWaitMs, storage: store });
   await app.ready;
-  const go = async (hash) => { window.location.hash = hash; await settle(); await app.idle(); };
+  const go = async (path) => { await app.go(path); await settle(); await app.idle(); };
   const until = async (test, what) => { for (let i = 0; i < 400; i += 1) { if (test()) return; await new Promise((resolve) => setTimeout(resolve, 5)); } assert.fail(`timed out waiting for ${what}`); };
   return {
     window, root, github, drafts, call, go, until, storage,
-    live: () => root.querySelector(".vc-live"),
+    state: () => (root.querySelector(".vc-save-state").hidden ? "" : root.querySelector(".vc-state-long").textContent),
+    kind: () => root.querySelector(".vc-save-state").dataset.kind,
     badge: () => root.querySelector(".vc-badge"),
     redeploy: () => { live = { ...github.files() }; api = build(); },
     close: () => github.close(),
@@ -362,17 +396,18 @@ const saveDraft = async (h, url, change) => {
 test("U4 Drafts: one row per draft (what changes, when); Publish opens its review and publishes only it; ⋯ Discard; Recently published", async () => {
   const h = await publishShell();
   try {
-    await h.go("#/drafts");
+    await h.go("/admin/drafts");
     assert.match(h.root.querySelector(".vc-empty-state").textContent, /No drafts/);
     await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Fresh tagline" }));
     await saveDraft(h, "/api/cms/collections/services/items/spa-pedicure", (content) => ({ ...content, price: "$40" }));
-    await h.go("#/");
-    await h.go("#/drafts");
+    await h.go("/admin/pages");
+    await h.go("/admin/drafts");
     assert.equal(h.root.querySelector('.vc-nav-list a[aria-current="page"] .vc-rail-label').textContent, "Drafts");
     const row = (resource) => h.root.querySelector(`.vc-draft-row[data-resource="${resource}"]`);
     assert.match(row("file:site").textContent, /Salon info · Salon info1 change: TaglineSaved by you · /);
     assert.match(row("item:services:spa-pedicure").querySelector(".vc-row-what").textContent, /^1 change: Price$/);
-    assert.ok([...h.root.querySelectorAll(".vc-actions a")].some((link) => link.textContent === "Review & publish all" && link.getAttribute("href") === "#/publish"));
+    assert.ok([...h.root.querySelectorAll(".vc-actions a")].some((link) => link.textContent === "Review & publish all" && link.getAttribute("href") === "/admin/drafts/review"));
+    assert.equal(h.root.querySelector('.vc-rail-item[data-rail="drafts"]').getAttribute("aria-label"), "Drafts, 2 saved");
     // Publish one row: its review dialog, then only it goes to the website.
     row("file:site").querySelector('[data-action="publish-draft"]').click();
     const dialog = () => h.window.document.querySelector(".vc-dialog");
@@ -396,7 +431,7 @@ test("P8 shell: review shows what each draft changes; publishing the ticked one 
   try {
     await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Fresh tagline" }));
     await saveDraft(h, "/api/cms/collections/services/items/spa-pedicure", (content) => ({ ...content, price: "$40" }));
-    await h.go("#/publish/file%3Asite");
+    await h.go("/admin/drafts/review/file%3Asite");
     assert.equal(h.badge().textContent, "2");
     const cards = [...h.root.querySelectorAll(".vc-review-card")];
     assert.equal(cards.length, 2);
@@ -417,17 +452,18 @@ test("P8 shell: review shows what each draft changes; publishing the ticked one 
     const diff = lineDiff(before, h.github.files()["src/data/site.json"]);
     assert.deepEqual([diff.removed.length, diff.added.length], [1, 1], "one line changed");
     assert.equal(h.github.files()["src/data/services.json"], files["src/data/services.json"], "the unticked draft was not published");
-    assert.equal(h.live().dataset.state, "publishing");
-    assert.match(h.live().textContent, /Publishing… started/);
     assert.ok(h.storage.get("vibe-cms:publishing"), "remembered across a reload");
     await h.until(() => h.badge().textContent === "1", "the draft count");
+    // M1 (Mr Spa): the record's save state follows the publish — on its editor, also when opened later.
+    await h.go("/admin/pages/site");
+    assert.equal(h.kind(), "published");
+    assert.equal(h.state(), "Publishing… this usually takes a few minutes");
 
-    // Still the old content: no Live yet. The site rebuilds → Live.
+    // Still the old content: no Live yet. The site rebuilds → Live (the record reloads quietly).
     await new Promise((resolve) => setTimeout(resolve, 30));
-    assert.equal(h.live().dataset.state, "publishing");
+    assert.equal(h.state(), "Publishing… this usually takes a few minutes");
     h.redeploy();
-    await h.until(() => h.live().dataset.state === "live", "Live");
-    assert.match(h.live().textContent, /Live on the website: Salon info/);
+    await h.until(() => h.state() === "Live on demo.example", "Live");
     assert.equal(h.storage.get("vibe-cms:publishing"), undefined);
   } finally { await h.close(); }
 });
@@ -437,15 +473,15 @@ test("P8 shell: someone published first → not published, the draft is named; a
   try {
     await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Mine" }));
     h.github.pushOther({ "src/data/site.json": h.github.files()["src/data/site.json"].replace("Sampletown", "Othertown") });
-    await h.go("#/publish");
+    await h.go("/admin/drafts/review");
     h.root.querySelector('[data-action="publish-now"]').click();
     await h.until(() => !h.root.querySelector(".vc-banner").hidden, "the refusal");
     assert.match(h.root.querySelector(".vc-banner").textContent, /Not published: Salon info changed on the website after you started editing/);
     assert.ok(h.root.querySelector('[data-resource="file:site"]').classList.contains("vc-review-conflict"));
     // Once the site has rebuilt, the draft is known to be stale before trying.
     h.redeploy();
-    await h.go("#/");
-    await h.go("#/publish");
+    await h.go("/admin/pages");
+    await h.go("/admin/drafts/review");
     assert.equal(h.root.querySelector(".vc-pick").checked, false);
     assert.match(h.root.querySelector(".vc-review-stale").textContent, /cannot be published as it is/);
     assert.equal(h.root.querySelector('[data-action="publish-now"]').disabled, true);
@@ -453,28 +489,36 @@ test("P8 shell: someone published first → not published, the draft is named; a
 });
 
 test("P8 shell: a publish remembered from before a reload is watched; after the wait it says it is still publishing", async () => {
-  const storage = new Map([["vibe-cms:publishing", JSON.stringify({ expected: "sha256:" + "1".repeat(64), at: Date.now() - 60_000, userId: "usr_owner", labels: ["Salon info"] })]]);
+  const storage = new Map([["vibe-cms:publishing", JSON.stringify({ expected: "sha256:" + "1".repeat(64), at: Date.now() - 60_000, userId: "usr_owner", labels: ["Salon info"], resources: ["file:site"] })]]);
   const h = await publishShell({ storage, maxWaitMs: 1_000 });
   try {
-    assert.ok(["publishing", "late"].includes(h.live().dataset.state), "shown at once after the reload");
-    await h.until(() => h.live().dataset.state === "late", "the late message");
-    assert.match(h.live().textContent, /Still publishing/);
-    assert.ok([...h.live().querySelectorAll("button")].some((button) => button.textContent === "Check now"));
+    // /admin opens Salon info, the record being published.
+    assert.ok(["Publishing… this usually takes a few minutes", "Still publishing — check again in a few minutes"].includes(h.state()), "shown at once after the reload");
+    await h.until(() => h.state() === "Still publishing — check again in a few minutes", "the late message");
+    assert.equal(h.root.querySelector(".vc-state-short").textContent, "Still publishing");
+    const check = h.root.querySelector('[data-action="check-again"]');
+    assert.equal(check.hidden, false);
+    assert.equal(check.dataset.tooltip, "Check again");
   } finally { await h.close(); }
 });
 
 test("P8 shell: nothing to publish; the editor's Review & publish needs a saved draft", async () => {
   const h = await publishShell();
   try {
-    await h.go("#/publish");
+    await h.go("/admin/drafts/review");
     assert.equal(h.root.querySelector("h1").textContent, "Nothing to publish");
-    await h.go("#/files/site");
+    await h.go("/admin/pages/site");
     const review = h.root.querySelector('[data-action="publish"]');
-    assert.equal(review.hidden, true, "no draft, no change: nothing to review");
+    // M1 (Mr Spa): Publish is always there; off, with the reason.
+    assert.equal(review.hidden, false);
+    assert.equal(review.disabled, true);
+    assert.equal(review.dataset.tooltip, "Save a draft before publishing.");
     type(h.window, h.root.querySelector('[data-path="tagline"] input'), "Changed");
     assert.equal(review.disabled, true, "unsaved changes: save first");
+    assert.equal(review.dataset.tooltip, "Save a draft first");
     h.root.querySelector('[data-action="save"]').click();
     await h.until(() => !review.disabled, "the saved draft");
+    assert.equal(review.dataset.tooltip, "Review changes before publishing.");
     // U3: Publish opens the review dialog of this draft; Cancel changes nothing.
     review.click();
     const dialog = () => h.window.document.querySelector(".vc-dialog");
@@ -487,7 +531,7 @@ test("P8 shell: nothing to publish; the editor's Review & publish needs a saved 
     choice("Cancel").click();
     await settle();
     assert.equal(dialog(), null);
-    assert.equal(h.window.location.hash, "#/files/site");
+    assert.equal(h.window.location.pathname, "/admin/pages/site");
     // Escape closes it too.
     review.click();
     h.window.document.dispatchEvent(new h.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -497,7 +541,7 @@ test("P8 shell: nothing to publish; the editor's Review & publish needs a saved 
 
 test("P8c shell: unsafe HTML typed in rich text is removed on save; the form shows what was saved and says where", async () => {
   const h = await shell();
-  await h.go("#/files/site");
+  await h.go("/admin/pages/site");
   // Typed as HTML in the editor's source view ("Edit HTML").
   h.root.querySelector('[data-path="hero.text"] .vc-tool-source').click();
   const text = h.root.querySelector('[data-path="hero.text"] textarea');
@@ -538,7 +582,7 @@ test("P10 shell: Choose image… opens the sheet (uploads + site images); upload
   const prepare = async (file) => { prepared.push(file.name); return { blob: file, name: "chair.png", width: 4, height: 3 }; };
   const app = startAdmin({ root, boot, fetch, window, confirm: () => true, prepareImage: prepare });
   await app.ready;
-  window.location.hash = "#/collections/team/items/alex"; await settle(); await app.idle();
+  await app.go("/admin/catalog/team/alex"); await settle(); await app.idle();
   const field = root.querySelector('[data-path="photo"]');
   const [src, alt] = field.querySelectorAll("input");
   assert.equal(src.value, "/images/team-alex.svg");
@@ -618,7 +662,7 @@ test("U4 Media: the library (uploads first, then the website's images), filters,
   const boot = adminBoot(config, { id: user.userId, username: "owner", displayName: "Owner", role: "owner" }, { uploads: true });
   const app = startAdmin({ root, boot, fetch, window, confirm: () => true, prepareImage: async (file) => ({ blob: file, name: "chair.png", width: 4, height: 3 }) });
   await app.ready;
-  window.location.hash = "#/media"; await settle(); await app.idle();
+  await app.go("/admin/media"); await settle(); await app.idle();
   const tiles = () => [...root.querySelectorAll(".vc-media-grid .vc-tile")].map((tile) => tile.dataset.src);
   assert.deepEqual(tiles(), ["/images/hero.svg", "/images/team-sam.svg"]);
   assert.equal(root.querySelector(".vc-count").textContent, "2 images");
@@ -663,7 +707,7 @@ test("P10 shell: without the bucket the sheet says uploading is not set up; an e
 
 // ------------------------------------------------------------------ P9: preview pane
 
-test("P9 shell: the preview pane shows the record's page (cmsPreview=1); Preview toggles it and the choice is remembered", async () => {
+test("P9 / M1 shell: the record's page is on the canvas (cmsPreview=1); Laptop / Tablet / Mobile in the top bar, remembered", async () => {
   const window = new Window({ url: "http://localhost/admin", settings: { disableIframePageLoading: true } });
   const document = window.document;
   const user = { userId: "usr_owner", role: "owner" };
@@ -673,29 +717,34 @@ test("P9 shell: the preview pane shows the record's page (cmsPreview=1); Preview
   const storage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
   const root = document.createElement("div");
   document.body.append(root);
-  const app = startAdmin({ root, boot: adminBoot(config, { id: user.userId, username: "owner", displayName: "Owner", role: "owner" }), fetch, window, confirm: () => true, storage, preview: true });
+  const app = startAdmin({ root, boot: adminBoot(config, { id: user.userId, username: "owner", displayName: "Owner", role: "owner" }), fetch, window, confirm: () => true, storage });
   await app.ready;
-  const go = async (hash) => { window.location.hash = hash; await settle(); await app.idle(); };
-  await go("#/files/site");
+  const go = async (path) => { await app.go(path); await settle(); await app.idle(); };
+  await go("/admin/pages/site");
   const pane = () => root.querySelector(".vc-preview");
-  const toggle = () => root.querySelector('[data-action="preview"]');
   assert.equal(pane().hidden, false);
+  assert.equal(root.querySelector('[data-action="preview"]'), null, "no Preview toggle (Mr Spa)");
   assert.equal(pane().querySelector("iframe").getAttribute("src"), "/?cmsPreview=1");
   assert.equal(pane().querySelector("iframe").getAttribute("sandbox"), "allow-same-origin allow-scripts", "the page cannot navigate the admin, open pop-ups or send forms");
-  assert.equal(toggle().getAttribute("aria-pressed"), "true");
-  toggle().click();
-  assert.equal(pane().hidden, true);
-  assert.equal(store.get("vibe-cms:preview"), "off");
-  toggle().click();
-  assert.equal(store.get("vibe-cms:preview"), "on");
+  const devices = () => [...root.querySelectorAll(".vc-top-center .vc-devices button")];
+  assert.deepEqual(devices().map((button) => [button.dataset.tooltip, button.getAttribute("aria-pressed")]), [["Laptop", "true"], ["Tablet", "false"], ["Mobile", "false"]]);
+  assert.equal(pane().querySelector("iframe").style.width, "1280px");
+  devices()[2].click();
+  assert.equal(store.get("vibe-cms:preview-device"), "mobile");
+  assert.deepEqual([pane().querySelector("iframe").style.width, pane().querySelector("iframe").style.height], ["390px", "844px"]);
+  // A record that is live has View live (its page, a new tab).
+  await go("/admin/catalog/services/spa-pedicure");
+  assert.equal(root.querySelector('[data-action="view-live"]').getAttribute("href"), "/services/");
+  assert.equal(pane().dataset.device, "mobile", "the device is remembered");
   // A record's own page, from its fields.
-  await go("#/collections/posts/items/welcome");
+  await go("/admin/catalog/posts/welcome");
   assert.equal(pane().querySelector("iframe").getAttribute("src"), "/blog/welcome/?cmsPreview=1");
   // A new record whose page is its own address: nothing to show until it is published.
-  await go("#/collections/posts/new");
+  await go("/admin/catalog/posts/new");
   assert.equal(pane().querySelector(".vc-preview-stage").hidden, true);
-  assert.match(pane().querySelector(".vc-preview-status").textContent, /A new post gets its own page once it is published/);
+  assert.match(pane().querySelector(".vc-preview-note").textContent, /A new post gets its own page once it is published/);
+  assert.equal(root.querySelector('[data-action="view-live"]'), null, "nothing live yet");
   // A new record of a collection listed on one page: the list page (the record is shown there as it is typed).
-  await go("#/collections/services/new");
+  await go("/admin/catalog/services/new");
   assert.equal(pane().querySelector("iframe").getAttribute("src"), "/services/?cmsPreview=1");
 });

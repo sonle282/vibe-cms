@@ -277,7 +277,7 @@ export const openImagePicker = (options: PickerOptions) => {
   const adjustButton = canAdjust ? h(doc, "button", { type: "button", class: "vc-button vc-sheet-adjust", hidden: true, onclick: () => { if (selected) void openAdjust(selected, selected.name || selected.src.split("/").pop() || selected.src); } }, "Crop / resize") : null;
   const foot = h(doc, "div", { class: "vc-sheet-foot" }, chosenText, h(doc, "span", { class: "vc-sheet-foot-actions" }, adjustButton, h(doc, "button", { type: "button", class: "vc-button", onclick: close }, "Cancel"), useButton));
   const sheet = h(doc, "div", { class: "vc-sheet", role: "dialog", "aria-modal": "true", "aria-labelledby": titleId },
-    h(doc, "div", { class: "vc-sheet-head" }, h(doc, "h2", { id: titleId }, options.label ? `Choose image for ${options.label}` : "Choose an image"), h(doc, "button", { type: "button", class: "vc-icon-button", "aria-label": "Close", "data-tip": "Close", onclick: close }, icon(doc, "remove"))),
+    h(doc, "div", { class: "vc-sheet-head" }, h(doc, "h2", { id: titleId }, options.label ? `Choose image for ${options.label}` : "Choose an image"), h(doc, "button", { type: "button", class: "vc-icon-button", "aria-label": "Close", "data-tooltip": "Close", onclick: close }, icon(doc, "remove"))),
     h(doc, "div", { class: "vc-sheet-bar" }, tabs, search),
     status,
     library,

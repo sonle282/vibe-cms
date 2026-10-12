@@ -97,10 +97,11 @@ textarea.vc-input { resize: vertical; line-height: 1.45; }
 .vc-button { transition: background-color var(--motion-hover), border-color var(--motion-hover), color var(--motion-hover); }
 .vc-button:hover:not(:disabled) { background: var(--surface-off); }
 .vc-compact { min-height: var(--control-compact); padding: 0 10px; font-size: 13px; }
-.vc-button:disabled { opacity: 0.45; cursor: not-allowed; }
+/* M1 (Mr Spa): a button that is off is grey, the primary one too. */
+.vc-button:disabled { cursor: not-allowed; border-color: var(--hairline); background: var(--surface-off); color: var(--text-secondary); }
 .vc-primary { color: #fff; font-weight: 600; background: var(--accent); border-color: var(--accent); }
 .vc-primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
-.vc-primary:disabled { opacity: 1; background: var(--accent-disabled); border-color: var(--accent-disabled); }
+.vc-primary:disabled { background: var(--surface-off); border-color: var(--hairline); color: var(--text-secondary); }
 .vc-quiet { border-color: transparent; background: transparent; color: var(--text-secondary); }
 .vc-icon { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .vc-icon-button { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; color: var(--text-secondary); background: transparent; border: 1px solid transparent; border-radius: 6px; cursor: pointer; }
@@ -124,50 +125,68 @@ textarea.vc-input { resize: vertical; line-height: 1.45; }
 .vc-sign-card .vc-button { margin-top: 18px; width: 100%; min-height: 44px; font-size: 15px; }
 
 /* ---------- shell (U2: the Mr Spa CMS frame — rail 64 · top bar 56 · canvas padding 24 · inspector 360) */
-.vc-skip { position: absolute; left: 8px; top: -40px; background: var(--surface); padding: 8px 12px; border-radius: var(--radius-8); z-index: 60; }
-.vc-skip:focus { top: 8px; }
 body.vc-page:has(.vc-app) { overflow: hidden; }
 /* Fixed to the window: only the canvas and the inspector scroll, never the page (a focused field cannot shift the frame). */
 .vc-app { position: fixed; inset: 0; display: grid; grid-template-columns: var(--rail-width) minmax(0, 1fr); }
-.vc-rail { position: relative; z-index: 30; display: flex; flex-direction: column; align-items: center; gap: 8px; min-height: 0; padding: 12px 6px; background: var(--rail-bg); border-right: 1px solid var(--hairline); }
-.vc-mark { display: grid; place-items: center; width: 36px; height: 36px; margin-bottom: 8px; flex: 0 0 auto; border-radius: var(--radius-10); background: var(--text); color: #fff; font-weight: 700; font-size: 15px; text-decoration: none; }
+.vc-rail { position: relative; z-index: 30; display: flex; flex-direction: column; align-items: center; gap: 12px; min-height: 0; padding: 12px 0; background: var(--rail-bg); border-right: 1px solid var(--hairline); }
+.vc-mark { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 36px; border-radius: var(--radius-10); background: var(--text); color: #fff; font-weight: 700; font-size: var(--text-16); text-decoration: none; }
 .vc-nav-list { list-style: none; margin: 0; padding: 0; display: grid; align-content: start; gap: 4px; width: 100%; }
 .vc-nav-list:first-of-type { overflow-y: auto; overflow-x: hidden; scrollbar-width: none; min-height: 0; }
-.vc-rail-bottom { margin-top: auto; }
-.vc-rail-item { position: relative; display: grid; justify-items: center; gap: 3px; width: 52px; margin: 0 auto; padding: 7px 2px 6px; border-radius: var(--radius-12); color: var(--text-secondary); text-decoration: none; transition: background-color var(--motion-hover), color var(--motion-hover); }
-.vc-rail-item .vc-icon { width: 18px; height: 18px; stroke-width: 1.8; }
+.vc-rail-bottom { display: grid; justify-items: center; gap: 10px; margin-top: auto; }
+.vc-rail-item { position: relative; display: grid; place-items: center; align-content: center; gap: 3px; width: 52px; min-height: 52px; margin: 0 auto; padding: 0 2px; border-radius: var(--radius-12); color: var(--text-secondary); text-decoration: none; transition: background-color var(--motion-hover), color var(--motion-hover); }
+.vc-rail-item .vc-icon { width: 20px; height: 20px; }
 .vc-rail-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-11); font-weight: 500; line-height: 1.2; }
 .vc-rail-item:hover { background: var(--surface-hover); color: var(--text); }
 .vc-rail-item[aria-current="page"] { background: var(--accent-rail); color: var(--accent); }
-.vc-rail-item .vc-badge { position: absolute; top: 2px; right: 8px; margin: 0; background: var(--danger-fill); }
-.vc-user { position: relative; display: grid; justify-items: center; padding-top: 4px; }
-.vc-avatar { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: var(--radius-full); background: var(--surface-off); color: var(--text); font: 600 13px/1 var(--font-ui); cursor: pointer; }
+.vc-rail-item .vc-badge { position: absolute; top: 3px; right: 7px; min-width: 16px; height: 16px; padding: 0 4px; margin: 0; border-radius: var(--radius-full); background: var(--danger-fill); font-size: var(--text-10); }
+.vc-user { position: relative; display: grid; justify-items: center; }
+.vc-avatar { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: var(--radius-full); background: var(--hairline); color: var(--text); font: 600 var(--text-12)/1 var(--font-ui); cursor: pointer; }
 .vc-avatar:hover, .vc-avatar[aria-expanded="true"] { background: var(--surface-hover); }
 .vc-menu { position: absolute; left: calc(100% + 8px); bottom: 0; z-index: 40; display: grid; min-width: 220px; padding: 6px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-12); box-shadow: var(--shadow-menu); }
-.vc-menu-head { display: grid; gap: 2px; padding: 8px 10px 10px; margin-bottom: 4px; border-bottom: 1px solid var(--hairline); }
-.vc-user-name-text { font-weight: 600; }
+.vc-user .vc-menu { left: calc(100% + 10px); min-width: 180px; gap: 4px; padding: 8px; border-radius: var(--radius-9); }
+.vc-menu-head { display: grid; gap: 2px; padding: 5px 8px 8px; border-bottom: 1px solid var(--surface-off); }
+.vc-user-name-text { font-size: var(--text-12); font-weight: 600; }
 .vc-user-role { color: var(--text-secondary); font-size: var(--text-12); }
+.vc-user .vc-menu-item { min-height: 0; padding: 8px 9px; border-radius: var(--radius-6); }
 .vc-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 0 10px; border: 0; border-radius: var(--radius-8); background: transparent; color: var(--text); font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
 .vc-menu-item:hover, .vc-menu-item:focus-visible { background: var(--surface-off); }
 .vc-menu-item .vc-icon { color: var(--text-secondary); }
 .vc-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.vc-top { position: relative; z-index: 20; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, auto); align-items: center; gap: 16px; height: var(--topbar-height); flex: 0 0 var(--topbar-height); padding: 0 16px 0 24px; background: var(--topbar-bg); backdrop-filter: saturate(180%) blur(12px); border-bottom: 1px solid var(--hairline); }
-.vc-crumbs { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-secondary); font-size: var(--text-15); }
-.vc-crumbs a { color: var(--text-secondary); text-decoration: none; } .vc-crumbs a:hover { color: var(--text); }
-.vc-crumbs [aria-current] { color: var(--text); font-weight: 600; }
-.vc-crumb-sep { margin: 0 6px; }
+.vc-top { position: relative; z-index: 20; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr); align-items: center; gap: 16px; height: var(--topbar-height); flex: 0 0 var(--topbar-height); padding: 0 16px 0 20px; background: var(--topbar-bg); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid var(--hairline); container: vc-top / inline-size; }
+.vc-crumbs { display: flex; align-items: baseline; gap: 6px; min-width: 0; white-space: nowrap; color: var(--text-secondary); font-size: var(--text-15); }
+.vc-crumb-parent { flex: 0 0 auto; margin-left: -4px; padding: 2px 4px; border: 0; border-radius: var(--radius-6); background: transparent; color: var(--text-secondary); font: 400 var(--text-15)/1.5 var(--font-ui); cursor: pointer; }
+.vc-crumb-parent:hover { color: var(--text); background: var(--surface-off); }
+.vc-crumb-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); font-weight: 600; }
+.vc-crumb-sep { flex: 0 0 auto; }
 .vc-top-center { display: flex; justify-content: center; }
 .vc-top-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
 .vc-actions { display: flex; align-items: center; gap: 8px; }
-.vc-top-icon { width: 36px; height: 36px; border-radius: var(--radius-10); }
-.vc-top-icon .vc-icon { width: 18px; height: 18px; }
-.vc-toggle[aria-pressed="true"] { color: var(--accent-strong); background: var(--accent-bg); }
-.vc-save-state { display: inline-flex; align-items: center; gap: 6px; margin-right: 4px; color: var(--text-secondary); font-size: var(--text-13); white-space: nowrap; }
-.vc-save-state:not(:empty)::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dot-idle); }
-.vc-save-state[data-state="dirty"]::before { background: var(--warning-dot); }
-.vc-save-state[data-state="saved"]::before { background: var(--accent); }
-.vc-save-state[data-state="busy"]::before { background: var(--accent); opacity: .5; }
-.vc-save-state[data-state="error"]::before { background: var(--danger-fill); }
+.vc-top-icon { flex: 0 0 auto; width: 36px; height: 36px; border-radius: var(--radius-10); text-decoration: none; }
+.vc-top-icon:hover:not(:disabled), .vc-top-icon:focus-visible { border-color: var(--hairline); }
+/* M1: the one save state of the open record (Mr Spa): a dot and its words; shortened, never cut, on a narrow bar. */
+.vc-save-state { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; margin-right: 4px; color: var(--text-secondary); font-size: var(--text-13); white-space: nowrap; }
+.vc-state-dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: var(--radius-full); background: var(--dot-idle); }
+.vc-save-state[data-kind="unsaved"] .vc-state-dot { background: var(--warning-dot); }
+.vc-save-state[data-kind="saved"] .vc-state-dot { background: var(--accent); }
+.vc-save-state[data-kind="published"] .vc-state-dot { background: var(--dot-live); }
+.vc-save-state[data-kind="busy"] .vc-state-dot { background: var(--text-secondary); }
+.vc-save-state[data-kind="problem"] .vc-state-dot { background: var(--danger-fill); }
+.vc-save-state[data-kind="problem"] { max-width: 340px; color: var(--danger); white-space: normal; line-height: 1.3; }
+.vc-state-short { display: none; }
+@container vc-top (max-width: 719px) { .vc-state-long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; } .vc-state-short { display: inline; } }
+/* The secondary icons: inline on a wide top bar, in the ⋯ menu (with their names) on a narrow one. */
+.vc-top-more, .vc-top-more-panel { display: contents; }
+.vc-top-more-toggle { display: none; }
+@container vc-top (max-width: 899px) {
+  .vc-top-more { position: relative; display: block; flex: 0 0 auto; }
+  .vc-top-more-toggle:not([hidden]) { display: inline-grid; }
+  .vc-top-more.vc-open > .vc-top-more-toggle { border-color: var(--border-input); background: var(--surface-off); color: var(--text); }
+  .vc-top-more-panel { position: absolute; z-index: 25; top: calc(100% + 8px); right: 0; display: none; min-width: 220px; gap: 2px; padding: 6px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-9); box-shadow: 0 14px 35px #0f172a24; }
+  .vc-top-more.vc-open > .vc-top-more-panel { display: grid; }
+  .vc-top-more-panel > .vc-top-icon { display: flex; width: 100%; justify-content: flex-start; gap: 10px; padding: 0 10px; color: var(--text-secondary); font-size: var(--text-13); font-weight: 600; }
+  .vc-top-more-panel > .vc-top-icon[hidden] { display: none; }
+  .vc-top-more-panel > .vc-top-icon[data-tooltip]::after { content: attr(data-tooltip); }
+}
 .vc-segment { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: var(--radius-10); background: var(--surface-off); }
 .vc-segment-item { display: inline-grid; place-items: center; min-width: 34px; height: 30px; padding: 0 8px; border: 0; border-radius: var(--radius-8); background: transparent; color: var(--text-secondary); font: 500 13px/1 var(--font-ui); cursor: pointer; transition: background-color var(--motion-hover), color var(--motion-hover); }
 .vc-segment-item:hover { color: var(--text); }
@@ -180,13 +199,12 @@ body.vc-page:has(.vc-app) { overflow: hidden; }
 .vc-lead { color: var(--text-secondary); margin-top: 0; margin-bottom: 20px; }
 .vc-banner { padding: 12px 16px; margin-top: 0; margin-bottom: 16px; border-radius: var(--radius-12); background: var(--warning-bg); color: var(--warning); }
 .vc-banner p { margin: 0 0 8px; } .vc-banner p:last-child { margin: 0; }
-.vc-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 90; display: flex; align-items: center; gap: 12px; max-width: min(560px, calc(100vw - 32px)); padding: 10px 10px 10px 14px; border-radius: var(--radius-12); background: var(--toast-bg); color: #fff; font-size: 14px; box-shadow: var(--shadow-toast); }
-.vc-toast::before { content: "i"; display: grid; place-items: center; flex: 0 0 20px; width: 20px; height: 20px; border-radius: 50%; background: #8e8e93; color: #fff; font: 700 12px/1 var(--font-ui); }
-.vc-toast[data-tone="success"]::before { content: "✓"; background: var(--dot-live); }
-.vc-toast[data-tone="error"]::before { content: "!"; background: var(--danger-fill); }
-.vc-toast-text { flex: 1; min-width: 0; padding-right: 4px; }
-.vc-toast-action { flex: 0 0 auto; height: var(--control-compact); padding: 0 12px; border: 0; border-radius: var(--radius-8); background: #ffffff1f; color: #fff; font: 600 14px/1 var(--font-ui); cursor: pointer; }
-.vc-toast-action:hover { background: #ffffff33; }
+.vc-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 950; display: flex; align-items: center; gap: 14px; max-width: min(560px, calc(100vw - 32px)); padding: 10px 10px 10px 16px; border-radius: var(--radius-12); background: var(--toast-bg); color: #fff; font-size: 14px; box-shadow: var(--shadow-toast); }
+.vc-toast-text { margin: 0; }
+.vc-toast-action { flex: 0 0 auto; height: var(--control-compact); padding: 0 12px; border: 0; border-radius: var(--radius-8); background: transparent; color: #7cb8f7; font: 600 14px/1 var(--font-ui); cursor: pointer; }
+.vc-toast-action:hover { background: #0f172aa8; }
+@media (prefers-reduced-motion: no-preference) { .vc-toast:not([hidden]) { animation: vc-toast-in var(--motion-sheet) var(--ease-sheet); } }
+@keyframes vc-toast-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 .vc-toast-action:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 
 /* ---------- overview + lists */
@@ -268,13 +286,6 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
 
 /* ---------- P8: review + publish, live status */
 .vc-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 600; line-height: 1; }
-.vc-live { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; min-height: 36px; padding: 6px 24px; background: var(--accent-bg); color: var(--accent-strong); font-size: var(--text-13); border-bottom: 1px solid var(--accent-border); }
-.vc-live::before { content: ""; flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
-.vc-live[data-state="live"] { background: var(--success-bg); color: var(--success); border-color: var(--success-border); }
-.vc-live[data-state="live"]::before { background: var(--dot-live); }
-.vc-live[data-state="late"] { background: var(--warning-bg); color: var(--warning); border-color: var(--warning-bg-strong); }
-.vc-live[data-state="late"]::before { background: var(--warning-dot); }
-.vc-live .vc-button { min-height: var(--control-compact); padding: 0 10px; }
 .vc-review-list { display: grid; gap: 12px; }
 .vc-review-card { padding: 14px 18px; background: var(--surface); border-radius: var(--radius-14); border: 1px solid var(--hairline); box-shadow: var(--shadow-card); }
 .vc-review-card.vc-review-conflict { box-shadow: 0 0 0 2px var(--danger-fill); }
@@ -400,16 +411,13 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
 .vc-preview-on .vc-hours-times { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .vc-preview-on .vc-hours-times > *, .vc-preview-on .vc-hours-times .vc-input { min-width: 0; width: 100%; }
 .vc-preview-on .vc-object { padding: 4px 0 4px 12px; }
-.vc-preview { display: grid; grid-template-rows: auto 1fr; gap: 8px; min-width: 0; min-height: 0; }
-.vc-preview-on .vc-preview { order: 1; padding: 12px var(--canvas-padding) var(--canvas-padding); background: var(--canvas); }
-.vc-preview-bar { display: flex; align-items: center; gap: 4px; min-height: 30px; }
-.vc-preview-status { flex: 1; min-width: 0; margin: 0; color: var(--text-secondary); font-size: var(--text-12); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vc-preview[data-state="error"] .vc-preview-status { color: var(--warning); white-space: normal; }
-.vc-preview[data-state="none"] .vc-preview-status { white-space: normal; }
-.vc-preview-open { display: inline-grid; text-decoration: none; }
-.vc-preview-stage { min-height: 0; display: flex; justify-content: center; overflow: hidden; }
-.vc-preview-frame { width: 100%; height: 100%; border: 0; border-radius: var(--radius-12); background: #fff; box-shadow: 0 0 0 1px #0000000d, 0 12px 32px #00000014; }
-.vc-preview-stage[data-device="phone"] .vc-preview-frame { width: 390px; max-width: 100%; border-radius: 18px; }
+.vc-preview { position: relative; display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; overflow: hidden; padding: var(--canvas-padding); background: var(--canvas); }
+.vc-preview-on .vc-preview { order: 1; }
+.vc-preview-stage { flex: 0 0 auto; overflow: hidden; border-radius: var(--radius-12); background: #fff; box-shadow: 0 0 0 1px #0000000d, 0 12px 32px #00000014; }
+.vc-preview-frame { display: block; border: 0; background: #fff; transform-origin: 0 0; }
+.vc-preview-note { max-width: 420px; margin: 0; color: var(--text-secondary); font-size: var(--text-13); text-align: center; }
+.vc-preview[data-state="error"] .vc-preview-note { color: var(--warning); }
+.vc-preview[data-state="ready"] .vc-preview-note, .vc-preview[data-state="loading"] .vc-preview-note { display: none; }
 @media (max-width: 899px) {
   .vc-body.vc-body-wide { overflow: auto; }
   .vc-editor-split.vc-preview-on { grid-template-columns: 1fr; height: auto; }
@@ -463,11 +471,8 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
 .vc-danger-fill { color: #fff; font-weight: 600; background: var(--danger-fill); border-color: var(--danger-fill); }
 .vc-danger-fill:hover:not(:disabled) { background: var(--danger-strong); border-color: var(--danger-strong); }
 
-/* U3: tooltips — every icon button says what it does (aria-label for screen readers, data-tip on hover / focus). */
-[data-tip] { position: relative; }
-[data-tip]::after { content: attr(data-tip); position: absolute; z-index: 95; left: 50%; top: calc(100% + 6px); transform: translateX(-50%); padding: 4px 8px; border-radius: var(--radius-6); background: var(--toast-bg); color: #fff; font: 500 12px/1.3 var(--font-ui); white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity var(--motion-hover) 300ms; }
-[data-tip]:hover::after, [data-tip]:focus-visible::after { opacity: 1; }
-.vc-rail [data-tip]::after { left: calc(100% + 8px); top: 50%; transform: translateY(-50%); }
+/* M1: the one tooltip (Mr Spa): after 400 ms on hover, at once on keyboard focus; to the right of the rail. */
+.vc-tooltip { position: fixed; z-index: 2147483000; top: 0; left: 0; max-width: 240px; padding: 6px 8px; border-radius: var(--radius-6); background: var(--text); color: #fff; font: 500 var(--text-12)/1.35 var(--font-ui); pointer-events: none; white-space: normal; }
 
 /* U3: the image card (Mr Spa 01 / 22) — the picture as it is, its file and size; Replace on hover / focus; ⋯ menu. */
 .vc-image-card { position: relative; overflow: visible; border: 1px solid var(--hairline); border-radius: var(--radius-12); background: var(--surface); }

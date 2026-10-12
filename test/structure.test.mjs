@@ -182,14 +182,14 @@ test("API: /activity — owners only, plain filters, 50 a page with `before`, na
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const shell = async (role) => {
   const h = await harness();
-  const window = new Window({ url: "http://localhost/admin" });
+  const window = new Window({ url: "http://localhost/admin", settings: { disableIframePageLoading: true } });
   const root = window.document.createElement("div");
   window.document.body.append(root);
   const fetch = async (url, init = {}) => apiFetch(h, new Request(new URL(url, "http://localhost"), { ...init, headers: { ...(init.headers ?? {}), origin: "http://localhost", "x-as": role } }));
   const boot = adminBoot(config, { id: users[role].userId, username: role, displayName: role === "owner" ? "Olivia" : "Eddie", role });
   const app = startAdmin({ root, boot, fetch, window, confirm: () => true, storage: null });
   await app.ready;
-  const go = async (hash) => { window.location.hash = hash; await settle(); await app.idle(); };
+  const go = async (path) => { await app.go(path); await settle(); await app.idle(); };
   return { h, window, root, app, go };
 };
 /** The admin's fetch goes to the same API the harness uses (role from the x-as header). */
@@ -200,7 +200,7 @@ const apiFetch = async (h, request) => {
 };
 
 test("admin: a fixed list has no add / remove / move buttons and says why; values stay editable", () => {
-  const window = new Window({ url: "http://localhost/admin" });
+  const window = new Window({ url: "http://localhost/admin", settings: { disableIframePageLoading: true } });
   const form = createForm({ doc: window.document, fields: config.files[0].fields, sections: config.files[0].sections, value: site, role: "owner", references: {} });
   const footer = form.element.querySelector('[data-path="footerLinks"]');
   const labels = [...footer.querySelectorAll("button")].map((button) => button.getAttribute("aria-label") ?? button.textContent.trim());
@@ -213,13 +213,13 @@ test("admin: a fixed list has no add / remove / move buttons and says why; value
 test("admin: editor — no owner-only section, no Activity; fixed collection has no Add; owner sees Activity in plain words", async () => {
   const editor = await shell("editor");
   try {
-    const nav = [...editor.root.querySelectorAll(".vc-nav-list a")].map((link) => link.textContent.trim());
-    assert.ok(!nav.includes("Team") && !nav.includes("Activity") && !nav.includes("People"), nav.join(", "));
-    await editor.go("#/collections/services");
+    const nav = [...editor.root.querySelectorAll(".vc-rail a.vc-rail-item")].map((link) => link.textContent.trim());
+    assert.ok(!nav.includes("Team") && !nav.includes("Activity") && !nav.includes("Users"), nav.join(", "));
+    await editor.go("/admin/catalog/services");
     assert.ok(![...editor.root.querySelectorAll(".vc-actions a")].some((link) => /^Add /.test(link.textContent)), "no Add for a fixed collection");
-    await editor.go("#/collections/services/new");
+    await editor.go("/admin/catalog/services/new");
     assert.match(editor.root.textContent, /Services is a fixed set/);
-    await editor.go("#/activity");
+    await editor.go("/admin/audit");
     assert.match(editor.root.textContent, /Only an owner can see the activity log/);
   } finally { editor.h.close(); }
 
@@ -227,15 +227,15 @@ test("admin: editor — no owner-only section, no Activity; fixed collection has
   try {
     await owner.h.audit.record({ at: "2026-10-12T08:00:00.000Z", userId: "usr_editor", role: "editor", action: "denied", stage: "publish", resource: "item:team:sam", detail: { reason: "owner_only" } });
     // U4: Activity is the second tab of People (Mr Spa 19 / 20).
-    assert.ok([...owner.root.querySelectorAll(".vc-nav-list a")].some((link) => link.textContent.trim() === "People"));
-    await owner.go("#/activity");
+    assert.ok([...owner.root.querySelectorAll(".vc-rail a.vc-rail-item")].some((link) => link.textContent.trim() === "Users"));
+    await owner.go("/admin/audit");
     const rows = [...owner.root.querySelectorAll(".vc-activity tbody tr")].map((row) => [...row.querySelectorAll("td")].slice(1).map((cell) => cell.textContent.trim()));
     assert.deepEqual(rows, [["Eddie Editor", "Refused to publish Team member · sam: only owners can change it", "—", "Failed"]]);
     assert.equal(owner.root.querySelector('.vc-tabs [aria-current="page"]').textContent, "Activity");
     assert.equal(owner.root.querySelector('.vc-filters [aria-current="page"]').textContent, "All");
-    await owner.go("#/activity/publish");
+    await owner.go("/admin/audit/publish");
     assert.match(owner.root.textContent, /Nothing of this kind yet/);
-    assert.equal(owner.root.querySelector('.vc-nav-list a[aria-current="page"]').textContent, "People");
+    assert.equal(owner.root.querySelector('.vc-rail a[aria-current="page"]').textContent, "Users");
   } finally { owner.h.close(); }
 });
 

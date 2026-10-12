@@ -1,7 +1,7 @@
 /**
  * P8b: People (owners only) and My account, on the P6 API.
- *   #/people   add a person (a temporary password is shown once), change role, disable / enable, reset a password
- *   #/account  my name and role; change my password (other sessions end, this one goes on)
+ *   /admin/users    add a person (a temporary password is shown once), change role, disable / enable, reset a password
+ *   /admin/account  my name and role; change my password (other sessions end, this one goes on)
  * The server decides everything (owner only, never the last active owner, not yourself); the screen only explains.
  * Passwords stay in the page only until it is left: never in the URL, storage or logs; every form posts.
  */
@@ -10,6 +10,7 @@ import type { BootUser } from "./boot.js";
 import { clear, h } from "./dom.js";
 import type { ConfirmOptions } from "./dialog.js";
 import type { Tone, ToastAction } from "./toast.js";
+import { adminHref } from "./routes.js";
 
 type Role = "owner" | "editor";
 export type PublicUser = {
@@ -42,8 +43,8 @@ const when = (iso: string | null) => {
 
 /** U4: People and Activity are one place with two tabs (Mr Spa 19 / 20). */
 export const peopleTabs = (doc: Document, current: "people" | "activity") => h(doc, "nav", { class: "vc-tabs", "aria-label": "People and activity" },
-  h(doc, "a", { href: "#/people", class: "vc-tab", ...(current === "people" ? { "aria-current": "page" } : {}) }, "People"),
-  h(doc, "a", { href: "#/activity", class: "vc-tab", ...(current === "activity" ? { "aria-current": "page" } : {}) }, "Activity"));
+  h(doc, "a", { href: adminHref.users(), class: "vc-tab", ...(current === "people" ? { "aria-current": "page" } : {}) }, "People"),
+  h(doc, "a", { href: adminHref.audit(), class: "vc-tab", ...(current === "activity" ? { "aria-current": "page" } : {}) }, "Activity"));
 export const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).map((word) => word[0]).join("").slice(0, 2).toUpperCase() || "?";
 
 /** A labelled input row for the small forms on these screens. */
@@ -164,7 +165,7 @@ export const peopleScreen = async (kit: ScreenKit, stillHere: () => boolean) => 
           } else if (await patch(person, { action: "enable" })) kit.say(`${person.displayName} can sign in again.`);
         });
         buttons.append(reset, toggle);
-      } else buttons.append(h(doc, "a", { href: "#/account", class: "vc-button vc-quiet" }, "My account"));
+      } else buttons.append(h(doc, "a", { href: adminHref.account(), class: "vc-button vc-quiet" }, "My account"));
       tbody.append(h(doc, "tr", { "data-user": person.username }, name, roleCell, status, h(doc, "td", { class: "vc-note" }, when(person.lastLoginAt)), buttons));
     }
   };
