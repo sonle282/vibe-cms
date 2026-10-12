@@ -1,6 +1,6 @@
 {
   "name": "@sonle282/vibe-cms",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "Vibe CMS — an Astro integration that adds a content editor (/admin) to a site, driven by one cms.config.ts.",
   "license": "UNLICENSED",
   "private": false,
@@ -78,7 +78,7 @@
     "api:local": "node scripts/api-local.mjs",
     "auth:local": "node scripts/auth-local.mjs",
     "e2e": "node scripts/e2e.mjs",
-    "install:local": "node scripts/install-local.mjs"
+    "install:local": "node --disable-warning=ExperimentalWarning scripts/install-local.mjs"
   },
   "peerDependencies": {
     "astro": "^7.2.1",

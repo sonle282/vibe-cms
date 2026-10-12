@@ -3,6 +3,17 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.18.0 — unreleased (P12e)
+
+- **`npx vibe-cms import-legacy-users --from <old D1> [--from-config <file>] [--local] [--dry-run]`** — the people of
+  the CMS a site ran before (the first site's hand-copied CMS: numeric ids, roles admin / editor) into this site's
+  set-up, empty CMS database. Same password hashes → **nobody resets a password**; admin → owner; disabled stays
+  disabled; "must change the temporary password" carries over; the old id is kept as `legacy_id`; with an owner, the
+  bootstrap is marked as used. One audit row per person. Refuses (and writes nothing) when the target already has
+  people, the source is already a Vibe CMS database, or a row cannot come over as it is (unknown hash format, bad
+  username, role…). `--dry-run` lists who would come over.
+- Site action: none.
+
 ## 0.17.0 — unreleased (P12d)
 
 - **`f.tuple([...], { label })`** — a fixed-length list stored as a JSON array, one field per place: e.g. a menu line

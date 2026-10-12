@@ -5,14 +5,14 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.17.0 · P12d.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
+> Status: **0.18.0 · P12e.** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
 > fields on the server, CMS API + one-commit GitHub publishing, sign-in, and the editor at `/admin` (lists, forms
 > generated from `cms.config`, a visual rich-text editor, a live preview of the draft on the real page, drafts, review
 > of changes, publish, live status, People, My account), rich text cleaned on the server, images (upload to R2, picker,
 > inline images resized by dragging, published in the same commit), and the `vibe-cms` command (setup, migrate, check,
 > export / import, update, reset-owner-password), fixed lists / collections, owner-only sections, the Activity log, History (restore an older version as a draft),
-> tuples, text patterns / tokens, per-field rich-text tags and site `rules`. Next: CLI import of users, image crop,
-> either-fields and images by name (P12e–P12g), then
+> tuples, text patterns / tokens, per-field rich-text tags and site `rules`. Also: importing the people of an older CMS.
+> Next: image crop, either-fields and images by name (P12f–P12g), then
 > moving them onto the package (P13–P18;
 > [docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). No release yet.
 
@@ -110,6 +110,7 @@ runs it; `--account <id>` picks another account. No command asks for, prints or 
 | `export --out <dir> [--local]` | D1 rows (drafts, audit, people) → `<site>-cms.sql` + `<site>-cms.counts.json` (rows per table, migrations). Keep it private: it holds password hashes. R2 is counted, not copied (copy objects with the bucket's own S3 keys) |
 | `import --file <sql> [--local]` | Into a set-up, **empty** CMS database with the same migrations; compares the rows table by table |
 | `update [version]` | Points `package.json` at that release (default: the latest), runs `npm install`, prints the CHANGELOG's "Site action" of every version in between. Nothing is written if the release does not exist |
+| `import-legacy-users --from <old D1> [--from-config <file>] [--dry-run]` | Moving from the CMS a site ran before: its people come over to the new (empty) database with the **same passwords** — admin → owner, disabled stays disabled, a temporary password still has to be changed. Refuses when the new database already has people |
 | `reset-owner-password [--username <name>]` | The owner forgot their password: a temporary one, shown once; they must change it at the next sign-in, every session is signed out, one audit row |
 
 Moving a site to another Cloudflare account, in this order (the ids in `wrangler.jsonc` point at the account `setup`

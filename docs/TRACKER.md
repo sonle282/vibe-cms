@@ -2,7 +2,7 @@
 
 > Nguồn: [DESIGN.md](DESIGN.md) §I. Quy tắc: 1 task = 1 commit; mỗi task REPORT → DỪNG chờ review. Test của gói **không đọc
 > dữ liệu site khách**. Task có sửa repo site: đầu task `git status` sạch + pull nhánh production của site; có thay đổi
-> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (P12d).
+> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (P12e).
 
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
@@ -25,8 +25,8 @@
 | **P12** | Bước 0 (chỉ đọc 2 site pilot): cả hai đã chạy CMS chép tay (Innovate đã go-live) → viết lại P12–P18 (chi tiết: tài liệu private). SonLe duyệt 2026-10-12: thay cả 2 bản chép bằng gói, **Novelle trước** | — | ✅ Xong (duyệt 2026-10-12) |
 | **P12b** | Gói: list cố định (`fixed: true`), collection cố định, mục chỉ owner (`access: "owner"`, 403 + audit), màn **Activity** (owner) | 12–18 | ✅ Xong (merge 2026-10-12; d61f489 + fcd161f, CI 38192504189) |
 | **P12c** | Gói: **History + Restore as draft** — đọc lịch sử commit của file trên GitHub (gồm cả các lần publish bằng CMS cũ, không cần chuyển dữ liệu) | 10–16 | ✅ Xong (merge 2026-10-12; d42af43, CI 38194532723) |
-| **P12d** | Gói: `f.tuple`, text `pattern` / `tokens`, rich text `allow`, **`rules` của site** (chỗ cắm plugin: build + lưu + publish) — những gì Novelle cần | 14–22 | 🔎 Chờ review (commit + CI: xem PR) |
-| P12e | CLI: `import-legacy-users` từ D1 của CMS chép (cùng định dạng hash → không đặt lại mật khẩu; admin → owner) | 6–10 | ⏳ |
+| **P12d** | Gói: `f.tuple`, text `pattern` / `tokens`, rich text `allow`, **`rules` của site** (chỗ cắm plugin: build + lưu + publish) — những gì Novelle cần | 14–22 | ✅ Xong (merge 2026-10-12; 46d74bb, CI 38196413379) |
+| **P12e** | CLI: `import-legacy-users` từ D1 của CMS chép (cùng định dạng hash → không đặt lại mật khẩu; admin → owner) | 6–10 | 🔎 Chờ review (commit + CI: xem PR) |
 | P12g | Gói (trước Innovate): field "chữ hoặc tham chiếu" (giá `{ "of": … }`), ảnh theo tên trong manifest + kích thước do build tạo | 10–16 | ⏳ |
 | P12f | Gói: cắt / đổi cỡ ảnh = **bản sao mới**, giữ ảnh gốc (như Mr Spa), làm trong trình duyệt — không binding `IMAGES` | 8–14 | ⏳ |
 | P13 | Novelle: `cms.config` trên JSON có sẵn (không đổi nội dung) + plugin + `bind` selector; chạy song song CMS chép ở local | 10–16 | ⏳ |
@@ -76,6 +76,12 @@
   thành cố định bị từ chối lúc publish, audit `failed`, không commit; collection cố định không thêm bản ghi; mục chỉ
   owner: editor không thấy trong overview / nháp / boot, 403 + 1 dòng audit khi lưu / publish), `/activity` (editor 403,
   bộ lọc, 50 / trang + `before`, tên người + nhãn mục), admin trên DOM giả, audit D1 bằng SQL thật (node:sqlite + migration).
+- **P12e:** `test/legacy.test.mjs` — CLI chạy wrangler giả trên file SQLite thật (`test/helpers/sqlite-wrangler.mjs`):
+  bảng `cms_users` / `cms_auth_state` đúng schema của site đầu tiên, hash tạo bằng đúng hàm của nó; dry-run không ghi gì;
+  ánh xạ (admin → owner, disabled, phải đổi mật khẩu tạm, `legacy_id`, `session_version`, hash giống từng byte), bootstrap
+  đánh dấu đã dùng, audit; **đăng nhập bằng mật khẩu cũ qua code đăng nhập thật của gói**; từ chối (đích đã có người, nguồn
+  đã là Vibe CMS, hash lạ, đích chưa migrate). `install:local` thêm bước trên wrangler THẬT: D1 "CMS cũ" → D1 mới →
+  Worker đã build đăng nhập bằng mật khẩu cũ.
 - **P12d:** `test/field-types.test.mjs` (dữ liệu bịa theo dạng menu tiệm thật: danh mục cố định, dịch vụ `[tên, giá]`, giá khoá):
   config, giá trị tuple / pattern / tokens, ô khoá + list cố định + lọc rich text vào trong tuple, `rules` lúc build (đọc
   file khác, cảnh báo, hàm ném lỗi) và trong API (422 kèm lời của luật), admin trên DOM giả, tóm tắt thay đổi theo từng
