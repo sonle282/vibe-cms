@@ -70,7 +70,7 @@ const setup = async ({ as = "owner", confirm = () => true } = {}) => {
 const addPerson = async (h, username, displayName = "", role = "editor") => {
   type(h.window, h.root.querySelector("#vc-new-username"), username);
   type(h.window, h.root.querySelector("#vc-new-name"), displayName);
-  h.root.querySelector("#vc-new-role").value = role;
+  h.root.querySelector(`#vc-new-role input[value="${role}"]`).checked = true;
   h.root.querySelector("form.vc-people-add").dispatchEvent(new h.window.Event("submit", { bubbles: true, cancelable: true }));
 };
 
@@ -83,7 +83,7 @@ test("People: owners see it in the navigation; the list shows everyone, with no 
   const me = h.rowOf("owner");
   // Last sign-in: today (the setup signed in just now), in the browser's own date format.
   const today = new Date().toLocaleString([], { day: "numeric", month: "short", year: "numeric" });
-  assert.ok(me.textContent.startsWith(`Olivia Owner owner (you)OwnerActive${today}`), me.textContent);
+  assert.ok(me.textContent.startsWith(`OOOlivia Owner owner (you)OwnerActive${today}`), me.textContent);
   assert.equal(me.querySelector("select"), null, "no role menu on yourself");
   assert.equal(h.button(me, "Disable"), undefined, "you cannot disable yourself");
   for (const form of h.root.querySelectorAll("form")) assert.equal(form.getAttribute("method"), "post");
@@ -184,8 +184,8 @@ test("U2 shell: the rail (Pages, collections, Drafts; People + Activity at the b
   assert.equal(rail.querySelector(".vc-mark").textContent, config.site.name.trim()[0].toUpperCase());
   const labels = (list) => [...list.querySelectorAll(".vc-rail-label")].map((label) => label.textContent);
   const [top, bottom] = rail.querySelectorAll(".vc-nav-list");
-  assert.deepEqual(labels(top), ["Pages", ...config.collections.map((collection) => collection.label), "Drafts"]);
-  assert.deepEqual(labels(bottom), ["People", "Activity"]);
+  assert.deepEqual(labels(top), ["Pages", ...config.collections.map((collection) => collection.label), "Media", "Drafts"]);
+  assert.deepEqual(labels(bottom), ["People"], "U4: Activity is a tab of People");
   assert.ok(top.querySelectorAll("svg.vc-icon").length >= 3, "every place has its icon");
   // A file opens under Pages: the rail marks Pages, the crumbs read "Pages / <file>".
   await h.go(`#/files/${config.files[0].key}`);
@@ -205,7 +205,7 @@ test("U2 shell: the rail (Pages, collections, Drafts; People + Activity at the b
   avatar.click();
   await h.go("#/people");
   assert.equal(menu.hidden, true);
-  assert.equal(h.root.querySelector(".vc-crumbs").textContent, "People");
+  assert.equal(h.root.querySelector(".vc-crumbs").textContent, "People & activity");
 });
 
 test("People: editors do not see it, and the screen says why", async () => {

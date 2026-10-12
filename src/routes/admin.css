@@ -114,12 +114,14 @@ textarea.vc-input { resize: vertical; line-height: 1.45; }
 .vc-loading { color: var(--text-secondary); padding: 24px; }
 
 /* ---------- sign in */
-.vc-sign { max-width: 400px; margin: 10vh auto; padding: 0 16px; }
-.vc-sign-brand { font-weight: 600; } .vc-sign-brand span { color: var(--text-secondary); font-weight: 400; }
-.vc-sign-card { background: var(--surface); border-radius: var(--radius-14); padding: 24px; border: 1px solid var(--hairline); box-shadow: var(--shadow-menu); }
-.vc-sign-card h1 { font-size: 18px; margin: 0 0 8px; }
+.vc-sign { display: grid; place-items: center; min-height: 100vh; padding: 24px 16px; }
+.vc-sign-card { display: grid; width: min(380px, 100%); padding: 36px 32px 28px; text-align: left; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-16); box-shadow: var(--shadow-dialog); }
+.vc-sign-card .vc-sign-mark { justify-self: center; width: 48px; height: 48px; margin: 0 0 16px; font-size: 20px; border-radius: var(--radius-12); }
+.vc-sign-sub { margin: 0 0 12px; color: var(--text-secondary); font-size: var(--text-13); text-align: center; }
+.vc-sign-foot { margin: 16px 0 0; color: var(--text-secondary); font-size: var(--text-12); text-align: center; }
+.vc-sign-card h1 { margin: 0 0 6px; font-size: 22px; font-weight: 700; text-align: center; letter-spacing: -.01em; }
 .vc-sign-card label { display: block; margin: 14px 0 6px; font-size: 13px; font-weight: 500; }
-.vc-sign-card .vc-button { margin-top: 18px; width: 100%; }
+.vc-sign-card .vc-button { margin-top: 18px; width: 100%; min-height: 44px; font-size: 15px; }
 
 /* ---------- shell (U2: the Mr Spa CMS frame — rail 64 · top bar 56 · canvas padding 24 · inspector 360) */
 .vc-skip { position: absolute; left: 8px; top: -40px; background: var(--surface); padding: 8px 12px; border-radius: var(--radius-8); z-index: 60; }
@@ -188,10 +190,6 @@ body.vc-page:has(.vc-app) { overflow: hidden; }
 .vc-toast-action:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 
 /* ---------- overview + lists */
-.vc-cards { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
-.vc-card { display: grid; gap: 4px; padding: 16px; min-height: 96px; background: var(--surface); border-radius: var(--radius-14); border: 1px solid var(--hairline); box-shadow: var(--shadow-card); color: inherit; text-decoration: none; align-content: start; }
-.vc-card:hover { border-color: var(--border-input); box-shadow: var(--shadow-menu); }
-.vc-card-title { font-weight: 600; font-size: 15px; } .vc-card-meta { color: var(--text-secondary); font-size: 13px; }
 .vc-pill { justify-self: start; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 12px; font-size: 12px; font-weight: 500; white-space: nowrap; }
 .vc-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .vc-pill-live { background: var(--success-bg); color: var(--success); }
@@ -199,9 +197,9 @@ body.vc-page:has(.vc-app) { overflow: hidden; }
 .vc-pill-draft { background: var(--accent-bg); color: var(--accent-strong); }
 .vc-status { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .vc-unpublished { color: var(--warning); font-size: 12px; }
-.vc-toolbar { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
-.vc-search { max-width: 320px; min-height: 36px; }
-.vc-count { color: var(--text-secondary); margin: 0; font-size: 13px; }
+.vc-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 16px; }
+.vc-search { flex: 0 1 320px; min-height: 36px; padding-left: 34px; background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236e6e73' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M11 3a8 8 0 1 0 0 16a8 8 0 1 0 0-16z'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E") no-repeat 12px 50% / 14px; }
+.vc-count { margin: 0 0 0 auto; color: var(--text-secondary); font-size: var(--text-13); }
 .vc-table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: var(--radius-14); overflow: hidden; border: 1px solid var(--hairline); box-shadow: var(--shadow-card); }
 .vc-table th { text-align: left; height: 40px; padding: 0 16px; background: var(--rail-bg); color: var(--text-secondary); font-size: 12px; font-weight: 500; }
 .vc-table td { height: 52px; padding: 8px 16px; border-top: 1px solid var(--hairline); }
@@ -309,9 +307,7 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
 .vc-secret-value { font: 600 18px/1.4 var(--font-mono); letter-spacing: .04em; padding: 6px 10px; background: var(--surface); border-radius: var(--radius-10); user-select: all; }
 .vc-secret .vc-button.vc-quiet { justify-self: start; padding: 0; }
 .vc-people-add { display: grid; gap: 12px; }
-.vc-people-fields { display: grid; grid-template-columns: 1fr 1fr 160px; gap: 12px; align-items: start; }
-.vc-people-add .vc-button { justify-self: start; }
-.vc-people { margin-top: 16px; }
+.vc-people-fields { display: grid; gap: 14px; }
 .vc-people .vc-role { min-height: 34px; width: auto; }
 .vc-people-actions { white-space: nowrap; text-align: right; }
 .vc-people-actions .vc-button + .vc-button { margin-left: 6px; }
@@ -423,16 +419,17 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
 
 /* P12b: Activity — filters and the outcome colour of each row. */
 .vc-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 16px; }
-.vc-filter { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border-input); color: var(--text); text-decoration: none; font-size: 13px; }
-.vc-filter[aria-current="page"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.vc-filter { height: 30px; padding: 0 12px; border-radius: var(--radius-full); border: 1px solid var(--border-input); background: var(--surface); color: var(--text); text-decoration: none; font: 500 13px/28px var(--font-ui); cursor: pointer; }
+.vc-filter[aria-current="page"], .vc-filter[aria-pressed="true"] { background: var(--text); border-color: var(--text); color: #fff; }
 .vc-activity-when { white-space: nowrap; color: var(--text-secondary); font-size: 13px; }
 .vc-activity-ok { color: var(--success); }
 .vc-activity-bad { color: var(--danger); }
 .vc-activity + .vc-error + .vc-button { margin-top: 12px; }
 
 /* P12c: History — one card per version, newest first. */
-.vc-history { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 8px; }
-.vc-history-item { background: var(--surface); border-radius: var(--radius-14); border: 1px solid var(--hairline); box-shadow: var(--shadow-card); padding: 12px 16px; }
+.vc-history { list-style: none; margin: 16px 0 0; padding: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-14); }
+.vc-history-item { padding: 14px 18px; border-top: 1px solid var(--hairline); }
+.vc-history-item:first-child { border-top: 0; }
 .vc-history-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; }
 .vc-history-actions { margin-left: auto; display: flex; gap: 8px; }
 .vc-history-title { margin: 6px 0 0; color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
@@ -492,3 +489,88 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
 .vc-image-menu { left: auto; right: 0; bottom: auto; top: calc(100% + 6px); min-width: 200px; }
 .vc-image-devices { background: #ffffffe6; box-shadow: 0 1px 3px #1d1d1f33; }
 .vc-menu-item.vc-danger { color: var(--danger); }
+
+/* ---------- U4: the screens of the Mr Spa CMS (04 Pages · 14 lists · 17 Media · 18 Drafts · 19 / 20 People & activity · 21 Sign-in · 24 small screen) */
+.vc-rows { list-style: none; margin: 0; padding: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-14); }
+.vc-rows > li + li { border-top: 1px solid var(--hairline); }
+.vc-row { display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 10px 16px; color: inherit; text-decoration: none; }
+a.vc-row:hover { background: var(--rail-bg); }
+.vc-row-icon { display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; border-radius: var(--radius-8); background: var(--surface-off); color: var(--text-secondary); }
+.vc-row-text { display: grid; flex: 1; min-width: 0; gap: 1px; }
+.vc-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-15); }
+.vc-row-group { color: var(--text-secondary); }
+.vc-row-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--text-13); }
+.vc-row-what { color: var(--text); }
+.vc-row-meta { color: var(--text-secondary); font-size: var(--text-12); }
+.vc-row-warn { color: var(--warning); font-size: var(--text-12); }
+.vc-row-chevron { display: grid; color: var(--text-disabled); }
+.vc-row-actions { display: flex; align-items: center; gap: 8px; }
+.vc-rows-empty { padding: 20px 16px; color: var(--text-secondary); text-align: center; }
+.vc-rows-note { margin: 10px 0 0; }
+.vc-group-title { margin: 8px 0 10px; font-size: var(--text-14); font-weight: 600; }
+.vc-group-title ~ .vc-group-title { margin-top: 32px; }
+.vc-link { color: var(--accent); font-weight: 600; text-decoration: none; white-space: nowrap; }
+.vc-link:hover { text-decoration: underline; }
+.vc-empty-state { display: grid; justify-items: center; gap: 6px; padding: 48px 24px; text-align: center; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-14); color: var(--text-secondary); }
+.vc-empty-state .vc-icon { width: 28px; height: 28px; stroke-width: 1.6; }
+.vc-empty-state h2 { margin: 4px 0 0; color: var(--text); font-size: var(--text-16); }
+.vc-empty-state p { max-width: 320px; margin: 0; font-size: var(--text-13); }
+.vc-more { position: relative; display: inline-flex; }
+.vc-more > .vc-menu { left: auto; right: 0; bottom: auto; top: calc(100% + 6px); min-width: 200px; }
+.vc-more-button { width: 32px; height: 32px; font-size: 18px; }
+.vc-list-name { display: inline-flex; align-items: center; gap: 12px; }
+.vc-list-thumb { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; overflow: hidden; border-radius: var(--radius-8); background: var(--surface-off); color: var(--text-disabled); }
+.vc-list-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.vc-table td:has(.vc-list-thumb) { padding-top: 6px; padding-bottom: 6px; }
+
+/* Media: the library on the canvas, the chosen image in the inspector on the right. */
+.vc-media { display: grid; grid-template-columns: minmax(0, 1fr) var(--inspector-width); height: 100%; }
+.vc-media-main { min-width: 0; min-height: 0; overflow: auto; padding: var(--canvas-padding); }
+.vc-media-grid { overflow: visible; }
+.vc-media-detail { min-height: 0; overflow: auto; padding: 20px; background: var(--surface); border-left: 1px solid var(--hairline); }
+.vc-media-picture { display: block; width: 100%; max-height: 260px; object-fit: contain; border-radius: var(--radius-12); background: var(--canvas); }
+.vc-media-name { margin: 14px 0 2px; font-size: var(--text-16); font-weight: 600; overflow-wrap: anywhere; }
+.vc-media-actions { display: flex; gap: 8px; margin: 12px 0 16px; }
+.vc-media-facts { display: grid; grid-template-columns: 1fr auto; margin: 0; border-top: 1px solid var(--hairline); }
+.vc-media-facts dt, .vc-media-facts dd { margin: 0; padding: 10px 0; border-bottom: 1px solid var(--hairline); font-size: var(--text-13); }
+.vc-media-facts dt { color: var(--text-secondary); }
+.vc-media-facts dd { text-align: right; }
+label.vc-button[role="button"] { cursor: pointer; }
+
+/* People & activity: two tabs; the add-a-person form beside the list. */
+.vc-page-inner:has(.vc-tabs) { max-width: 1120px; }
+.vc-tabs { display: flex; gap: 24px; margin: 0 0 20px; border-bottom: 1px solid var(--hairline); }
+.vc-tab { margin-bottom: -1px; padding: 10px 2px; border-bottom: 2px solid transparent; color: var(--text-secondary); font-size: var(--text-15); text-decoration: none; }
+.vc-tab:hover { color: var(--text); }
+.vc-tab[aria-current="page"] { border-bottom-color: var(--text); color: var(--text); font-weight: 600; }
+.vc-split { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; }
+.vc-split-main { min-width: 0; }
+.vc-split-side { position: sticky; top: 0; padding: 18px 20px 20px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-14); }
+.vc-side-head { display: grid; gap: 2px; margin: 0 0 16px; }
+.vc-side-crumb { color: var(--text-secondary); font-size: var(--text-12); }
+.vc-side-title { margin: 0; font-size: var(--text-16); font-weight: 600; }
+.vc-people-add { display: grid; gap: 14px; }
+.vc-wide { width: 100%; }
+.vc-choices { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
+.vc-choice { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--hairline); border-radius: var(--radius-12); cursor: pointer; }
+.vc-choice:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.vc-choice input { margin: 3px 0 0; accent-color: var(--accent); }
+.vc-choice-text { display: grid; gap: 2px; }
+.vc-choice-title { font-weight: 600; font-size: var(--text-14); }
+.vc-choice-help { color: var(--text-secondary); font-size: var(--text-12); }
+.vc-person { display: inline-flex; align-items: center; gap: 10px; }
+.vc-initials { display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px; border-radius: 50%; background: var(--surface-off); color: var(--text); font-size: var(--text-11); font-weight: 600; }
+.vc-people .vc-role { min-height: var(--control-compact); width: auto; padding: 0 28px 0 10px; }
+.vc-people-actions .vc-button { min-height: var(--control-compact); padding: 0 10px; font-size: var(--text-13); }
+@media (max-width: 1099px) { .vc-split { grid-template-columns: 1fr; } .vc-split-side { position: static; } }
+
+/* Smaller than 900 px: the editor asks for a laptop (Mr Spa 24). */
+.vc-small-screen { display: none; }
+@media (max-width: 899px) {
+  .vc-small-screen { position: fixed; inset: 0; z-index: 100; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 24px; text-align: center; background: var(--canvas); }
+  .vc-small-screen .vc-icon { color: var(--text-secondary); stroke-width: 1.6; }
+  .vc-small-screen h2 { margin: 6px 0 0; font-size: 20px; }
+  .vc-small-screen p { max-width: 320px; margin: 0; color: var(--text-secondary); }
+  .vc-small-screen a { margin-top: 8px; color: var(--accent); font-weight: 600; text-decoration: none; }
+  .vc-root, .vc-sign { display: none; }
+}

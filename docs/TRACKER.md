@@ -2,7 +2,7 @@
 
 > Nguồn: [DESIGN.md](DESIGN.md) §I. Quy tắc: 1 task = 1 commit; mỗi task REPORT → DỪNG chờ review. Test của gói **không đọc
 > dữ liệu site khách**. Task có sửa repo site: đầu task `git status` sạch + pull nhánh production của site; có thay đổi
-> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (U3 · thành phần của Mr Spa).
+> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (U4 · màn hình của Mr Spa).
 
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
@@ -33,8 +33,8 @@
 | **P14** | Novelle: chuyển (`setup --site novelle`, nhập users, gỡ CMS chép), G.2 1 cặp trên `dev`, Workers Builds không biến token | 10–16 | ✅ Xong (merge 2026-10-12; novelle PR #2, 30af26c; publish 37868c7 + revert a913f91 trên demo) |
 | **U1** | UI = design system của Mr Spa (SonLe 2026-10-12: CMS mọi site dùng chung 1 bộ): token theo vai trò + giá trị của Mr Spa (design-004 · Foundations), font Geist tự host, cỡ control 40 / 36 / 30, pill 6 px chấm, focus, reduced motion | 6–10 | ✅ Xong (merge 2026-10-12; 6191ef3, PR #16) |
 | **U2** | UI: khung như Mr Spa — rail 64 (Pages = mọi file, mỗi collection 1 chỗ + `icon` trong config, Drafts có số; People / Activity dưới cùng; avatar → menu My account / Sign out), top bar 56 (crumb `Pages / Tên`, chọn thiết bị ở giữa, Publish là nút chính duy nhất), canvas padding 24 + preview bo 12, form trong inspector 360 bên phải; trang không bao giờ cuộn — chỉ canvas / inspector | 10–16 | ✅ Xong (merge 2026-10-12; 982e0f5, PR #17) |
-| **U3** | UI: thành phần như Mr Spa — hộp thoại thay `window.confirm` (Esc / Cancel / bấm ngoài = không đổi; nút phá huỷ màu đỏ), Publish trong editor mở hộp review của đúng bản nháp → "Publish to website", toast có icon + 1 hành động (Undo), tooltip cho nút icon, thẻ ảnh (contain, tên + cỡ, Replace khi hover, ⋯ Copy link / Remove, Desktop / Phone), sheet ảnh (Library / Upload, bấm = chọn, double-click / Use image = dùng, Crop ở chân sheet) | 10–16 | 🔄 Đang review |
-| U4 | UI: màn hình + lời văn như Mr Spa (Pages, Drafts, People, Activity, History, Media, Sign-in, chặn < 900 px, chữ trạng thái), release + `vibe-cms update` cho Novelle | 12–18 | ⏳ |
+| **U3** | UI: thành phần như Mr Spa — hộp thoại thay `window.confirm` (Esc / Cancel / bấm ngoài = không đổi; nút phá huỷ màu đỏ), Publish trong editor mở hộp review của đúng bản nháp → "Publish to website", toast có icon + 1 hành động (Undo), tooltip cho nút icon, thẻ ảnh (contain, tên + cỡ, Replace khi hover, ⋯ Copy link / Remove, Desktop / Phone), sheet ảnh (Library / Upload, bấm = chọn, double-click / Use image = dùng, Crop ở chân sheet) | 10–16 | ✅ Xong (merge 2026-10-12; 3e91798, PR #18) |
+| **U4** | UI: màn hình như Mr Spa — Pages dạng danh sách (tên, địa chỉ, trạng thái), danh sách collection có ảnh + "+ New …", **Drafts** (mỗi nháp: thay đổi gì, Open / Publish / ⋯ Discard, Recently published) + "Review & publish all", **Media** (thư viện, lọc, chi tiết, Upload images), **People & activity** 2 tab (form thêm người bên phải, vai trò dạng thẻ), History, Sign-in, chặn < 900 px. Sau đó: release + `vibe-cms update` cho Novelle | 12–18 | 🔄 Đang review |
 | P15 | Innovate: tách nốt `site.ts` → JSON (reviews, FAQ, membership, chính sách, Journal…) — HTML giống từng byte | 8–14 | ⏳ |
 | P16 | Innovate: `cms.config` + plugin + collection cho các mục vừa tách; `wrangler.toml` → `wrangler.jsonc`; song song ở local | 12–18 | ⏳ |
 | P17 | Innovate: chuyển production trong khung giờ báo chủ (publish hết nháp trước, nhập users), G.2 trên `main`; lưu + đọc 1 nháp > 100 KB trên D1 THẬT | 8–12 | ⏳ |

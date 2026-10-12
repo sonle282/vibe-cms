@@ -64,7 +64,7 @@ try {
   // E2E_SCREENSHOTS=<folder>: keep pictures of the image sheet, the review and published screens (local look only; CI leaves it unset).
   const shot = async (name) => { if (process.env.E2E_SCREENSHOTS) await page.screenshot({ path: join(process.env.E2E_SCREENSHOTS, `${name}.png`) }); };
   const api = (path) => page.evaluate(async (url) => (await fetch(url)).json(), path);
-  const open = async (hash) => { await page.goto(`${base}/admin${hash}`); await page.locator(".vc-form, .vc-table, .vc-cards").first().waitFor(); };
+  const open = async (hash) => { await page.goto(`${base}/admin${hash}`); await page.locator(".vc-form, .vc-table, .vc-rows, .vc-empty-state").first().waitFor(); };
   const save = async () => {
     await page.getByRole("button", { name: "Save draft" }).click();
     await page.waitForFunction(() => document.querySelector(".vc-save-state")?.textContent === "Draft saved · not live yet", null, { timeout: 10_000 });
@@ -78,18 +78,24 @@ try {
     await page.fill("#current", password);
     await page.fill("#new", newPassword);
     await page.click("#change button[type=submit]");
-    await page.locator(".vc-cards").waitFor();
+    await page.locator(".vc-rows").waitFor();
   };
 
   // ---------------------------------------------------------------- owner: sign in, overview
   const adminResponse = await page.goto(`${base}/admin`);
   check("/admin: no framing, no caching", adminResponse.headers()["x-frame-options"] === "DENY" && /no-store/.test(adminResponse.headers()["cache-control"] ?? ""), adminResponse.headers());
   check("signed out → the sign-in form posts", (await page.locator("form#login").getAttribute("method")) === "post");
+  check("sign-in (U4): the site's mark and name, its address, one primary button", /^Sign in to Demo Salon$/.test((await page.locator("form#login h1").textContent()) ?? "") && /Edit the website at demo.example/.test(await page.locator("form#login").innerText()));
+  await shot("u4-sign-in");
   await signIn(BOOT.username, BOOT.password, OWNER_PASSWORD);
+  // U4: smaller than 900 px, the editor asks for a laptop (Mr Spa 24).
+  await page.setViewportSize({ width: 800, height: 900 });
+  check("small screen: Open on a laptop, the editor hidden", await page.locator(".vc-small-screen").isVisible() && !(await page.locator(".vc-rail").isVisible()) && /Open on a laptop/.test(await page.locator(".vc-small-screen").innerText()));
+  await page.setViewportSize({ width: 1280, height: 900 });
   const navText = await page.locator(".vc-rail").innerText();
   check("shell: the rail has Pages, every collection and Drafts", ["Pages", "Services", "Team", "Blog", "Drafts"].every((label) => navText.includes(label)), navText);
-  check("shell: Pages lists every file", (await page.locator(".vc-cards").innerText()).includes("Salon info"));
-  check("overview: counts from the API", /3 services/.test(await page.locator(".vc-cards").innerText()));
+  check("shell: Pages lists every file, with its address and status", /Salon info\s+demo\.example\/\s+Live/.test(await page.locator(".vc-rows").innerText()) && (await page.locator(".vc-count").textContent()) === "1 page", await page.locator(".vc-rows").innerText());
+  await shot("u4-pages");
 
   // ---------------------------------------------------------------- owner: every field of the salon info
   const siteBefore = data("src/data/site.json");
@@ -210,7 +216,7 @@ try {
 
   // A new service: the id follows the name until edited.
   await open("#/collections/services");
-  await page.getByRole("link", { name: "Add service" }).click();
+  await page.getByRole("link", { name: "New service" }).click();
   await page.locator(".vc-form").waitFor();
   await input("name").fill("Gel Removal");
   check("new record: id filled from the name", (await input("id").inputValue()) === "gel-removal");
@@ -386,6 +392,11 @@ try {
   // ---------------------------------------------------------------- P8: review every draft, publish them in one commit
   check("navigation counts my drafts", (await page.locator(".vc-badge").textContent()) === "6");
   await page.locator(".vc-nav-list").getByRole("link", { name: /Drafts/ }).click();
+  // U4: Drafts lists them (what changes, when); "Review & publish all" opens the review of all of them.
+  await page.locator(".vc-draft-row").first().waitFor();
+  check("drafts: one row per draft with what it changes", (await page.locator(".vc-draft-row").count()) === 6 && /\d+ changes?: /.test(await page.locator(".vc-draft-row .vc-row-what").first().innerText()));
+  await shot("u4-drafts");
+  await page.getByRole("link", { name: "Review & publish all" }).click();
   await page.locator(".vc-review-card").first().waitFor();
   const reviewText = await page.locator(".vc-review-list").innerText();
   await shot("p8-review");
@@ -437,7 +448,7 @@ try {
   await page.locator("form.vc-people-add").waitFor();
   await page.getByLabel("Username", { exact: true }).fill("editor1");
   await page.getByLabel("Name (optional)").fill("Editor One");
-  await page.getByLabel("Role", { exact: true }).selectOption("editor");
+  await page.locator('#vc-new-role input[value="editor"]').check();
   await page.getByRole("button", { name: "Add person" }).click();
   await page.locator(".vc-secret-value").waitFor();
   const created = { temporaryPassword: (await page.locator(".vc-secret-value").textContent()) ?? "" };

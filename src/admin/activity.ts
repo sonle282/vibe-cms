@@ -4,7 +4,7 @@
  * All · Publishing · Sign-ins · People · Refused. The server decides (GET /api/cms/activity answers 403 to editors).
  */
 import { clear, h } from "./dom.js";
-import type { ScreenKit } from "./people.js";
+import { peopleTabs, type ScreenKit } from "./people.js";
 
 export type ActivityEntry = {
   id: number; at: string; userId: string; who: string | null; role: "owner" | "editor" | "anonymous";
@@ -50,8 +50,8 @@ const when = (iso: string) => {
 
 export const activityScreen = async (kit: ScreenKit, stillHere: () => boolean, kind = "all") => {
   const { doc, api, user } = kit;
-  const crumbs: Array<[string, string?]> = [["Activity"]];
-  if (user.role !== "owner") return kit.show({ title: "Activity", crumbs }, kit.message("Activity", "Only an owner can see the activity log."));
+  const crumbs: Array<[string, string?]> = [["People & activity"]];
+  if (user.role !== "owner") return kit.show({ title: "Activity", crumbs: [["Activity"]] }, kit.message("Activity", "Only an owner can see the activity log."));
   const filter = ACTIVITY_FILTERS.some(([key]) => key === kind) ? kind : "all";
   const first = await api.get<ActivityPage>(`/api/cms/activity?kind=${encodeURIComponent(filter)}`);
   if (!stillHere()) return;
@@ -66,10 +66,14 @@ export const activityScreen = async (kit: ScreenKit, stillHere: () => boolean, k
   const add = (entries: ActivityEntry[]) => {
     for (const entry of entries) {
       const { text, tone } = describeActivity(entry);
+      const sha = typeof entry.detail.commitSha === "string" ? entry.detail.commitSha.slice(0, 7) : "";
+      // U4 (Mr Spa 20): Date · Person · What happened · Change · Result (Done / Failed).
       tbody.append(h(doc, "tr", { "data-id": String(entry.id) },
         h(doc, "td", { class: "vc-activity-when" }, h(doc, "time", { datetime: entry.at }, when(entry.at))),
         h(doc, "td", {}, entry.who ?? "—", entry.role !== "anonymous" ? h(doc, "span", { class: "vc-note" }, ` ${entry.role === "owner" ? "Owner" : "Editor"}`) : null),
-        h(doc, "td", { class: `vc-activity-${tone}` }, text)));
+        h(doc, "td", { class: `vc-activity-${tone}` }, text),
+        h(doc, "td", { class: "vc-mono" }, sha || "—"),
+        h(doc, "td", {}, h(doc, "span", { class: `vc-pill ${tone === "bad" ? "vc-pill-failed" : "vc-pill-live"}` }, tone === "bad" ? "Failed" : "Done"))));
     }
     more.hidden = next === null;
   };
@@ -86,11 +90,14 @@ export const activityScreen = async (kit: ScreenKit, stillHere: () => boolean, k
   clear(tbody);
   add(first.data.entries);
   const empty = first.data.entries.length ? null : h(doc, "p", { class: "vc-empty" }, filter === "all" ? "Nothing has happened yet." : "Nothing of this kind yet.");
+  const title = kit.heading("Activity");
+  title.classList.add("vc-sr-only");
   kit.show({ title: "Activity", crumbs }, [
-    kit.heading("Activity"),
-    h(doc, "p", { class: "vc-help" }, "Who published what, sign-ins, changes to people, and what the CMS refused. Contents are never shown here."),
+    title,
+    peopleTabs(doc, "activity"),
     tabs,
-    empty ?? h(doc, "table", { class: "vc-table vc-activity" }, h(doc, "thead", {}, h(doc, "tr", {}, h(doc, "th", { scope: "col" }, "When"), h(doc, "th", { scope: "col" }, "Who"), h(doc, "th", { scope: "col" }, "What"))), tbody),
+    empty ?? h(doc, "table", { class: "vc-table vc-activity" }, h(doc, "thead", {}, h(doc, "tr", {}, ...["Date", "Person", "What happened", "Change", "Result"].map((text) => h(doc, "th", { scope: "col" }, text)))), tbody),
+    h(doc, "p", { class: "vc-help" }, "Who published what, sign-ins, changes to people, and what the CMS refused. Contents are never shown here."),
     error, more,
   ]);
 };

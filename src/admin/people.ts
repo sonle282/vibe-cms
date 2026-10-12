@@ -40,14 +40,20 @@ const when = (iso: string | null) => {
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 };
 
+/** U4: People and Activity are one place with two tabs (Mr Spa 19 / 20). */
+export const peopleTabs = (doc: Document, current: "people" | "activity") => h(doc, "nav", { class: "vc-tabs", "aria-label": "People and activity" },
+  h(doc, "a", { href: "#/people", class: "vc-tab", ...(current === "people" ? { "aria-current": "page" } : {}) }, "People"),
+  h(doc, "a", { href: "#/activity", class: "vc-tab", ...(current === "activity" ? { "aria-current": "page" } : {}) }, "Activity"));
+export const initialsOf = (name: string) => name.split(/\s+/).filter(Boolean).map((word) => word[0]).join("").slice(0, 2).toUpperCase() || "?";
+
 /** A labelled input row for the small forms on these screens. */
 const row = (doc: Document, id: string, label: string, input: HTMLElement, help?: string) =>
   h(doc, "div", { class: "vc-field" }, h(doc, "label", { class: "vc-label", for: id }, label), input, help ? h(doc, "p", { class: "vc-help" }, help) : null);
 
 export const peopleScreen = async (kit: ScreenKit, stillHere: () => boolean) => {
   const { doc, api, user } = kit;
-  const crumbs: Array<[string, string?]> = [["People"]];
-  if (user.role !== "owner") return kit.show({ title: "People", crumbs }, kit.message("People", "Only an owner can manage people. Ask an owner of this site if someone needs an account."));
+  const crumbs: Array<[string, string?]> = [["People & activity"]];
+  if (user.role !== "owner") return kit.show({ title: "People", crumbs: [["People"]] }, kit.message("People", "Only an owner can manage people. Ask an owner of this site if someone needs an account."));
   const result = await api.get<{ users: PublicUser[] }>("/api/cms/users");
   if (!stillHere()) return;
   if (!result.ok) return kit.failed(result, crumbs);
@@ -74,21 +80,29 @@ export const peopleScreen = async (kit: ScreenKit, stillHere: () => boolean) => 
   const form = h(doc, "form", { class: "vc-people-add", method: "post", "aria-labelledby": "vc-add-title" });
   const username = h(doc, "input", { id: "vc-new-username", name: "username", class: "vc-input", autocomplete: "off", autocapitalize: "none", spellcheck: "false", required: true, minlength: "3", maxlength: "32", pattern: "[A-Za-z0-9][A-Za-z0-9._\\-]{2,31}" });
   const displayName = h(doc, "input", { id: "vc-new-name", name: "displayName", class: "vc-input", autocomplete: "off", maxlength: "60" });
-  const role = h(doc, "select", { id: "vc-new-role", name: "role", class: "vc-input" }, h(doc, "option", { value: "editor" }, "Editor"), h(doc, "option", { value: "owner" }, "Owner"));
+  // U4: the role as two cards (Mr Spa 19), Editor first.
+  const roleCard = (value: Role, title: string, text: string) => h(doc, "label", { class: "vc-choice" },
+    h(doc, "input", { type: "radio", name: "role", value, checked: value === "editor" }),
+    h(doc, "span", { class: "vc-choice-text" }, h(doc, "span", { class: "vc-choice-title" }, title), h(doc, "span", { class: "vc-choice-help" }, text)));
+  const role = h(doc, "fieldset", { id: "vc-new-role", class: "vc-choices" }, h(doc, "legend", { class: "vc-label" }, "Role"),
+    roleCard("editor", "Editor", "Changes content and publishes."),
+    roleCard("owner", "Owner", "Also manages people, sees activity and changes owner-only fields."));
+  const roleValue = () => (form.querySelector<HTMLInputElement>('input[name="role"]:checked')?.value ?? "editor") as Role;
   const addError = h(doc, "p", { class: "vc-error", role: "alert" });
-  const addButton = h(doc, "button", { type: "submit", class: "vc-button vc-primary" }, "Add person");
+  const addButton = h(doc, "button", { type: "submit", class: "vc-button vc-primary vc-wide" }, "Add person");
   form.append(
-    h(doc, "h2", { id: "vc-add-title", class: "vc-section-title" }, "Add a person"),
+    h(doc, "div", { class: "vc-side-head" }, h(doc, "span", { class: "vc-side-crumb" }, "People"), h(doc, "h2", { id: "vc-add-title", class: "vc-side-title" }, "Add a person")),
     h(doc, "div", { class: "vc-people-fields" },
       row(doc, "vc-new-username", "Username", username, "3–32 letters, numbers, dot, dash or underscore. They sign in with it."),
       row(doc, "vc-new-name", "Name (optional)", displayName, "Shown in the CMS."),
-      row(doc, "vc-new-role", "Role", role)),
+      role),
+    h(doc, "p", { class: "vc-help" }, "A temporary password is made for them and shown to you once. They choose their own when they first sign in."),
     addError, addButton);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     addError.textContent = "";
     addButton.disabled = true;
-    const created = await api.post<{ user: PublicUser; temporaryPassword?: string }>("/api/cms/users", { username: username.value, displayName: displayName.value, role: role.value });
+    const created = await api.post<{ user: PublicUser; temporaryPassword?: string }>("/api/cms/users", { username: username.value, displayName: displayName.value, role: roleValue() });
     addButton.disabled = false;
     if (!created.ok) { addError.textContent = created.message; username.focus(); return; }
     form.reset();
@@ -113,7 +127,7 @@ export const peopleScreen = async (kit: ScreenKit, stillHere: () => boolean) => 
     clear(tbody);
     for (const person of users) {
       const self = person.id === user.id;
-      const name = h(doc, "td", {}, h(doc, "span", { class: "vc-person-name" }, person.displayName), h(doc, "span", { class: "vc-mono" }, ` ${person.username}`), self ? h(doc, "span", { class: "vc-note" }, " (you)") : null);
+      const name = h(doc, "td", {}, h(doc, "span", { class: "vc-person" }, h(doc, "span", { class: "vc-initials", "aria-hidden": "true" }, initialsOf(person.displayName)), h(doc, "span", {}, h(doc, "span", { class: "vc-person-name" }, person.displayName), h(doc, "span", { class: "vc-mono" }, ` ${person.username}`), self ? h(doc, "span", { class: "vc-note" }, " (you)") : null)));
       const roleCell = h(doc, "td");
       if (self) roleCell.append(roleName(person.role));
       else {
@@ -156,15 +170,20 @@ export const peopleScreen = async (kit: ScreenKit, stillHere: () => boolean) => 
   };
   render();
 
+  const title = kit.heading("People");
+  title.classList.add("vc-sr-only");
   kit.show({ title: "People", crumbs }, [
-    kit.heading("People"),
-    h(doc, "p", { class: "vc-lead" }, ROLE_HELP),
-    secret,
-    h(doc, "section", { class: "vc-section" }, form),
-    tableError,
-    h(doc, "table", { class: "vc-table vc-people" },
-      h(doc, "thead", {}, h(doc, "tr", {}, ...["Person", "Role", "Status", "Last sign-in"].map((text) => h(doc, "th", { scope: "col" }, text)), h(doc, "th", { scope: "col" }, h(doc, "span", { class: "vc-sr-only" }, "Actions")))),
-      tbody),
+    title,
+    peopleTabs(doc, "people"),
+    h(doc, "div", { class: "vc-split" },
+      h(doc, "div", { class: "vc-split-main" },
+        secret,
+        tableError,
+        h(doc, "table", { class: "vc-table vc-people" },
+          h(doc, "thead", {}, h(doc, "tr", {}, ...["Person", "Role", "Status", "Last sign-in"].map((text) => h(doc, "th", { scope: "col" }, text)), h(doc, "th", { scope: "col" }, h(doc, "span", { class: "vc-sr-only" }, "Actions")))),
+          tbody),
+        h(doc, "p", { class: "vc-help" }, ROLE_HELP)),
+      h(doc, "aside", { class: "vc-split-side" }, form)),
   ]);
 };
 

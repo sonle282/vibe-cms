@@ -22,6 +22,9 @@ const boot = identity && state === "signed-in"
     ? { id: current.user.id, username: current.user.username, displayName: current.user.display_name, role: current.user.role }
     : { id: identity.userId, username: identity.userId, displayName: "Local developer", role: identity.role }, { uploads: Boolean((env as SiteEnv).CMS_MEDIA) })
   : null;
+// U4: the sign-in card and the small-screen note of the Mr Spa CMS (21, 24) — the site's mark, name and address.
+const siteHost = (() => { try { return new URL(config.site.url).host; } catch { return config.site.url; } })();
+const mark = (config.site.name.trim()[0] ?? "V").toUpperCase();
 for (const [name, value] of Object.entries({
   "cache-control": "no-store",
   "x-frame-options": "DENY",
@@ -39,26 +42,41 @@ for (const [name, value] of Object.entries({
     <title>Vibe CMS · {config.site.name}</title>
   </head>
   <body class="vc-page" data-state={state}>
+    <div class="vc-small-screen" role="note">
+      <svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true" class="vc-icon"><path d="M4 4h16a2 2 0 0 1 2 2v10H2V6a2 2 0 0 1 2-2z" /><path d="M1 20h22" /></svg>
+      <h2>Open on a laptop</h2>
+      <p>The {config.site.name} editor needs a bigger screen. Open {siteHost}/admin on a laptop or desktop computer.</p>
+      <a href="/">View the website instead</a>
+    </div>
+
     {state !== "signed-in" && (
       <main class="vc-sign">
-        <p class="vc-sign-brand">{config.site.name} <span>· Vibe CMS</span></p>
-
-        {state === "not-configured" && <p id="state" data-state={state}>Sign-in is not set up on this site yet (CMS_DB and SESSION bindings).</p>}
+        {state === "not-configured" && (
+          <div class="vc-sign-card">
+            <span class="vc-mark vc-sign-mark" aria-hidden="true">{mark}</span>
+            <h1>{config.site.name}</h1>
+            <p id="state" data-state={state} class="vc-sign-sub">Sign-in is not set up on this site yet (CMS_DB and SESSION bindings).</p>
+          </div>
+        )}
 
         {state === "signed-out" && (
           <form id="login" method="post" data-state={state} class="vc-sign-card">
-            <h1>Sign in</h1>
+            <span class="vc-mark vc-sign-mark" aria-hidden="true">{mark}</span>
+            <h1>Sign in to {config.site.name}</h1>
+            <p class="vc-sign-sub">Edit the website at {siteHost}</p>
             <label for="username">Username</label><input id="username" name="username" class="vc-input" autocomplete="username" autocapitalize="none" spellcheck="false" required />
             <label for="password">Password</label><input id="password" name="password" class="vc-input" type="password" autocomplete="current-password" required />
             <button type="submit" class="vc-button vc-primary">Sign in</button>
             <p class="vc-error" role="alert"></p>
+            <p class="vc-sign-foot">Forgot your password? Ask an owner to reset it.</p>
           </form>
         )}
 
         {state === "change-password" && (
           <form id="change" method="post" data-state={state} class="vc-sign-card">
+            <span class="vc-mark vc-sign-mark" aria-hidden="true">{mark}</span>
             <h1>Choose your own password</h1>
-            <p class="vc-help">You signed in with a temporary password. Pick a new one (at least 12 characters) to continue.</p>
+            <p class="vc-sign-sub">You signed in with a temporary password. Pick a new one (at least 12 characters) to continue.</p>
             <input type="text" name="username" autocomplete="username" value={current?.user.username ?? ""} hidden readonly />
             <label for="current">Temporary password</label><input id="current" name="currentPassword" class="vc-input" type="password" autocomplete="current-password" required />
             <label for="new">New password</label><input id="new" name="newPassword" class="vc-input" type="password" autocomplete="new-password" minlength="12" required />
