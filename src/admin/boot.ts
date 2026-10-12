@@ -3,7 +3,7 @@
  * is signed in. Nothing secret: no token, no binding, no password hash. Runs on the server (admin.astro) and is
  * typed for the browser side (app.ts). P12b: files / collections with access: "owner" are left out for editors.
  */
-import type { CmsConfig, Field, Section } from "../config/index.js";
+import type { CmsConfig, CollectionIcon, Field, Section } from "../config/index.js";
 import type { Role } from "../locks/index.js";
 import { mediaSettings } from "../media/index.js";
 
@@ -13,6 +13,8 @@ export type BootCollection = {
   idField: string; markdown: boolean; status?: { field: string; live: string; draft: string };
   /** P12b: no new record can be added. */
   fixed?: boolean;
+  /** U2: its icon on the rail. */
+  icon?: CollectionIcon;
 };
 export type BootUser = { id: string; username: string; displayName: string; role: Role };
 /** P10: whether uploading works (the site has its R2 bucket), where uploads live, and the largest accepted file. */
@@ -30,6 +32,7 @@ export const adminBoot = (config: CmsConfig, user: BootUser, options: { uploads?
     idField: collection.store.kind === "json-array" ? collection.store.idField : collection.store.slugField,
     markdown: collection.store.kind === "markdown-dir",
     ...(collection.fixed ? { fixed: true } : {}),
+    ...(collection.icon ? { icon: collection.icon } : {}),
   })),
 });
 

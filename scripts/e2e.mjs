@@ -62,7 +62,7 @@ try {
   };
   const saveState = () => page.locator(".vc-save-state").textContent();
   // E2E_SCREENSHOTS=<folder>: keep pictures of the image sheet, the review and published screens (local look only; CI leaves it unset).
-  const shot = async (name) => { if (process.env.E2E_SCREENSHOTS) await page.screenshot({ path: join(process.env.E2E_SCREENSHOTS, `${name}.png`), fullPage: true }); };
+  const shot = async (name) => { if (process.env.E2E_SCREENSHOTS) await page.screenshot({ path: join(process.env.E2E_SCREENSHOTS, `${name}.png`) }); };
   const api = (path) => page.evaluate(async (url) => (await fetch(url)).json(), path);
   const open = async (hash) => { await page.goto(`${base}/admin${hash}`); await page.locator(".vc-form, .vc-table, .vc-cards").first().waitFor(); };
   const save = async () => {
@@ -86,8 +86,9 @@ try {
   check("/admin: no framing, no caching", adminResponse.headers()["x-frame-options"] === "DENY" && /no-store/.test(adminResponse.headers()["cache-control"] ?? ""), adminResponse.headers());
   check("signed out → the sign-in form posts", (await page.locator("form#login").getAttribute("method")) === "post");
   await signIn(BOOT.username, BOOT.password, OWNER_PASSWORD);
-  const navText = await page.locator(".vc-nav-list").innerText();
-  check("shell: navigation lists every file and collection", ["Overview", "Salon info", "Services", "Team", "Blog"].every((label) => navText.includes(label)), navText);
+  const navText = await page.locator(".vc-rail").innerText();
+  check("shell: the rail has Pages, every collection and Drafts", ["Pages", "Services", "Team", "Blog", "Drafts"].every((label) => navText.includes(label)), navText);
+  check("shell: Pages lists every file", (await page.locator(".vc-cards").innerText()).includes("Salon info"));
   check("overview: counts from the API", /3 services/.test(await page.locator(".vc-cards").innerText()));
 
   // ---------------------------------------------------------------- owner: every field of the salon info
@@ -96,6 +97,8 @@ try {
   // P9: the page is shown next to the form (wide window), and stays the same page while typing (no reload).
   await previewReady();
   check("preview: the home page next to the form, with how many places show the salon info", /Showing your changes on the page \(1\d places\)/.test(await page.locator(".vc-preview-status").textContent()), await page.locator(".vc-preview-status").textContent());
+  const frame = await page.evaluate(() => { const box = (selector) => document.querySelector(selector)?.getBoundingClientRect(); return { rail: box(".vc-rail")?.width, top: box(".vc-top")?.height, inspector: box(".vc-editor-main")?.width, devices: Boolean(document.querySelector(".vc-top-center .vc-devices")), font: getComputedStyle(document.body).fontFamily }; });
+  check("shell (U2): rail 64, top bar 56, inspector 360, devices in the top bar, Geist", frame.rail === 64 && frame.top === 56 && frame.inspector === 360 && frame.devices && /Geist/.test(frame.font), frame);
   await previewWindow().evaluate(() => { window.__vibeCmsStayed = true; });
   check("salon info: nothing changed yet", (await saveState()) === "No changes" && await page.getByRole("button", { name: "Save draft" }).isDisabled());
   await input("name").fill("Demo Salon & Spa");
@@ -359,7 +362,7 @@ try {
 
   // ---------------------------------------------------------------- P8: review every draft, publish them in one commit
   check("navigation counts my drafts", (await page.locator(".vc-badge").textContent()) === "6");
-  await page.locator(".vc-nav-list").getByRole("link", { name: /Review & publish/ }).click();
+  await page.locator(".vc-nav-list").getByRole("link", { name: /Drafts/ }).click();
   await page.locator(".vc-review-card").first().waitFor();
   const reviewText = await page.locator(".vc-review-list").innerText();
   await shot("p8-review");
@@ -418,7 +421,8 @@ try {
   await shot("p8b-people");
   check("People: the new editor's temporary password is shown once", /^[A-Za-z2-9]{20}$/.test(created.temporaryPassword) && /Must choose a password/.test(await page.locator('tr[data-user="editor1"]').innerText()));
   check("People: the add form posts", (await page.locator("form.vc-people-add").getAttribute("method")) === "post");
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.locator(".vc-avatar").click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
   await page.locator("form#login").waitFor();
 
   // ---------------------------------------------------------------- editor: locked fields shown, not editable
@@ -443,8 +447,9 @@ try {
   check("editor: a new service's price stays empty and disabled", await input("price").isDisabled() && (await input("price").inputValue()) === "");
   await save();
   check("editor adds a service with the price left for the owner (rule 2)", (await api("/api/cms/collections/services/items/editor-special")).draft?.content.name === "Editor Special");
-  check("editor: no People in the navigation", !(await page.locator(".vc-nav-list").innerText()).includes("People"));
+  check("editor: no People in the navigation", !(await page.locator(".vc-rail").innerText()).includes("People"));
   // P8b: My account — the editor changes their own password and stays signed in.
+  await page.locator(".vc-avatar").click();
   await page.locator(".vc-user-name").click();
   await page.locator("form.vc-account").waitFor();
   await page.getByLabel("Current password").fill(EDITOR_PASSWORD);

@@ -43,7 +43,7 @@ const row = (doc: Document, id: string, label: string, input: HTMLElement, help?
 
 export const peopleScreen = async (kit: ScreenKit, stillHere: () => boolean) => {
   const { doc, api, user } = kit;
-  const crumbs: Array<[string, string?]> = [["Overview", "#/"], ["People"]];
+  const crumbs: Array<[string, string?]> = [["People"]];
   if (user.role !== "owner") return kit.show({ title: "People", crumbs }, kit.message("People", "Only an owner can manage people. Ask an owner of this site if someone needs an account."));
   const result = await api.get<{ users: PublicUser[] }>("/api/cms/users");
   if (!stillHere()) return;
@@ -167,7 +167,7 @@ export const peopleScreen = async (kit: ScreenKit, stillHere: () => boolean) => 
 
 export const accountScreen = async (kit: ScreenKit, stillHere: () => boolean) => {
   const { doc, api, user } = kit;
-  const crumbs: Array<[string, string?]> = [["Overview", "#/"], ["My account"]];
+  const crumbs: Array<[string, string?]> = [["My account"]];
   const me = await api.get<{ user: PublicUser; dev?: boolean }>("/api/auth/me");
   if (!stillHere()) return;
   if (!me.ok) return kit.failed(me, crumbs);

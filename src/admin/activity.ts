@@ -50,7 +50,7 @@ const when = (iso: string) => {
 
 export const activityScreen = async (kit: ScreenKit, stillHere: () => boolean, kind = "all") => {
   const { doc, api, user } = kit;
-  const crumbs: Array<[string, string?]> = [["Overview", "#/"], ["Activity"]];
+  const crumbs: Array<[string, string?]> = [["Activity"]];
   if (user.role !== "owner") return kit.show({ title: "Activity", crumbs }, kit.message("Activity", "Only an owner can see the activity log."));
   const filter = ACTIVITY_FILTERS.some(([key]) => key === kind) ? kind : "all";
   const first = await api.get<ActivityPage>(`/api/cms/activity?kind=${encodeURIComponent(filter)}`);

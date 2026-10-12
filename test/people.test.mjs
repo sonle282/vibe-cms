@@ -178,6 +178,36 @@ test("People: a refusal from the server is shown on the list (here: another owne
   assert.equal(h.rowOf("coowner").querySelector("select").value, "owner", "the list shows what is true");
 });
 
+test("U2 shell: the rail (Pages, collections, Drafts; People + Activity at the bottom) and the account menu", async () => {
+  const h = await setup();
+  const rail = h.root.querySelector(".vc-rail");
+  assert.equal(rail.querySelector(".vc-mark").textContent, config.site.name.trim()[0].toUpperCase());
+  const labels = (list) => [...list.querySelectorAll(".vc-rail-label")].map((label) => label.textContent);
+  const [top, bottom] = rail.querySelectorAll(".vc-nav-list");
+  assert.deepEqual(labels(top), ["Pages", ...config.collections.map((collection) => collection.label), "Drafts"]);
+  assert.deepEqual(labels(bottom), ["People", "Activity"]);
+  assert.ok(top.querySelectorAll("svg.vc-icon").length >= 3, "every place has its icon");
+  // A file opens under Pages: the rail marks Pages, the crumbs read "Pages / <file>".
+  await h.go(`#/files/${config.files[0].key}`);
+  assert.equal(rail.querySelector('[aria-current="page"] .vc-rail-label').textContent, "Pages");
+  assert.equal(h.root.querySelector(".vc-crumbs").textContent, `Pages/${config.files[0].label}`);
+  // The account menu: closed, opens from the avatar, closes with Escape and on the next screen.
+  const avatar = rail.querySelector(".vc-avatar");
+  const menu = rail.querySelector(".vc-menu");
+  assert.match(avatar.textContent, /^[A-Z?]{1,2}$/);
+  assert.equal(menu.hidden, true);
+  avatar.click();
+  assert.equal(menu.hidden, false);
+  assert.equal(avatar.getAttribute("aria-expanded"), "true");
+  assert.match(menu.textContent, /Owner.*My account.*Sign out$/);
+  menu.dispatchEvent(new h.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  assert.equal(menu.hidden, true);
+  avatar.click();
+  await h.go("#/people");
+  assert.equal(menu.hidden, true);
+  assert.equal(h.root.querySelector(".vc-crumbs").textContent, "People");
+});
+
 test("People: editors do not see it, and the screen says why", async () => {
   const h = await setup({ as: "editor" });
   assert.ok(![...h.root.querySelectorAll(".vc-nav-list a")].some((a) => a.textContent.trim() === "People"));

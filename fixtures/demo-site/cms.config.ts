@@ -46,6 +46,7 @@ export default defineCmsConfig({
       key: "services",
       label: "Services",
       itemLabel: "Service",
+      icon: "tag",
       store: { kind: "json-array", path: "src/data/services.json", idField: "id" },
       preview: "/services/",
       // P12d: the site's own rule (the plugin seam) — runs at build, on save and at publish: a price starts with "$".
@@ -62,6 +63,7 @@ export default defineCmsConfig({
       key: "team",
       label: "Team",
       itemLabel: "Team member",
+      icon: "users",
       store: { kind: "json-array", path: "src/data/team.json", idField: "id" },
       preview: "/team/",
       fields: {
@@ -76,6 +78,7 @@ export default defineCmsConfig({
       key: "posts",
       label: "Blog",
       itemLabel: "Post",
+      icon: "pencil",
       store: { kind: "markdown-dir", dir: "src/content/posts", slugField: "slug" },
       preview: "/blog/{slug}/",
       status: { field: "status", live: "published", draft: "draft" },
