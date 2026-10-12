@@ -105,6 +105,9 @@ export const createPreview = (options: PreviewOptions): Preview => {
   const ResizeObserverCtor = (win as unknown as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver;
   const observer = ResizeObserverCtor ? new ResizeObserverCtor(() => fit()) : undefined;
   observer?.observe(element);
+  // Also when the window changes size and once the page has loaded (the canvas may settle after the first fit).
+  const refit = () => fit();
+  win.addEventListener("resize", refit);
   fit();
 
   const say = (state: "loading" | "ready" | "error" | "none", text: string) => { element.dataset.state = state; note.textContent = text; note.hidden = !text; };
@@ -129,6 +132,7 @@ export const createPreview = (options: PreviewOptions): Preview => {
     // How many places on the page show what is edited (tests read it; the canvas says nothing).
     element.dataset.places = String(bridge.count());
     say("ready", "");
+    fit();
   };
   frame.addEventListener("load", attach);
 
@@ -151,7 +155,7 @@ export const createPreview = (options: PreviewOptions): Preview => {
     update: (value, path, nextOwner) => { if (nextOwner) owner = nextOwner; bridge?.update(value, path, nextOwner); updateStats(); },
     scrollTo: (path) => { bridge?.scrollTo(path); },
     bridge: () => bridge,
-    destroy: () => { frame.removeEventListener("load", attach); observer?.disconnect(); bridge?.detach(); bridge = undefined; },
+    destroy: () => { frame.removeEventListener("load", attach); win.removeEventListener("resize", refit); observer?.disconnect(); bridge?.detach(); bridge = undefined; },
   };
 
   // Measured while typing (tests read these): how long applying a change to the page took, at most.
