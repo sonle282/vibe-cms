@@ -33,7 +33,11 @@ export interface GitPublisher {
   commit(input: CommitInput): Promise<{ sha: string } | { conflict: true }>;
   /** P10: which of `paths` exist at `sha` (one folder listing per folder — images are not downloaded). */
   exists?(sha: string, paths: string[]): Promise<Set<string>>;
+  /** P12c: the newest commits on the branch that changed `path` (GitHub's commits list filtered by path). */
+  history?(path: string, limit: number): Promise<HistoryCommit[]>;
 }
+
+export type HistoryCommit = { sha: string; date: string; message: string; author: string };
 
 /** A publish error with a stable code for the API response and the audit row (never the token or a raw body). */
 export class GitPublishError extends Error {
@@ -130,6 +134,11 @@ export const createGitHubPublisher = ({ token, repo, apiUrl = "https://api.githu
         for (const path of wanted) if (names.has(path)) found.add(path);
       }
       return found;
+    },
+    async history(path, limit) {
+      type Row = { sha: string; commit: { message: string; author?: { name?: string; date?: string } | null; committer?: { date?: string } | null } };
+      const rows = await json<Row[]>(await call("GET", `/commits?sha=${encodeURIComponent(repo.branch)}&path=${encodeURIComponent(path)}&per_page=${Math.min(100, Math.max(1, limit))}`), "commits");
+      return rows.map((row) => ({ sha: row.sha, date: row.commit.author?.date ?? row.commit.committer?.date ?? "", message: row.commit.message, author: row.commit.author?.name ?? "" }));
     },
     async commit({ parent, files, message, author, date = new Date().toISOString() }) {
       const base = await json<{ tree: { sha: string } }>(await call("GET", `/git/commits/${encodeURIComponent(parent)}`), "commit");

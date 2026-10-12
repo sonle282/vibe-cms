@@ -2,7 +2,7 @@
 
 > Nguồn: [DESIGN.md](DESIGN.md) §I. Quy tắc: 1 task = 1 commit; mỗi task REPORT → DỪNG chờ review. Test của gói **không đọc
 > dữ liệu site khách**. Task có sửa repo site: đầu task `git status` sạch + pull nhánh production của site; có thay đổi
-> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (P12b).
+> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-12 (P12c).
 
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
@@ -23,8 +23,8 @@
 | **P10** | Ảnh (upload R2 staging, sheet chọn ảnh, alt) — SonLe duyệt làm trước P8d (2026-10-08) | 16–24 | ✅ Xong (merge 2026-10-09; 9be4829, CI 37717835049) |
 | **P11** | CLI `vibe-cms setup` (idempotent, `--account`) / `migrate` / `check` / `export` + `import` / `update` (đổi URL release) + `reset-owner-password` (owner quên mật khẩu → mật khẩu tạm, không sửa D1 tay) + tài liệu cài không token | 16–24 | ✅ Xong (merge 2026-10-12; 6ec2860, CI 38186633041) |
 | **P12** | Bước 0 (chỉ đọc 2 site pilot): cả hai đã chạy CMS chép tay (Innovate đã go-live) → viết lại P12–P18 (chi tiết: tài liệu private). SonLe duyệt 2026-10-12: thay cả 2 bản chép bằng gói, **Novelle trước** | — | ✅ Xong (duyệt 2026-10-12) |
-| **P12b** | Gói: list cố định (`fixed: true`), collection cố định, mục chỉ owner (`access: "owner"`, 403 + audit), màn **Activity** (owner) | 12–18 | 🔎 Chờ review (commit + CI: xem PR) |
-| P12c | Gói: **History + Restore as draft** — đọc lịch sử commit của file trên GitHub (gồm cả các lần publish bằng CMS cũ, không cần chuyển dữ liệu) | 10–16 | ⏳ |
+| **P12b** | Gói: list cố định (`fixed: true`), collection cố định, mục chỉ owner (`access: "owner"`, 403 + audit), màn **Activity** (owner) | 12–18 | ✅ Xong (merge 2026-10-12; d61f489 + fcd161f, CI 38192504189) |
+| **P12c** | Gói: **History + Restore as draft** — đọc lịch sử commit của file trên GitHub (gồm cả các lần publish bằng CMS cũ, không cần chuyển dữ liệu) | 10–16 | 🔎 Chờ review (commit + CI: xem PR) |
 | P12d | Gói: plugin kiểu field riêng của site (giá tham chiếu, token trong chữ, ảnh theo tên manifest + kích thước do build tạo) — dời 1 phần P19 lên | 14–22 | ⏳ |
 | P12e | CLI: `import-legacy-users` từ D1 của CMS chép (cùng định dạng hash → không đặt lại mật khẩu; admin → owner) | 6–10 | ⏳ |
 | P12f | Gói: cắt / đổi cỡ ảnh = **bản sao mới**, giữ ảnh gốc (như Mr Spa), làm trong trình duyệt — không binding `IMAGES` | 8–14 | ⏳ |
@@ -75,6 +75,11 @@
   thành cố định bị từ chối lúc publish, audit `failed`, không commit; collection cố định không thêm bản ghi; mục chỉ
   owner: editor không thấy trong overview / nháp / boot, 403 + 1 dòng audit khi lưu / publish), `/activity` (editor 403,
   bộ lọc, 50 / trang + `before`, tên người + nhãn mục), admin trên DOM giả, audit D1 bằng SQL thật (node:sqlite + migration).
+- **P12c:** `test/history.test.mjs` — GitHub giả có thêm `GET /commits?path=` (chỉ commit đổi file đó, như GitHub): lịch sử file
+  (publish CMS + sửa trong code, commit file khác không hiện, tên người từ dòng `By:`), bản ghi trong JSON chung (commit của
+  bản ghi khác không hiện), so bản, khôi phục → publish → file về đúng từng byte, từ chối (giống live, đã có nháp → hỏi,
+  config hiện tại không nhận, bản ghi chưa có), editor 403; admin trên DOM giả. e2e +3 check (History trên Chrome thật).
+  Một lần e2e local đỏ ở check có sẵn "after publishing: Publishing…" (canh giờ), 3 lần chạy sau đều xanh.
 - **CLI (P11):** `test/cli.test.mjs` chạy `setup` với wrangler GIẢ (`test/helpers/fake-wrangler.mjs`, account trong file
   JSON): lần 1 tạo D1 / KV / R2 + ghi 5 binding + 5 migration; lần 2 không tạo gì, `wrangler.jsonc` giống từng byte;
   `--account` khác → mọi lệnh chạy ở account đó, id đổi theo, tên + rate limit giữ; binding trỏ site khác → từ chối,

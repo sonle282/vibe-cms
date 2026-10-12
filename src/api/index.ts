@@ -17,6 +17,9 @@
  *   POST   /publish                         { resources: [...] } → exactly one commit (with the uploads it uses)
  *   GET    /live-version                    the version of the content this Worker serves
  *   GET    /activity?kind=&before=          P12b: the audit log in pages, for owners (kind: all | publish | signin | people | denied)
+ *   GET    /history?resource=               P12c (owners): the versions of a file / record, from the branch's commits
+ *   GET    /history/version?resource=&commit=   one version's content (+ sameAsLive)
+ *   POST   /history/restore                 { resource, commit, replace? } → that version becomes my draft
  * P12b: a file / collection with access: "owner" answers 403 owner_only to editors (and is not listed for them); lists
  * with fixed: true and collections with fixed: true keep their shape for everyone (422 fixed_list / fixed_collection).
  * Every GET answers with the header x-cms-live-version (F-16).
@@ -32,14 +35,14 @@ import {
 } from "../store/index.js";
 import { parseMarkdown } from "../writer/markdown.js";
 import { recordPath, writeArrayItem, writeFile, writeMarkdownItem } from "../writer/index.js";
-import type { WriteResult } from "../writer/json.js";
+import { sameValue, type WriteResult } from "../writer/json.js";
 import { GitPublishError, type CommitAuthor, type FileContent, type GitPublisher } from "./github.js";
 import { MediaError, uploadPathsIn, type MediaStore } from "../media/index.js";
 import type { Identify, Identity, RateLimiter } from "../auth/index.js";
 
 export { createSiteRuntime, loopbackApiUrl, type SiteEnv } from "./runtime.js";
 export { adminBoot, bootJson, type AdminBoot } from "../admin/boot.js";
-export { createGitHubPublisher, GitPublishError, rateLimitWait, type CommitAuthor, type CommitInput, type FileContent, type GitHubOptions, type GitPublisher } from "./github.js";
+export { createGitHubPublisher, GitPublishError, rateLimitWait, type CommitAuthor, type CommitInput, type FileContent, type GitHubOptions, type GitPublisher, type HistoryCommit } from "./github.js";
 
 // ---------------------------------------------------------------- identity
 
@@ -535,6 +538,91 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     return json({ kind, entries, next: rows.length === ACTIVITY_PAGE ? rows[rows.length - 1].id : null });
   };
 
+  // ---------------------------------------------------------------- history (P12c)
+
+  const HISTORY_LIMIT = 20;
+  /** The user id in a Vibe CMS commit message ("By: usr_… (owner) via Vibe CMS"). */
+  const committedBy = (message: string) => /\nBy: ([A-Za-z0-9_-]{1,80}) \((?:owner|editor)\) via Vibe CMS/.exec(message)?.[1];
+  const historyTarget = (user: Identity, resource: string | null) => {
+    if (user.role !== "owner") fail(403, "owner_only", "Only an owner can see the history and restore older versions.");
+    if (!resource) return fail(400, "bad_request", "resource is required (e.g. file:site).");
+    try { return targetOf(resource); } catch (error) { if (error instanceof ApiError) throw error; return fail(400, "bad_request", `Not a resource id: ${resource}`); }
+  };
+  const historyPublisher = () => {
+    const publisher = need(deps.publisher, "publisher");
+    if (!publisher.history) fail(503, "history_not_available", "This site's publisher cannot read the history.");
+    return publisher as GitPublisher & Required<Pick<GitPublisher, "history">>;
+  };
+  /** The resource's value in the file as it was at `sha` (undefined = it did not exist then). */
+  const valueAt = async (publisher: GitPublisher, target: Target, sha: string) => (await onBranch(target, (await publisher.readFiles(sha, [pathOf(target)]))[pathOf(target)])).value;
+  const commitParam = (value: unknown) => (typeof value === "string" && /^[0-9a-f]{7,40}$/.test(value) ? value : fail(400, "bad_request", "commit must be a commit id."));
+
+  /**
+   * The versions of one resource: the branch's commits that changed its file, newest first (a record of a JSON list:
+   * only the commits that changed THAT record). Also the publishes made by an older CMS or edits in the code.
+   */
+  const history = async (request: Request, user: Identity) => {
+    const target = historyTarget(user, new URL(request.url).searchParams.get("resource"));
+    const publisher = historyPublisher();
+    const shared = target.kind === "item" && target.collection.store.kind === "json-array";
+    const commits = await publisher.history(pathOf(target), shared ? HISTORY_LIMIT + 1 : HISTORY_LIMIT);
+    let kept = commits.map((commit) => ({ commit, removed: false }));
+    if (shared) {
+      const values: unknown[] = [];
+      for (const commit of commits) values.push(await valueAt(publisher, target, commit.sha));
+      // A commit counts when the record differs from the next older commit's; the oldest one read counts when the record is in it.
+      const last = commits.length - 1;
+      kept = commits.map((commit, index) => ({ commit, removed: values[index] === undefined, changed: index === last ? values[index] !== undefined : !sameValue(values[index], values[index + 1]) }))
+        .filter((entry, index) => entry.changed && index < HISTORY_LIMIT);
+    }
+    const names = new Map((await (deps.userNames?.() ?? Promise.resolve([]))).map((person) => [person.id, person.displayName || person.username]));
+    return json({
+      resource: target.resource, label: target.kind === "file" ? target.label : target.id,
+      versions: kept.map(({ commit, removed }) => {
+        const by = committedBy(commit.message);
+        return { commit: commit.sha, date: commit.date, title: commit.message.split("\n")[0], who: (by && names.get(by)) || commit.author || null, viaCms: /^cms: publish\b/.test(commit.message), removed };
+      }),
+    });
+  };
+
+  /** One version's content, and whether it is what the website shows now. */
+  const historyVersion = async (request: Request, user: Identity) => {
+    const params = new URL(request.url).searchParams;
+    const target = historyTarget(user, params.get("resource"));
+    const commit = commitParam(params.get("commit"));
+    const content = await valueAt(historyPublisher(), target, commit);
+    const current = await live(target);
+    return json({ resource: target.resource, commit, content: content ?? null, live: current.value ?? null, sameAsLive: content !== undefined && sameValue(content, current.value) });
+  };
+
+  /** Restore as draft: the old version becomes my draft of the resource; it is published like any draft. */
+  const historyRestore = async (request: Request, user: Identity) => {
+    const body = await readBody(request);
+    const target = historyTarget(user, typeof body.resource === "string" ? body.resource : null);
+    const commit = commitParam(body.commit);
+    const drafts = need(deps.drafts, "storage");
+    const audit = need(deps.audit, "storage");
+    const content = await valueAt(historyPublisher(), target, commit);
+    if (content === undefined) fail(404, "not_in_version", `${target.kind === "file" ? target.label : `This ${target.collection.itemLabel.toLowerCase()}`} did not exist in that version.`);
+    const current = await live(target);
+    if (sameValue(content, current.value)) fail(409, "same_as_live", "That version is what the website shows now — nothing to restore.");
+    const existing = await drafts.get(user.userId, target.resource);
+    if (existing && body.replace !== true) fail(409, "draft_exists", "You already have a draft of this. Restoring replaces it — confirm to go on.", { needsConfirmation: true });
+    const checked = await checkValues(target, content);
+    if (checked.errors.length) fail(422, "invalid_content", "That version no longer fits the site's fields (the CMS settings changed since) — it cannot be restored as it is.", { errors: checked.errors });
+    const fixed = structureProblems(target, current.value, content);
+    if (fixed.length) fail(422, "fixed_list", fixed[0].message, { errors: fixed });
+    const label = target.kind === "file" ? target.label : recordLabel(target.collection, content, target.id);
+    try {
+      const draft = await saveDraftChecked({ config, role: user.role, drafts, audit, source: current.value, now, input: { userId: user.userId, resource: target.resource, label, content, sourceVersion: current.version, expectedRevision: existing?.revision ?? 0 } });
+      return json({ resource: target.resource, commit, draft: draftView(draft, current.version) });
+    } catch (error) {
+      if (error instanceof DraftConflictError) fail(409, "draft_conflict", error.message, { currentRevision: error.current });
+      if (error instanceof DraftTooLargeError) fail(413, "draft_too_large", error.message);
+      throw error;
+    }
+  };
+
   // ---------------------------------------------------------------- router
 
   const routes: Array<{ pattern: RegExp; methods: Record<string, (request: Request, user: Identity, match: RegExpMatchArray) => Promise<Response>> }> = [
@@ -548,6 +636,9 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     } },
     { pattern: /^\/drafts$/, methods: { GET: (_request, user) => listDrafts(user) } },
     { pattern: /^\/activity$/, methods: { GET: (request, user) => activity(request, user) } },
+    { pattern: /^\/history$/, methods: { GET: (request, user) => history(request, user) } },
+    { pattern: /^\/history\/version$/, methods: { GET: (request, user) => historyVersion(request, user) } },
+    { pattern: /^\/history\/restore$/, methods: { POST: (request, user) => historyRestore(request, user) } },
     { pattern: /^\/media$/, methods: { GET: (request) => listMedia(request), POST: (request, user) => uploadMedia(request, user) } },
     { pattern: /^\/live-version$/, methods: { GET: async () => json({ liveVersion: await getLiveVersion(), branch: config.repo.branch }) } },
     { pattern: /^\/publish$/, methods: { POST: (request, user) => publish(request, user) } },

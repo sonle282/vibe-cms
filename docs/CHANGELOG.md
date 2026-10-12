@@ -3,6 +3,21 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.16.0 — unreleased (P12c)
+
+- **History** (owners): "History" in the editor of a file or record lists its versions, newest first, from the site's
+  git history — publishes made in the CMS (this package or an older CMS) and changes made in the website's code. A
+  record of a shared JSON list shows only the commits that changed that record. Who: the person named in a Vibe CMS
+  commit, otherwise the commit's author. Nothing is copied or migrated: it reads GitHub.
+- **Compare** says in plain words what restoring a version would change on the website (or that it is what the website
+  shows now). **Restore as draft** makes that version my draft (asks before replacing a draft I already have); it goes
+  live only when published, through the usual checks (field types, fixed lists, locks). A version the current
+  `cms.config` no longer accepts is refused with the reason.
+- API: `GET /api/cms/history?resource=`, `GET /api/cms/history/version?resource=&commit=`,
+  `POST /api/cms/history/restore` (owners; 403 `owner_only` for editors). Up to 20 versions; a record of a JSON list reads
+  the file at each of them (≤ 21 GitHub requests).
+- Site action: none (the GitHub token already reads the repository).
+
 ## 0.15.0 — unreleased (P12b)
 
 - **Fixed lists:** `f.list(…, { fixed: true })` — the site's code decides which items exist: nobody (owner included)

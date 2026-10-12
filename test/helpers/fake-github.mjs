@@ -3,6 +3,7 @@
 //   GET  /repos/:o/:r/git/ref/heads/:branch         GET  /repos/:o/:r/contents/:path?ref=  (raw bytes)
 //   GET  /repos/:o/:r/git/commits/:sha              POST /repos/:o/:r/git/blobs | git/trees | git/commits
 //   PATCH /repos/:o/:r/git/refs/heads/:branch       (non-fast-forward → 422, like GitHub)
+//   GET  /repos/:o/:r/commits?sha=&path=&per_page=   P12c: newest first, only commits that changed `path` (like GitHub)
 // Like GitHub: contents come raw only with Accept "application/vnd.github.raw+json"; otherwise JSON + base64, and for
 // files over 1 MB the JSON has encoding "none" and no content. failNext() injects errors (rate limits, 409, 404…).
 import { createHash } from "node:crypto";
@@ -62,6 +63,18 @@ export const startFakeGitHub = async ({ owner = "o", name = "r", branch = "main"
     if (req.method === "GET" && (match = /^\/git\/commits\/([0-9a-f]+)$/.exec(path))) {
       const commit = commits.get(match[1]);
       return commit ? send(200, { sha: match[1], tree: { sha: commit.tree }, parents: commit.parents.map((parent) => ({ sha: parent })) }) : send(404, { message: "Not Found" });
+    }
+    if (req.method === "GET" && path === "/commits") {
+      const wanted = url.searchParams.get("path");
+      const limit = Number(url.searchParams.get("per_page") ?? 30);
+      const out = [];
+      for (let at = ref; at && out.length < limit; at = commits.get(at).parents[0]) {
+        const commit = commits.get(at);
+        const parent = commit.parents[0];
+        if (wanted && treeOf(at).get(wanted) === (parent ? treeOf(parent).get(wanted) : undefined)) continue;
+        out.push({ sha: at, commit: { message: commit.message, author: { name: commit.author?.name ?? "", date: commit.author?.date ?? "2026-01-01T00:00:00Z" } } });
+      }
+      return send(200, out);
     }
     if (req.method === "POST" && path === "/git/blobs") return send(201, { sha: putBlob(Buffer.from(body.content, body.encoding === "base64" ? "base64" : "utf8")) });
     if (req.method === "POST" && path === "/git/trees") {

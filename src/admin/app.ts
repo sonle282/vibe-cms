@@ -8,6 +8,7 @@
  *   #/collections/<key>/new              a new record
  *   #/people · #/account                 P8b: people (owners only) · my account (change my password)
  *   #/activity · #/activity/<kind>       P12b: the activity log (owners only)
+ *   #/history/<resource>                 P12c: the versions of a file / record; restore one as a draft (owners only)
  *   #/publish  ·  #/publish/<resource>   P8: review my drafts (what each changes, in plain words) and publish them in
  *                                        one commit; then watch /live-version until the website serves them ("Live")
  * Preview (P9) and images (P10) build on this. Nothing is saved without "Save draft"; leaving with unsaved changes asks
@@ -25,6 +26,7 @@ import { configBinds, fieldAt, type PreviewOwner } from "./bridge.js";
 import { createPreview, previewUrl, type Preview } from "./preview.js";
 import { accountScreen, peopleScreen, type ScreenKit } from "./people.js";
 import { activityScreen } from "./activity.js";
+import { historyScreen, type HistoryTarget } from "./history.js";
 import { clone, countChanges, getAt, ID_PATTERN, parsePathText, pathText, slugify, type Path } from "./value.js";
 
 export type AdminOptions = {
@@ -167,7 +169,7 @@ export const startAdmin = (options: AdminOptions) => {
     clear(body);
     body.append(...content);
     doc.title = `${screen.title} · ${boot.site.name} · Vibe CMS`;
-    const route = currentHash.startsWith("#/publish") ? "#/publish" : currentHash.startsWith("#/activity") ? "#/activity" : currentHash.split("/").slice(0, 3).join("/") || "#/";
+    const route = currentHash.startsWith("#/publish") ? "#/publish" : currentHash.startsWith("#/activity") ? "#/activity" : currentHash.startsWith("#/history/") ? "" : currentHash.split("/").slice(0, 3).join("/") || "#/";
     for (const item of navItems) { if (item.dataset.route === route) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current"); }
   };
   const heading = (text: string) => h(doc, "h1", { class: "vc-title", tabindex: "-1" }, text);
@@ -199,6 +201,7 @@ export const startAdmin = (options: AdminOptions) => {
       else if (parts[0] === "publish" && parts.length <= 2) await review(parts[1] || undefined, stillHere);
       else if (parts[0] === "people" && parts.length === 1) await peopleScreen(kit, stillHere);
       else if (parts[0] === "activity" && parts.length <= 2) await activityScreen(kit, stillHere, parts[1]);
+      else if (parts[0] === "history" && parts.length === 2) await historyScreen(kit, stillHere, parts[1], historyTarget(parts[1]), (hash) => { win.location.hash = hash; });
       else if (parts[0] === "account" && parts.length === 1) await accountScreen(kit, stillHere);
       else show({ title: "Not found", crumbs: [["Overview", "#/"], ["Not found"]] }, message("Not found", "There is nothing at this address in the CMS.", link("#/", "Go to the overview")));
     } catch {
@@ -543,7 +546,9 @@ export const startAdmin = (options: AdminOptions) => {
     const onKey = (event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") { event.preventDefault(); void doSave(); } };
     doc.addEventListener("keydown", onKey);
 
-    actions.append(...(previewToggle ? [previewToggle] : []), discard, save, publish);
+    // P12c: History, for owners, once the resource exists on the website.
+    const historyLink = user.role === "owner" && !isNew && view?.content ? link(`#/history/${encodeURIComponent(resourceOf())}`, "History", { class: "vc-button vc-quiet", "data-action": "history" }) : null;
+    actions.append(...(previewToggle ? [previewToggle] : []), ...(historyLink ? [historyLink] : []), discard, save, publish);
     if (view?.draft?.stale) showBanner("The website changed after this draft was started (someone published). Publishing this draft is refused until you discard it and make your change again on the current content.");
     const intro = isNew ? `Fill in the new ${collection!.itemLabel.toLowerCase()} and save a draft. It is not on the website until it is published.`
       : hasDraft ? "You are editing your saved draft. The website shows the published version until the draft is published." : "Changes are saved as a draft first; the website does not change until a draft is published.";
@@ -583,6 +588,14 @@ export const startAdmin = (options: AdminOptions) => {
 
   const urlOfDraft = (row: DraftRow) => (row.kind === "file" ? `/api/cms/files/${encodeURIComponent(row.key)}` : `/api/cms/collections/${encodeURIComponent(row.key)}/items/${encodeURIComponent(row.id ?? "")}`);
   const hrefOfDraft = (row: DraftRow) => (row.kind === "file" ? `#/files/${row.key}` : `#/collections/${row.key}/items/${encodeURIComponent(row.id ?? "")}`);
+  /** P12c: what the History screen needs for a resource id ("file:site", "item:services:<id>"). */
+  const historyTarget = (resource: string): HistoryTarget | undefined => {
+    const [kind, key, ...rest] = resource.split(":");
+    if (kind === "file") { const file = boot.files.find((entry) => entry.key === key); return file ? { label: file.label, fields: editorFields({ kind: "file", file }), href: `#/files/${key}` } : undefined; }
+    const collection = kind === "item" ? collectionOf(key) : undefined;
+    const id = rest.join(":");
+    return collection && id ? { label: `${collection.itemLabel} · ${id}`, fields: editorFields({ kind: "item", collection, isNew: false }), href: `#/collections/${key}/items/${encodeURIComponent(id)}` } : undefined;
+  };
   const fieldsOfDraft = (row: DraftRow) => {
     if (row.kind === "file") { const file = boot.files.find((entry) => entry.key === row.key); return file ? editorFields({ kind: "file", file }) : undefined; }
     const collection = collectionOf(row.key);
