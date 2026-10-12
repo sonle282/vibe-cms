@@ -3,8 +3,27 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## 0.20.0 — unreleased (U1, U2, U3)
+## 0.20.0 — unreleased (U1–U4: the Mr Spa CMS design system)
 
+- **The Mr Spa CMS screens** (U4):
+  - **Pages**: one row per page — its name, its address on the website, Live / Draft saved — with "Find a page" and
+    a count. Collections are on the rail, not here.
+  - **Lists** (each collection): the record's picture (its first image), name, ID and status; "+ New service" in
+    the top bar.
+  - **Drafts** (new): every draft waiting to publish — what it changes ("2 changes: Photo, Specialty"), when it was
+    saved; **Open**, **Publish** (the review dialog of that draft) and ⋯ Discard draft; owners also see what was
+    recently published, with View history. "Review & publish all" opens the review of all drafts (published in one
+    change, as before).
+  - **Media** (new, on the rail): the whole library — uploads first, then the website's own images — with search,
+    All / Uploaded / Website, the chosen image's details (dimensions, format, file size, Copy link) and **Upload
+    images** (several at once, made smaller in the browser like in the image sheet).
+  - **People & activity**: one place with two tabs. People has the add-a-person form beside the list, the role as
+    two cards (Editor / Owner) and initials for each person; Activity has Date · Person · What happened · Change ·
+    Result (Done / Failed).
+  - **History**: one card, the newest version marked Current.
+  - **Sign in to <site>** with the site's mark and address; "Forgot your password? Ask an owner to reset it."
+  - **Smaller than 900 px**: "Open on a laptop" instead of the editor (and a link to the website).
+  - The list API gives each record's first image (`image`), for the thumbnail.
 - **The Mr Spa CMS components** (U3):
   - **Dialogs instead of the browser's confirm()**: a card over a dimmed page; Escape, Cancel or a click outside
     changes nothing; the safe choice has focus; a destructive button is red ("Leave without saving?" → Keep editing /

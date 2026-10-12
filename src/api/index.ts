@@ -136,6 +136,17 @@ export const createCmsApi = (deps: CmsApiDeps) => {
   const systemOf = (collection: CmsCollection) => [idFieldOf(collection), ...(collection.status ? [collection.status.field] : []), ...(collection.store.kind === "markdown-dir" ? ["body"] : [])];
   const fileOf = (key: string) => config.files.find((entry) => entry.key === key) ?? fail(404, "not_found", `No file "${key}" in cms.config.`);
   const collectionOf = (key: string) => config.collections.find((entry) => entry.key === key) ?? fail(404, "not_found", `No collection "${key}" in cms.config.`);
+  /** U4: the first image of a record (its thumbnail in the list), when it has one. */
+  const recordImage = (collection: CmsCollection, record: unknown) => {
+    const data = record && typeof record === "object" ? (record as Record<string, unknown>) : {};
+    for (const [key, field] of Object.entries(collection.fields)) {
+      if (field.type !== "image") continue;
+      const value = data[key];
+      const src = typeof value === "string" ? value : value && typeof value === "object" && typeof (value as { src?: unknown }).src === "string" ? String((value as { src: string }).src) : "";
+      if (src) return src;
+    }
+    return undefined;
+  };
   const recordLabel = (collection: CmsCollection, record: unknown, id: string) => {
     const data = record && typeof record === "object" ? (record as Record<string, unknown>) : {};
     const textKey = Object.keys(collection.fields).find((key) => collection.fields[key].type === "text" && key !== idFieldOf(collection) && typeof data[key] === "string" && data[key]);
@@ -277,7 +288,8 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     const items = records.map((record) => {
       const parsed = parseResourceId(record.resource);
       const id = parsed.kind === "item" ? parsed.id : "";
-      return { id, resource: record.resource, label: recordLabel(collection, record.data, id), version: record.version, hasDraft: mine.some((row) => row.resource === record.resource) };
+      const image = recordImage(collection, record.data);
+      return { id, resource: record.resource, label: recordLabel(collection, record.data, id), version: record.version, hasDraft: mine.some((row) => row.resource === record.resource), ...(image ? { image } : {}) };
     });
     const known = new Set(items.map((item) => item.resource));
     const newDrafts = mine.filter((row) => !known.has(row.resource)).map((row) => ({ id: row.itemId, resource: row.resource, label: row.label, version: null, hasDraft: true, isNew: true }));

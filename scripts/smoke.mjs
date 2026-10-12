@@ -38,8 +38,15 @@ try {
   }
 
   // Sign-in (P6) is closed too when the site has no CMS_DB / SESSION bindings; /admin says so instead of a login form.
-  const signIn = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { origin: base, "content-type": "application/json" }, body: JSON.stringify({ username: "someone", password: "some-password-1" }) });
-  assert.deepEqual([signIn.status, (await signIn.json()).error], [503, "auth_not_configured"], "POST /api/auth/login → 503 without bindings");
+  // Local workerd sometimes answers the first request on a fresh route with "Network connection lost" (plain text,
+  // not from the site): ask again a few times before judging the answer.
+  let signIn; let signInBody;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    signIn = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { origin: base, "content-type": "application/json" }, body: JSON.stringify({ username: "someone", password: "some-password-1" }) });
+    const text = await signIn.text();
+    try { signInBody = JSON.parse(text); break; } catch { if (!/Network connection lost/.test(text) || attempt === 3) throw new Error(`/api/auth/login answered: ${text.slice(0, 200)}`); await new Promise((resolve) => setTimeout(resolve, 500)); }
+  }
+  assert.deepEqual([signIn.status, signInBody.error], [503, "auth_not_configured"], "POST /api/auth/login → 503 without bindings");
   assert.match(html, /data-state="not-configured"/, "/admin shows that sign-in is not set up");
 
   const upload = await fetch(`${base}/assets/uploads/2026/03/photo-0123abcd.webp`);

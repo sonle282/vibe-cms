@@ -67,6 +67,8 @@ export const historyScreen = async (kit: ScreenKit, stillHere: () => boolean, re
         h(doc, "time", { datetime: version.date, class: "vc-activity-when" }, when(version.date)),
         h(doc, "span", {}, version.who ?? "—"),
         h(doc, "span", { class: "vc-note" }, `${source}${index === 0 ? " · newest" : ""}`),
+        // U4 (Mr Spa 23): the newest version is what the website shows (once it has updated).
+        index === 0 && !version.removed ? h(doc, "span", { class: "vc-pill vc-pill-live" }, "Current") : null,
         h(doc, "span", { class: "vc-history-actions" }, version.removed ? h(doc, "span", { class: "vc-note" }, "Removed here") : [compare, restoreButton])),
       h(doc, "p", { class: "vc-history-title vc-mono" }, `${version.commit.slice(0, 7)} · ${version.title}`),
       details);

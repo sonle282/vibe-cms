@@ -226,14 +226,16 @@ test("admin: editor — no owner-only section, no Activity; fixed collection has
   const owner = await shell("owner");
   try {
     await owner.h.audit.record({ at: "2026-10-12T08:00:00.000Z", userId: "usr_editor", role: "editor", action: "denied", stage: "publish", resource: "item:team:sam", detail: { reason: "owner_only" } });
-    assert.ok([...owner.root.querySelectorAll(".vc-nav-list a")].some((link) => link.textContent.trim() === "Activity"));
+    // U4: Activity is the second tab of People (Mr Spa 19 / 20).
+    assert.ok([...owner.root.querySelectorAll(".vc-nav-list a")].some((link) => link.textContent.trim() === "People"));
     await owner.go("#/activity");
     const rows = [...owner.root.querySelectorAll(".vc-activity tbody tr")].map((row) => [...row.querySelectorAll("td")].slice(1).map((cell) => cell.textContent.trim()));
-    assert.deepEqual(rows, [["Eddie Editor", "Refused to publish Team member · sam: only owners can change it"]]);
+    assert.deepEqual(rows, [["Eddie Editor", "Refused to publish Team member · sam: only owners can change it", "—", "Failed"]]);
+    assert.equal(owner.root.querySelector('.vc-tabs [aria-current="page"]').textContent, "Activity");
     assert.equal(owner.root.querySelector('.vc-filters [aria-current="page"]').textContent, "All");
     await owner.go("#/activity/publish");
     assert.match(owner.root.textContent, /Nothing of this kind yet/);
-    assert.equal(owner.root.querySelector('.vc-nav-list a[aria-current="page"]').textContent, "Activity");
+    assert.equal(owner.root.querySelector('.vc-nav-list a[aria-current="page"]').textContent, "People");
   } finally { owner.h.close(); }
 });
 

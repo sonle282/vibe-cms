@@ -237,10 +237,12 @@ const shell = async ({ role = "owner", confirm = () => true } = {}) => {
 };
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-test("shell: overview lists files and collections from the API; navigation marks the current page", async () => {
+test("shell: Pages lists the files (U4: one row each, with its address and status); the rail marks the current place", async () => {
   const h = await shell();
-  assert.deepEqual([...h.root.querySelectorAll(".vc-card-title")].map((node) => node.textContent), ["Salon info", "Services", "Team", "Blog"]);
-  assert.match(h.root.querySelector(".vc-cards").textContent, /3 services/);
+  assert.deepEqual([...h.root.querySelectorAll(".vc-rows .vc-row-title")].map((node) => node.textContent), ["Salon info"]);
+  assert.match(h.root.querySelector(".vc-rows").textContent, /Salon info.+Live/);
+  assert.equal(h.root.querySelector(".vc-count").textContent, "1 page");
+  assert.equal(h.root.querySelector("h1").textContent, "Pages");
   await h.go("#/collections/services");
   assert.equal(h.root.querySelector('.vc-nav-list a[aria-current="page"]').textContent, "Services");
   assert.deepEqual([...h.root.querySelectorAll(".vc-table tbody tr")].map((row) => row.dataset.id), ["classic-manicure", "spa-pedicure", "nail-art"]);
@@ -356,6 +358,38 @@ const saveDraft = async (h, url, change) => {
   const current = await h.call("GET", url);
   return h.call("PUT", url, { content: change(current.content), expectedRevision: 0, sourceVersion: current.version });
 };
+
+test("U4 Drafts: one row per draft (what changes, when); Publish opens its review and publishes only it; ⋯ Discard; Recently published", async () => {
+  const h = await publishShell();
+  try {
+    await h.go("#/drafts");
+    assert.match(h.root.querySelector(".vc-empty-state").textContent, /No drafts/);
+    await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Fresh tagline" }));
+    await saveDraft(h, "/api/cms/collections/services/items/spa-pedicure", (content) => ({ ...content, price: "$40" }));
+    await h.go("#/");
+    await h.go("#/drafts");
+    assert.equal(h.root.querySelector('.vc-nav-list a[aria-current="page"] .vc-rail-label').textContent, "Drafts");
+    const row = (resource) => h.root.querySelector(`.vc-draft-row[data-resource="${resource}"]`);
+    assert.match(row("file:site").textContent, /Salon info · Salon info1 change: TaglineSaved by you · /);
+    assert.match(row("item:services:spa-pedicure").querySelector(".vc-row-what").textContent, /^1 change: Price$/);
+    assert.ok([...h.root.querySelectorAll(".vc-actions a")].some((link) => link.textContent === "Review & publish all" && link.getAttribute("href") === "#/publish"));
+    // Publish one row: its review dialog, then only it goes to the website.
+    row("file:site").querySelector('[data-action="publish-draft"]').click();
+    const dialog = () => h.window.document.querySelector(".vc-dialog");
+    assert.match(dialog().querySelector(".vc-changes").textContent, /Tagline/);
+    [...dialog().querySelectorAll("button")].find((button) => button.textContent === "Publish to website").click();
+    await h.until(() => !dialog(), "the publish");
+    await h.until(() => !row("file:site") && row("item:services:spa-pedicure"), "the screen again, with the other draft waiting");
+    assert.match(JSON.parse(h.github.files()["src/data/site.json"]).tagline, /Fresh tagline/);
+    assert.equal(h.badge().textContent, "1");
+    assert.match(h.root.textContent, /Recently published.*Salon info.*Published by/s);
+    // ⋯ → Discard draft (the test answers yes to the dialog).
+    row("item:services:spa-pedicure").querySelector(".vc-more-button").click();
+    [...row("item:services:spa-pedicure").querySelectorAll(".vc-menu-item")].find((item) => item.textContent === "Discard draft").click();
+    await h.until(() => h.root.querySelector(".vc-empty-state"), "no drafts left");
+    assert.ok(!(await h.drafts.get("usr_owner", "item:services:spa-pedicure")), "the draft is gone");
+  } finally { h.close(); }
+});
 
 test("P8 shell: review shows what each draft changes; publishing the ticked one makes one commit; Live once the site serves it", async () => {
   const h = await publishShell();
@@ -566,6 +600,43 @@ test("P10 shell: Choose image… opens the sheet (uploads + site images); upload
   button("Remove the image for Photo").click();
   assert.equal(src.value, "");
   assert.equal(field.querySelector(".vc-thumb").hidden, true);
+});
+
+test("U4 Media: the library (uploads first, then the website's images), filters, the chosen image's details, Upload images", async () => {
+  const { createMediaStore, createMemoryBucket, mediaSettings } = await import("../dist/index.js");
+  const { tinyPng } = await import("./helpers/images.mjs");
+  const { window, document } = dom();
+  const media = createMediaStore({ bucket: createMemoryBucket(), settings: mediaSettings(config.media), now: () => new Date("2026-03-05T10:00:00Z") });
+  const user = { userId: "usr_owner", role: "owner" };
+  const api = createCmsApi({ config, source: createBundledSource(files), drafts: createMemoryDraftStore(), audit: createMemoryAuditLog(), identify: () => user, media, siteImages: [{ src: "/images/hero.svg", bytes: 3000 }, { src: "/images/team-sam.svg", bytes: 2000 }] });
+  const fetch = async (url, init = {}) => {
+    const body = init.body && typeof init.body.arrayBuffer === "function" ? new Uint8Array(await init.body.arrayBuffer()) : init.body;
+    return api.handle(new Request(new URL(url, "http://localhost"), { ...init, body, headers: { ...(init.headers ?? {}), origin: "http://localhost" } }));
+  };
+  const root = document.createElement("div");
+  document.body.append(root);
+  const boot = adminBoot(config, { id: user.userId, username: "owner", displayName: "Owner", role: "owner" }, { uploads: true });
+  const app = startAdmin({ root, boot, fetch, window, confirm: () => true, prepareImage: async (file) => ({ blob: file, name: "chair.png", width: 4, height: 3 }) });
+  await app.ready;
+  window.location.hash = "#/media"; await settle(); await app.idle();
+  const tiles = () => [...root.querySelectorAll(".vc-media-grid .vc-tile")].map((tile) => tile.dataset.src);
+  assert.deepEqual(tiles(), ["/images/hero.svg", "/images/team-sam.svg"]);
+  assert.equal(root.querySelector(".vc-count").textContent, "2 images");
+  assert.match(root.querySelector(".vc-media-detail").textContent, /Choose an image to see its details/);
+  root.querySelector('.vc-tile[data-src="/images/team-sam.svg"]').click();
+  assert.match(root.querySelector(".vc-media-detail").textContent, /team-sam\.svgWebsite imageCopy linkDimensions—FormatSVGFile size2 KB/);
+  // Upload from the top bar: the new image comes first and is chosen.
+  const input = root.querySelector("#vc-media-file");
+  Object.defineProperty(input, "files", { value: [new window.File([tinyPng(4, 3)], "Chair.png", { type: "image/png" })], configurable: true });
+  input.dispatchEvent(new window.Event("change"));
+  for (let i = 0; i < 40 && tiles().length < 3; i += 1) await settle();
+  assert.match(tiles()[0], /^\/assets\/uploads\/2026\/03\/chair-[0-9a-f]{8}\.png$/);
+  assert.match(root.querySelector(".vc-media-detail").textContent, /Uploaded image/);
+  // Filters: only uploads, only the website's own.
+  [...root.querySelectorAll(".vc-filter")].find((chip) => chip.textContent === "Uploaded").click();
+  assert.equal(tiles().length, 1);
+  [...root.querySelectorAll(".vc-filter")].find((chip) => chip.textContent === "Website").click();
+  assert.deepEqual(tiles(), ["/images/hero.svg", "/images/team-sam.svg"]);
 });
 
 test("P10 shell: without the bucket the sheet says uploading is not set up; an editor sees no buttons on a locked image; prepare refuses GIF / SVG", async () => {

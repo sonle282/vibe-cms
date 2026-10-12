@@ -23,7 +23,7 @@ import { confirmDialog, openDialog, type ConfirmOptions } from "./dialog.js";
 import { createToast } from "./toast.js";
 import { summarizeChanges, type Change, type ReferenceLabels } from "./changes.js";
 import { createForm, type Form, type ReferenceTarget } from "./form.js";
-import { adjustImage, measureImage, openImagePicker, prepareImage, type Adjust, type LibraryImage, type Measure, type Prepare } from "./media.js";
+import { ACCEPTED_TYPES, adjustImage, measureImage, openImagePicker, prepareImage, type Adjust, type LibraryImage, type Measure, type Prepare, type PreparedImage } from "./media.js";
 import { configBinds, fieldAt, type PreviewOwner } from "./bridge.js";
 import { createPreview, previewUrl, type Preview } from "./preview.js";
 import { accountScreen, peopleScreen, type ScreenKit } from "./people.js";
@@ -77,7 +77,7 @@ const PENDING_KEY = "vibe-cms:publishing";
 type Screen = { title: string; crumbs: Array<[string, string?]>; dirty?: () => number; save?: () => Promise<void>; leave?: () => void };
 
 type FileView = { resource: string; label: string; content: unknown; version: string; draft: null | { content: unknown; revision: number; sourceVersion: string; stale: boolean; updatedAt: string } };
-type ListView = { key: string; label: string; itemLabel: string; items: Array<{ id: string; resource: string; label: string; version: string | null; hasDraft: boolean; isNew?: boolean }> };
+type ListView = { key: string; label: string; itemLabel: string; items: Array<{ id: string; resource: string; label: string; version: string | null; hasDraft: boolean; isNew?: boolean; image?: string }> };
 type ContentView = { files: Array<{ key: string; label: string; hasDraft: boolean }>; collections: Array<{ key: string; label: string; itemLabel: string; count: number; drafts: number }> };
 
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
@@ -101,15 +101,15 @@ export const startAdmin = (options: AdminOptions) => {
   // P12f: crop / resize in the browser (canvas); tests pass their own.
   const adjust = options.adjustImage ?? adjustImage(win);
   const measure = options.measureImage ?? measureImage(win);
+  const uploadImage = async (prepared: PreparedImage): Promise<{ ok: true; image: LibraryImage } | { ok: false; message: string }> => {
+    const headers: Record<string, string> = { "x-file-name": encodeURIComponent(prepared.name) };
+    if (prepared.width && prepared.height) { headers["x-image-width"] = String(prepared.width); headers["x-image-height"] = String(prepared.height); }
+    const result = await api.upload<{ image: LibraryImage & { reused?: boolean } }>("/api/cms/media", prepared.blob, headers);
+    if (!result.ok) { if (result.status === 401 || result.error === "password_change_required") { dirtyGuard = false; win.location.assign("/admin"); } return { ok: false, message: result.message }; }
+    return { ok: true, image: { ...result.data.image, source: "upload" } };
+  };
   const pickImage = (current: string, done: (image: { src: string }) => void, label?: string) => openImagePicker({
-    doc, api, media, prepare, current, onPick: done, adjust, measure, label,
-    upload: async (prepared) => {
-      const headers: Record<string, string> = { "x-file-name": encodeURIComponent(prepared.name) };
-      if (prepared.width && prepared.height) { headers["x-image-width"] = String(prepared.width); headers["x-image-height"] = String(prepared.height); }
-      const result = await api.upload<{ image: LibraryImage & { reused?: boolean } }>("/api/cms/media", prepared.blob, headers);
-      if (!result.ok) { if (result.status === 401 || result.error === "password_change_required") { dirtyGuard = false; win.location.assign("/admin"); } return { ok: false, message: result.message }; }
-      return { ok: true, image: { ...result.data.image, source: "upload" } };
-    },
+    doc, api, media, prepare, current, onPick: done, adjust, measure, label, upload: uploadImage,
   });
 
   // ---------------------------------------------------------------- shell
@@ -123,10 +123,11 @@ export const startAdmin = (options: AdminOptions) => {
   const navItems = [
     railItem("#/", "Pages", "file"),
     ...boot.collections.map((collection) => railItem(`#/collections/${collection.key}`, collection.label, collection.icon ?? "list")),
-    railItem("#/publish", "Drafts", "inbox", draftBadge),
+    railItem("#/media", "Media", "image"),
+    railItem("#/drafts", "Drafts", "inbox", draftBadge),
   ];
-  // P8b: People and Activity, for owners only (the server refuses editors anyway).
-  const ownerItems = user.role === "owner" ? [railItem("#/people", "People", "users"), railItem("#/activity", "Activity", "activity")] : [];
+  // P8b: People and Activity (U4: one place, two tabs, like the Mr Spa CMS), for owners only — the server refuses editors anyway.
+  const ownerItems = user.role === "owner" ? [railItem("#/people", "People", "users")] : [];
   navItems.push(...ownerItems);
   const refreshDrafts = async () => {
     const result = await api.get<{ drafts: DraftRow[] }>("/api/cms/drafts");
@@ -159,7 +160,10 @@ export const startAdmin = (options: AdminOptions) => {
     if (open) menu.querySelector<HTMLElement>(".vc-menu-item")?.focus();
   });
   menu.addEventListener("keydown", (event) => { if (event.key === "Escape") { closeMenu(); avatar.focus(); } });
-  doc.addEventListener("click", (event) => { if (!menu.hidden && !menu.contains(event.target as Node) && event.target !== avatar) closeMenu(); });
+  doc.addEventListener("click", (event) => {
+    if (!menu.hidden && !menu.contains(event.target as Node) && event.target !== avatar) closeMenu();
+    for (const open of doc.querySelectorAll<HTMLElement>(".vc-more > .vc-menu:not([hidden])")) if (!open.parentElement!.contains(event.target as Node)) { open.hidden = true; open.parentElement!.querySelector(".vc-more-button")?.setAttribute("aria-expanded", "false"); }
+  });
   const mark = h(doc, "a", { class: "vc-mark", href: "#/", title: `${boot.site.name} · Vibe CMS`, "aria-label": `${boot.site.name} — Pages` }, (boot.site.name.trim()[0] ?? "V").toUpperCase());
   const nav = h(doc, "nav", { class: "vc-rail", "aria-label": "Content" },
     mark,
@@ -201,11 +205,24 @@ export const startAdmin = (options: AdminOptions) => {
     clear(body);
     body.append(h(doc, "div", { class: "vc-page-inner" }, ...content));
     doc.title = `${screen.title} · ${boot.site.name} · Vibe CMS`;
-    const route = currentHash.startsWith("#/publish") ? "#/publish" : currentHash.startsWith("#/activity") ? "#/activity" : currentHash.startsWith("#/history/") ? "" : currentHash.startsWith("#/files/") ? "#/" : currentHash.split("/").slice(0, 3).join("/") || "#/";
+    const route = currentHash.startsWith("#/publish") || currentHash.startsWith("#/drafts") ? "#/drafts" : currentHash.startsWith("#/activity") || currentHash.startsWith("#/people") ? "#/people" : currentHash.startsWith("#/history/") ? "" : currentHash.startsWith("#/files/") ? "#/" : currentHash.split("/").slice(0, 3).join("/") || "#/";
     for (const item of navItems) { if (item.dataset.route === route) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current"); }
   };
   const heading = (text: string) => h(doc, "h1", { class: "vc-title", tabindex: "-1" }, text);
   const message = (title: string, text: string, ...extra: Node[]) => [heading(title), h(doc, "p", { class: "vc-lead" }, text), ...extra];
+  /** U4: list screens name themselves in the top bar (Mr Spa); the heading stays for screen readers and focus. */
+  const quietHeading = (text: string) => { const element = heading(text); element.classList.add("vc-sr-only"); return element; };
+  const siteHost = () => { try { return new URL(boot.site.url).host; } catch { return boot.site.url; } };
+  /** U4: a ⋯ button with a small menu (the destructive entry is red). */
+  const moreMenu = (label: string, entries: Array<{ text: string; danger?: boolean; run: () => void }>) => {
+    const list = h(doc, "div", { class: "vc-menu", role: "menu", hidden: true });
+    const button = h(doc, "button", { type: "button", class: "vc-icon-button vc-more-button", "aria-haspopup": "menu", "aria-expanded": "false", "aria-label": label, "data-tip": "More" }, h(doc, "span", { "aria-hidden": "true" }, "⋯"));
+    button.addEventListener("click", (event) => { event.stopPropagation(); list.hidden = !list.hidden; button.setAttribute("aria-expanded", String(!list.hidden)); if (!list.hidden) list.querySelector<HTMLElement>("button")?.focus(); });
+    list.addEventListener("keydown", (event) => { if (event.key === "Escape") { list.hidden = true; button.setAttribute("aria-expanded", "false"); button.focus(); } });
+    for (const entry of entries) list.append(h(doc, "button", { type: "button", class: `vc-menu-item${entry.danger ? " vc-danger" : ""}`, role: "menuitem", onclick: () => { list.hidden = true; button.setAttribute("aria-expanded", "false"); entry.run(); } }, entry.text));
+    return h(doc, "span", { class: "vc-more" }, button, list);
+  };
+  const searchBox = (placeholder: string) => h(doc, "input", { type: "search", class: "vc-input vc-search", placeholder, "aria-label": placeholder });
 
   const route = async () => {
     const hash = win.location.hash || "#/";
@@ -239,11 +256,13 @@ export const startAdmin = (options: AdminOptions) => {
       else if (parts[0] === "collections" && parts.length === 3 && parts[2] === "new") await editItem(parts[1], undefined, stillHere);
       else if (parts[0] === "collections" && parts.length === 4 && parts[2] === "items") await editItem(parts[1], parts[3], stillHere);
       else if (parts[0] === "publish" && parts.length <= 2) await review(parts[1] || undefined, stillHere);
+      else if (parts[0] === "drafts" && parts.length === 1) await draftsScreen(stillHere);
+      else if (parts[0] === "media" && parts.length === 1) await mediaScreen(stillHere);
       else if (parts[0] === "people" && parts.length === 1) await peopleScreen(kit, stillHere);
       else if (parts[0] === "activity" && parts.length <= 2) await activityScreen(kit, stillHere, parts[1]);
       else if (parts[0] === "history" && parts.length === 2) await historyScreen(kit, stillHere, parts[1], historyTarget(parts[1]), (hash) => { win.location.hash = hash; });
       else if (parts[0] === "account" && parts.length === 1) await accountScreen(kit, stillHere);
-      else show({ title: "Not found", crumbs: [["Pages", "#/"], ["Not found"]] }, message("Not found", "There is nothing at this address in the CMS.", link("#/", "Go to the overview")));
+      else show({ title: "Not found", crumbs: [["Pages", "#/"], ["Not found"]] }, message("Not found", "There is nothing at this address in the CMS.", link("#/", "Go to Pages")));
     } catch {
       if (stillHere()) show({ title: "Error", crumbs: [["Pages", "#/"], ["Error"]] }, message("Something went wrong", "The page could not be shown. Reload to try again."));
     }
@@ -272,12 +291,31 @@ export const startAdmin = (options: AdminOptions) => {
     const result = await api.get<ContentView>("/api/cms/content");
     if (!stillHere()) return;
     if (!result.ok) return failed(result, [["Pages"]]);
-    const pill = (draft: boolean, text = "Draft saved") => h(doc, "span", { class: `vc-pill ${draft ? "vc-pill-draft" : "vc-pill-live"}` }, draft ? text : "Live");
-    const cards = [
-      ...result.data.files.map((file) => h(doc, "li", {}, h(doc, "a", { class: "vc-card", href: `#/files/${file.key}` }, h(doc, "span", { class: "vc-card-title" }, file.label), h(doc, "span", { class: "vc-card-meta" }, "Page content"), pill(file.hasDraft)))),
-      ...result.data.collections.map((collection) => h(doc, "li", {}, h(doc, "a", { class: "vc-card", href: `#/collections/${collection.key}` }, h(doc, "span", { class: "vc-card-title" }, collection.label), h(doc, "span", { class: "vc-card-meta" }, plural(collection.count, collection.itemLabel.toLowerCase())), collection.drafts ? pill(true, `${plural(collection.drafts, "draft")}`) : null))),
-    ];
-    show({ title: "Pages", crumbs: [["Pages"]] }, [heading(`${boot.site.name}`), h(doc, "p", { class: "vc-lead" }, `Signed in as ${user.displayName}. Pick what to edit. Saving makes a draft; the website changes only when a draft is published.`), h(doc, "ul", { class: "vc-cards" }, cards)]);
+    const pill = (draft: boolean) => h(doc, "span", { class: `vc-pill ${draft ? "vc-pill-draft" : "vc-pill-live"}` }, draft ? "Draft saved" : "Live");
+    const host = siteHost();
+    const pages = result.data.files.map((file) => {
+      const path = boot.files.find((entry) => entry.key === file.key)?.preview;
+      const where = path && !path.includes("{") ? `${host}${path}` : "Shown across the website";
+      return { file, where, row: h(doc, "li", {}, h(doc, "a", { class: "vc-row", href: `#/files/${file.key}` },
+        h(doc, "span", { class: "vc-row-icon", "aria-hidden": "true" }, icon(doc, "file")),
+        h(doc, "span", { class: "vc-row-text" }, h(doc, "span", { class: "vc-row-title" }, file.label), h(doc, "span", { class: "vc-row-sub" }, where)),
+        pill(file.hasDraft), h(doc, "span", { class: "vc-row-chevron", "aria-hidden": "true" }, icon(doc, "chevron")))) };
+    });
+    const list = h(doc, "ul", { class: "vc-rows" });
+    const count = h(doc, "p", { class: "vc-count", "aria-live": "polite" });
+    const search = searchBox("Find a page");
+    const render = () => {
+      const query = search.value.trim().toLowerCase();
+      const shown = pages.filter((page) => !query || page.file.label.toLowerCase().includes(query) || page.where.toLowerCase().includes(query));
+      clear(list);
+      list.append(...shown.map((page) => page.row));
+      if (!shown.length) list.append(h(doc, "li", { class: "vc-rows-empty" }, `No page matches “${search.value.trim()}”.`));
+      count.textContent = query ? `${shown.length} of ${plural(pages.length, "page")}` : plural(pages.length, "page");
+    };
+    search.addEventListener("input", render);
+    render();
+    show({ title: "Pages", crumbs: [["Pages"]] }, [quietHeading("Pages"), h(doc, "div", { class: "vc-toolbar" }, search, count), list,
+      h(doc, "p", { class: "vc-help vc-rows-note" }, "Saving makes a draft; the website changes only when a draft is published.")]);
   };
 
   // ---------------------------------------------------------------- collection list
@@ -295,7 +333,8 @@ export const startAdmin = (options: AdminOptions) => {
     const noun = collection.itemLabel.toLowerCase();
     const count = h(doc, "p", { class: "vc-count", "aria-live": "polite" });
     const tbody = h(doc, "tbody");
-    const search = h(doc, "input", { type: "search", class: "vc-input vc-search", placeholder: `Search ${collection.label.toLowerCase()}`, "aria-label": `Search ${collection.label.toLowerCase()}` });
+    const search = searchBox(`Search ${collection.label.toLowerCase()}`);
+    const hasImage = Object.values(collection.fields).some((field) => field.type === "image");
     const render = () => {
       const query = search.value.trim().toLowerCase();
       const shown = items.filter((item) => !query || item.label.toLowerCase().includes(query) || item.id.toLowerCase().includes(query));
@@ -303,16 +342,17 @@ export const startAdmin = (options: AdminOptions) => {
       for (const item of shown) {
         const status = item.isNew ? h(doc, "span", { class: "vc-pill vc-pill-draft" }, "New · not published")
           : h(doc, "span", { class: "vc-status" }, h(doc, "span", { class: "vc-pill vc-pill-live" }, "Live"), item.hasDraft ? h(doc, "span", { class: "vc-unpublished" }, "Draft saved") : null);
-        tbody.append(h(doc, "tr", { "data-id": item.id }, h(doc, "td", {}, link(`#/collections/${key}/items/${encodeURIComponent(item.id)}`, item.label || item.id)), h(doc, "td", { class: "vc-mono" }, item.id), h(doc, "td", {}, status)));
+        const thumb = hasImage ? h(doc, "span", { class: "vc-list-thumb", "aria-hidden": "true" }, item.image ? h(doc, "img", { src: item.image, alt: "", loading: "lazy", decoding: "async" }) : icon(doc, "image")) : null;
+        tbody.append(h(doc, "tr", { "data-id": item.id }, h(doc, "td", {}, h(doc, "a", { href: `#/collections/${key}/items/${encodeURIComponent(item.id)}`, class: "vc-list-name" }, thumb, h(doc, "span", {}, item.label || item.id))), h(doc, "td", { class: "vc-mono" }, item.id), h(doc, "td", {}, status)));
       }
       if (!shown.length) tbody.append(h(doc, "tr", {}, h(doc, "td", { colspan: "3", class: "vc-empty" }, items.length ? `No ${noun} matches “${search.value.trim()}”.` : `No ${noun} yet.`)));
       count.textContent = query ? `${shown.length} of ${plural(items.length, noun)}` : plural(items.length, noun);
     };
     search.addEventListener("input", render);
     render();
-    if (!collection.fixed) actions.append(link(`#/collections/${key}/new`, `Add ${noun}`, { class: "vc-button vc-primary" }));
+    if (!collection.fixed) actions.append(h(doc, "a", { href: `#/collections/${key}/new`, class: "vc-button vc-primary" }, icon(doc, "plus"), `New ${noun}`));
     show({ title: collection.label, crumbs: crumbsFor }, [
-      heading(collection.label),
+      quietHeading(collection.label),
       h(doc, "div", { class: "vc-toolbar" }, search, count),
       h(doc, "table", { class: "vc-table" }, h(doc, "thead", {}, h(doc, "tr", {}, h(doc, "th", { scope: "col" }, collection.itemLabel), h(doc, "th", { scope: "col" }, "ID"), h(doc, "th", { scope: "col" }, "Status"))), tbody),
     ]);
@@ -577,42 +617,10 @@ export const startAdmin = (options: AdminOptions) => {
 
     const publishHere = () => {
       if (publish.disabled || dirty()) return;
-      const resource = resourceOf();
       const labels: ReferenceLabels = Object.fromEntries(Object.entries(references).map(([key, target]) => [key, Object.fromEntries(target.items.map((item) => [item.id, item.label]))]));
       const live = view?.content ?? undefined;
       const changes = summarizeChanges({ fields, before: live, after: saved, references: labels, ...(collection && !live ? { newRecord: { itemLabel: collection.itemLabel, title: titleText() } } : {}) });
-      const problem = h(doc, "div", { class: "vc-dialog-problem", role: "alert", hidden: true });
-      let host = boot.site.url;
-      try { host = new URL(boot.site.url).host; } catch { /* the address as written */ }
-      openDialog(doc, {
-        title: `Publish ${titleText()}?`,
-        text: `These changes go live on ${host} in a few minutes. Other pages are not affected.`,
-        body: [changes.length ? h(doc, "ul", { class: "vc-changes vc-dialog-changes" }, changes.map(changeItem)) : h(doc, "p", { class: "vc-note" }, "No differences from the website. Publishing it only clears the draft."), problem],
-        buttons: [{ label: "Cancel", value: "cancel" }, { label: "Publish to website", kind: "primary", value: "publish" }],
-        onButton: async (value, dialog) => {
-          if (value !== "publish") return true;
-          dialog.busy(true);
-          problem.hidden = true;
-          setState("busy", "Publishing…");
-          const result = await api.post<PublishResult>("/api/cms/publish", { resources: [resource] });
-          dialog.busy(false);
-          if (!result.ok) {
-            refresh();
-            setState("error", "Not published");
-            clear(problem);
-            problem.append(h(doc, "p", {}, publishProblem(result)), h(doc, "a", { href: `#/publish/${encodeURIComponent(resource)}`, onclick: () => dialog.close("cancel") }, "Open in Review & publish"));
-            problem.hidden = false;
-            return false;
-          }
-          if (result.data.commitSha) watchLive({ expected: result.data.expectedLiveVersion, at: now(), userId: user.id, labels: [titleText()] });
-          say(result.data.commitSha ? `Published. Live on ${host} in a few minutes.` : "Nothing changed on the website; the draft is cleared.", "success");
-          void refreshDrafts();
-          dirtyGuard = false;
-          pending = route();
-          dirtyGuard = true;
-          return true;
-        },
-      });
+      openPublishDialog({ resource: resourceOf(), title: titleText(), changes, onFailed: refresh, onDone: () => { dirtyGuard = false; pending = route(); dirtyGuard = true; } });
     };
 
     save.addEventListener("click", () => { void doSave(); });
@@ -697,15 +705,8 @@ export const startAdmin = (options: AdminOptions) => {
     return collection ? editorFields({ kind: "item", collection, isNew: row.isNew }) : undefined;
   };
 
-  const review = async (preselect: string | undefined, stillHere: () => boolean) => {
-    const crumbsFor: Array<[string, string?]> = [["Drafts", "#/publish"], ["Review & publish"]];
-    const listed = await refreshDrafts();
-    if (!stillHere()) return;
-    if (!listed.ok) return failed(listed, crumbsFor);
-    const rows = listed.data.drafts;
-    if (!rows.length) return show({ title: "Review & publish", crumbs: crumbsFor }, message("Nothing to publish", "You have no saved drafts. Edit something and save a draft; it shows up here for review before it goes on the website.", link("#/", "Go to the overview")));
-
-    // Each draft against the live content, compared through the editor's fields, with record names for references.
+  /** Each draft against the live content, compared through the editor's fields, with record names for references. */
+  const reviewsOf = async (rows: DraftRow[]) => {
     const views = await Promise.all(rows.map((row) => api.get<FileView>(urlOfDraft(row))));
     const referenced = new Set<string>();
     for (const row of rows) for (const key of referencesIn(fieldsOfDraft(row) ?? {})) referenced.add(key);
@@ -714,18 +715,205 @@ export const startAdmin = (options: AdminOptions) => {
       const result = await api.get<ListView>(`/api/cms/collections/${encodeURIComponent(key)}`);
       labels[key] = Object.fromEntries(result.ok ? result.data.items.map((item) => [item.id, item.label || item.id]) : []);
     }));
-    if (!stillHere()) return;
-
-    const banner = h(doc, "div", { class: "vc-banner", role: "alert", hidden: true });
-    const showBanner = (...content: Array<Node | string>) => { clear(banner); banner.append(...content.map((entry) => (typeof entry === "string" ? h(doc, "p", {}, entry) : entry))); banner.hidden = false; };
-    const boxes: Array<{ row: DraftRow; box: HTMLInputElement; card: HTMLElement }> = [];
-    const cards = rows.map((row, index) => {
+    return rows.map((row, index) => {
       const view = views[index];
       const fields = fieldsOfDraft(row);
       const collection = row.kind === "item" ? collectionOf(row.key) : undefined;
       const changes = view.ok && fields && view.data.draft
         ? summarizeChanges({ fields, before: view.data.content ?? undefined, after: view.data.draft.content, references: labels, ...(collection && row.isNew ? { newRecord: { itemLabel: collection.itemLabel, title: row.label } } : {}) })
         : [];
+      return { row, view, changes };
+    });
+  };
+
+  /** U3 / U4: the review dialog of one draft (Mr Spa 03) — what changes, then "Publish to website". */
+  const openPublishDialog = (input: { resource: string; title: string; changes: Change[]; onFailed?: () => void; onDone: () => void }) => {
+    const host = siteHost();
+    const problem = h(doc, "div", { class: "vc-dialog-problem", role: "alert", hidden: true });
+    openDialog(doc, {
+      title: `Publish ${input.title}?`,
+      text: `These changes go live on ${host} in a few minutes. Other pages are not affected.`,
+      body: [input.changes.length ? h(doc, "ul", { class: "vc-changes vc-dialog-changes" }, input.changes.map(changeItem)) : h(doc, "p", { class: "vc-note" }, "No differences from the website. Publishing it only clears the draft."), problem],
+      buttons: [{ label: "Cancel", value: "cancel" }, { label: "Publish to website", kind: "primary", value: "publish" }],
+      onButton: async (value, dialog) => {
+        if (value !== "publish") return true;
+        dialog.busy(true);
+        problem.hidden = true;
+        setState("busy", "Publishing…");
+        const result = await api.post<PublishResult>("/api/cms/publish", { resources: [input.resource] });
+        dialog.busy(false);
+        if (!result.ok) {
+          setState("error", "Not published");
+          input.onFailed?.();
+          clear(problem);
+          problem.append(h(doc, "p", {}, publishProblem(result)), h(doc, "a", { href: `#/publish/${encodeURIComponent(input.resource)}`, onclick: () => dialog.close("cancel") }, "Open in Review & publish"));
+          problem.hidden = false;
+          return false;
+        }
+        if (result.data.commitSha) watchLive({ expected: result.data.expectedLiveVersion, at: now(), userId: user.id, labels: [input.title] });
+        say(result.data.commitSha ? `Published. Live on ${host} in a few minutes.` : "Nothing changed on the website; the draft is cleared.", "success");
+        void refreshDrafts();
+        input.onDone();
+        return true;
+      },
+    });
+  };
+
+  // ---------------------------------------------------------------- U4: Drafts (Mr Spa 18)
+
+  type PublishEntry = { id: number; at: string; who: string | null; action: string; resource: string; what: string };
+  const draftsScreen = async (stillHere: () => boolean) => {
+    const crumbsFor: Array<[string, string?]> = [["Drafts"]];
+    const listed = await refreshDrafts();
+    if (!stillHere()) return;
+    if (!listed.ok) return failed(listed, crumbsFor);
+    const rows = listed.data.drafts;
+    const [reviews, recent] = await Promise.all([reviewsOf(rows), user.role === "owner" ? api.get<{ entries: PublishEntry[] }>("/api/cms/activity?kind=publish") : Promise.resolve(undefined)]);
+    if (!stillHere()) return;
+    const summary = (changes: Change[], ok: boolean) => {
+      if (!ok) return "Could not be compared with the website";
+      if (!changes.length) return "No differences from the website";
+      const places = [...new Set(changes.map((change) => change.label.split(" › ")[0]))];
+      return `${plural(changes.length, "change")}: ${places.slice(0, 3).join(", ")}${places.length > 3 ? ` and ${places.length - 3} more` : ""}`;
+    };
+    const waiting = reviews.map(({ row, view, changes }) => {
+      const publishButton = h(doc, "button", { type: "button", class: "vc-button", "data-action": "publish-draft", disabled: row.stale || !view.ok, onclick: () => openPublishDialog({ resource: row.resource, title: row.label, changes, onDone: () => { pending = route(); } }) }, "Publish");
+      const discard = async () => {
+        if (!(await ask(`Discard your draft?\n\nThe website stays as it is. The changes saved in this ${row.label} draft are deleted.`, { confirm: "Discard draft", danger: true }))) return;
+        const result = await api.delete(urlOfDraft(row));
+        if (!result.ok) { say(result.message, "error"); return; }
+        say("Draft discarded.");
+        pending = route();
+      };
+      return h(doc, "li", { class: "vc-row vc-draft-row", "data-resource": row.resource },
+        h(doc, "span", { class: "vc-row-text" },
+          h(doc, "span", { class: "vc-row-title" }, row.label, h(doc, "span", { class: "vc-row-group" }, ` · ${row.group}`)),
+          h(doc, "span", { class: "vc-row-sub vc-row-what" }, summary(changes, view.ok)),
+          h(doc, "span", { class: "vc-row-meta" }, `Saved by you · ${timeOf(row.updatedAt)}`),
+          row.stale ? h(doc, "span", { class: "vc-row-warn" }, "The website changed after this draft was started. Open it, discard the draft and make your change again.") : null),
+        h(doc, "span", { class: "vc-row-actions" }, link(hrefOfDraft(row), "Open", { class: "vc-button" }), publishButton,
+          moreMenu(`More for ${row.label}`, [{ text: "Discard draft", danger: true, run: () => { void discard(); } }])));
+    });
+    const published = recent?.ok ? recent.data.entries.filter((entry) => entry.action === "succeeded").slice(0, 5) : [];
+    const recentRows = published.map((entry) => {
+      const target = historyTarget(entry.resource);
+      return h(doc, "li", { class: "vc-row" },
+        h(doc, "span", { class: "vc-row-text" }, h(doc, "span", { class: "vc-row-title" }, entry.what), h(doc, "span", { class: "vc-row-meta" }, `Published by ${entry.who ?? "someone"} · ${timeOf(entry.at)}`)),
+        target ? link(`#/history/${encodeURIComponent(entry.resource)}`, "View history", { class: "vc-link" }) : null);
+    });
+    if (rows.length) actions.append(link("#/publish", `Review & publish ${rows.length === 1 ? "it" : "all"}`, { class: "vc-button vc-primary", "data-action": "review-all" }));
+    const empty = h(doc, "div", { class: "vc-empty-state" }, icon(doc, "inbox"), h(doc, "h2", {}, "No drafts"), h(doc, "p", {}, "When you save a draft, it waits here until you publish or discard it."));
+    show({ title: "Drafts", crumbs: crumbsFor }, [
+      quietHeading("Drafts"),
+      h(doc, "h2", { class: "vc-group-title" }, "Waiting to publish"),
+      rows.length ? h(doc, "ul", { class: "vc-rows" }, waiting) : empty,
+      h(doc, "p", { class: "vc-help vc-rows-note" }, "Each person keeps their own drafts. Nothing here is on the website until it is published."),
+      recentRows.length ? h(doc, "h2", { class: "vc-group-title" }, "Recently published") : h(doc, "span", { hidden: true }),
+      recentRows.length ? h(doc, "ul", { class: "vc-rows" }, recentRows) : h(doc, "span", { hidden: true }),
+    ]);
+  };
+
+  // ---------------------------------------------------------------- U4: Media (Mr Spa 17)
+
+  const sizeOf = (bytes: number) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+  const mediaScreen = async (stillHere: () => boolean) => {
+    const crumbsFor: Array<[string, string?]> = [["Media"]];
+    const result = await api.get<{ uploads: LibraryImage[]; site: LibraryImage[] }>("/api/cms/media");
+    if (!stillHere()) return;
+    if (!result.ok) return failed(result, crumbsFor);
+    const uploadedSet = new Set(result.data.uploads.map((image) => image.src));
+    let images: LibraryImage[] = [...result.data.uploads.map((image) => ({ ...image, source: "upload" as const })), ...result.data.site.filter((image) => !uploadedSet.has(image.src)).map((image) => ({ ...image, source: "site" as const }))];
+    let kind: "all" | "upload" | "site" = "all";
+    let selected: LibraryImage | undefined;
+    const nameOf = (image: LibraryImage) => image.name || decodeURIComponent(image.src.split("/").pop() || image.src);
+    const search = searchBox("Search by file name");
+    const count = h(doc, "p", { class: "vc-count", "aria-live": "polite" });
+    const grid = h(doc, "div", { class: "vc-picker-grid vc-media-grid", role: "list" });
+    const status = h(doc, "p", { class: "vc-picker-status", role: "status", "aria-live": "polite" });
+    const detail = h(doc, "aside", { class: "vc-media-detail", "aria-label": "Image details" });
+    const chips = h(doc, "div", { class: "vc-filters", role: "group", "aria-label": "Show" });
+    for (const [key, text] of [["all", "All"], ["upload", "Uploaded"], ["site", "Website"]] as const) chips.append(h(doc, "button", { type: "button", class: "vc-filter", "data-kind": key, "aria-pressed": String(key === kind), onclick: () => { kind = key; for (const chip of chips.querySelectorAll("button")) chip.setAttribute("aria-pressed", String(chip.dataset.kind === key)); render(); } }, text));
+    const showDetail = () => {
+      clear(detail);
+      if (!selected) { detail.append(h(doc, "p", { class: "vc-help" }, "Choose an image to see its details.")); return; }
+      const image = selected;
+      const dims = h(doc, "dd", {}, image.width && image.height ? `${image.width} × ${image.height}` : "—");
+      const picture = h(doc, "img", { src: image.src, alt: "", class: "vc-media-picture" });
+      picture.addEventListener("load", () => { if (!image.width && picture.naturalWidth) dims.textContent = `${picture.naturalWidth} × ${picture.naturalHeight}`; });
+      const address = /^https:\/\//.test(image.src) ? image.src : `${win.location.origin}${image.src}`;
+      detail.append(picture,
+        h(doc, "h2", { class: "vc-media-name" }, nameOf(image)),
+        h(doc, "p", { class: "vc-help" }, image.source === "upload" ? "Uploaded image" : "Website image"),
+        h(doc, "div", { class: "vc-media-actions" }, h(doc, "button", { type: "button", class: "vc-button", onclick: async () => { say((await kit.copy?.(address)) ? "Image link copied" : `Image link: ${address}`); } }, "Copy link")),
+        h(doc, "dl", { class: "vc-media-facts" },
+          h(doc, "dt", {}, "Dimensions"), dims,
+          h(doc, "dt", {}, "Format"), h(doc, "dd", {}, (image.src.split(/[?#]/)[0].split(".").pop() ?? "").toUpperCase() || "—"),
+          h(doc, "dt", {}, "File size"), h(doc, "dd", {}, image.bytes ? sizeOf(image.bytes) : "—")));
+    };
+    const render = () => {
+      const query = search.value.trim().toLowerCase();
+      const shown = images.filter((image) => (kind === "all" || image.source === kind) && (!query || nameOf(image).toLowerCase().includes(query) || image.src.toLowerCase().includes(query)));
+      clear(grid);
+      for (const image of shown) {
+        const on = selected?.src === image.src;
+        grid.append(h(doc, "div", { role: "listitem" }, h(doc, "button", { type: "button", class: `vc-tile${on ? " vc-tile-selected" : ""}`, "data-src": image.src, "aria-pressed": String(on), "aria-label": nameOf(image), onclick: () => { selected = image; render(); showDetail(); } },
+          h(doc, "span", { class: "vc-tile-picture" }, h(doc, "img", { src: image.src, alt: "", loading: "lazy", decoding: "async" }), h(doc, "span", { class: "vc-tile-check", "aria-hidden": "true" }, "✓")),
+          h(doc, "span", { class: "vc-tile-name" }, nameOf(image)),
+          h(doc, "span", { class: "vc-tile-meta" }, [image.width && image.height ? `${image.width} × ${image.height}` : "", image.bytes ? sizeOf(image.bytes) : ""].filter(Boolean).join(" · ")))));
+      }
+      if (!shown.length) grid.append(h(doc, "p", { class: "vc-note" }, images.length ? "No image matches." : "No images yet."));
+      count.textContent = plural(shown.length, "image");
+    };
+    search.addEventListener("input", render);
+    // Upload: each file is made smaller and WebP in the browser first, like in the image sheet.
+    if (media.uploads) {
+      const fileInput = h(doc, "input", { type: "file", accept: ACCEPTED_TYPES.join(","), multiple: true, class: "vc-sr-only", id: "vc-media-file", "aria-label": "Images to upload" });
+      fileInput.addEventListener("change", async () => {
+        const files = [...(fileInput.files ?? [])];
+        let added = 0;
+        for (const file of files) {
+          status.textContent = `Uploading ${file.name}…`;
+          let prepared: PreparedImage;
+          try { prepared = await prepare(file); } catch (error) { status.textContent = `${file.name}: ${(error as Error).message}`; continue; }
+          if (prepared.blob.size > media.maxBytes) { status.textContent = `${file.name} is still larger than ${sizeOf(media.maxBytes)} after preparing it.`; continue; }
+          const done = await uploadImage(prepared);
+          if (!done.ok) { status.textContent = `${file.name}: ${done.message}`; continue; }
+          images = [done.image, ...images.filter((image) => image.src !== done.image.src)];
+          selected = done.image;
+          added += 1;
+        }
+        fileInput.value = "";
+        if (added) { status.textContent = ""; render(); showDetail(); say(added === 1 ? "Image uploaded." : `${added} images uploaded.`, "success"); }
+      });
+      actions.append(fileInput, h(doc, "label", { for: "vc-media-file", class: "vc-button vc-primary", role: "button", tabindex: "0", onkeydown: (event: Event) => { const key = (event as KeyboardEvent).key; if (key === "Enter" || key === " ") { event.preventDefault(); fileInput.click(); } } }, icon(doc, "upload"), "Upload images"));
+    }
+    render();
+    showDetail();
+    show({ title: "Media", crumbs: crumbsFor, leave: () => body.classList.remove("vc-body-wide") }, [
+      quietHeading("Media"),
+      h(doc, "div", { class: "vc-media" },
+        h(doc, "div", { class: "vc-media-main" }, h(doc, "div", { class: "vc-toolbar" }, search, chips, count), media.uploads ? status : h(doc, "p", { class: "vc-note" }, "Uploading is not set up on this site (its image storage is missing)."), grid),
+        detail),
+    ]);
+    body.classList.add("vc-body-wide");
+  };
+
+  const review = async (preselect: string | undefined, stillHere: () => boolean) => {
+    const crumbsFor: Array<[string, string?]> = [["Drafts", "#/drafts"], ["Review & publish"]];
+    const listed = await refreshDrafts();
+    if (!stillHere()) return;
+    if (!listed.ok) return failed(listed, crumbsFor);
+    const rows = listed.data.drafts;
+    if (!rows.length) return show({ title: "Review & publish", crumbs: crumbsFor }, message("Nothing to publish", "You have no saved drafts. Edit something and save a draft; it shows up here for review before it goes on the website.", link("#/", "Go to Pages")));
+
+    const reviews = await reviewsOf(rows);
+    if (!stillHere()) return;
+
+    const banner = h(doc, "div", { class: "vc-banner", role: "alert", hidden: true });
+    const showBanner = (...content: Array<Node | string>) => { clear(banner); banner.append(...content.map((entry) => (typeof entry === "string" ? h(doc, "p", {}, entry) : entry))); banner.hidden = false; };
+    const boxes: Array<{ row: DraftRow; box: HTMLInputElement; card: HTMLElement }> = [];
+    const cards = rows.map((row, index) => {
+      const { view, changes } = reviews[index];
       const id = `vc-pick-${index}`;
       const box = h(doc, "input", { type: "checkbox", id, class: "vc-pick" });
       box.checked = preselect ? row.resource === preselect : true;
@@ -794,7 +982,7 @@ export const startAdmin = (options: AdminOptions) => {
         published.commitSha ? h(doc, "p", { class: "vc-note" }, `Change ${published.commitSha.slice(0, 7)} on ${boot.site.name}'s ${published.files.length === 1 ? "file" : "files"}: ${published.files.join(", ")}.`) : h(doc, "span", { hidden: true }),
         warnings.length ? h(doc, "div", { class: "vc-banner" }, h(doc, "p", {}, `Formatting note: ${warnings.map((warning) => labelOf(warning.resource)).join(", ")} — the whole file was rewritten because its original formatting could not be kept. The content is right; the change on GitHub just looks bigger.`)) : h(doc, "span", { hidden: true }),
         sanitizedNotes.length ? h(doc, "div", { class: "vc-banner" }, h(doc, "p", {}, `Safety note: unsafe HTML was removed before publishing — ${sanitizedNotes.map((warning) => `${labelOf(warning.resource)}: ${(warning.fields ?? []).join("; ")}`).join(" · ")}.`)) : h(doc, "span", { hidden: true }),
-        link("#/", "Back to the overview", { class: "vc-button" }),
+        link("#/drafts", "Back to Drafts", { class: "vc-button" }),
       ]);
       main.querySelector<HTMLElement>("h1")?.focus();
     });
