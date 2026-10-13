@@ -345,17 +345,17 @@ nên Ctrl+Z / Ctrl+Y vẫn chạy, dán chỉ giữ chữ), thêm phần ảnh m
   phục vụ từ R2). Thư viện ảnh = manifest (bỏ `exclude`). Build + mỗi lần lưu từ chối tên không có trong manifest và
   không phải tên upload. Manifest tới Worker qua module ảo `virtual:vibe-cms/images` (`names`).
 
-## C.8 History + Restore as draft (P12c)
+## C.8 Version history + Restore as draft (P12c, M12)
 
 - **Nguồn:** lịch sử git của nhánh production (GitHub `GET /commits?sha=<branch>&path=<file>`) → có cả các lần publish
-  của CMS cũ và các lần sửa trong code, **không cần chuyển dữ liệu** khi một site bỏ CMS chép sang gói. Tối đa 20 bản.
+  của CMS cũ và các lần sửa trong code, **không cần chuyển dữ liệu** khi một site bỏ CMS chép sang gói. M12: 10 bản (`?limit=1..25`); `contents=1` trả thêm giá trị từng bản + bản live để hộp thoại tóm tắt "Changed: …".
   Bản ghi trong file JSON chung: đọc file ở từng commit, chỉ giữ commit làm **bản ghi đó** đổi (≤ 21 request GitHub).
 - **Ai:** người ghi trong commit của Vibe CMS (`By: usr_… (role) via Vibe CMS` → tên trong `cms_users`), không có thì tác giả commit.
-- **Compare:** giá trị ở commit ↔ bản website đang chạy, nói bằng lời như màn review (`summarizeChanges`).
+- **Tóm tắt (M12, thay Compare):** giá trị ở commit ↔ bản website đang chạy (`summarizeChanges`) → "Changed / Added / Removed: <chỗ>" nối bằng " · " (tối đa 20), như Mr Spa.
 - **Restore as draft:** bản cũ thành nháp của owner (`sourceVersion` = bản đang live, nên publish không bị coi là cũ); đã có
   nháp → 409 `draft_exists` + `needsConfirmation`, gửi lại `replace: true`; giống bản live → 409 `same_as_live`; không còn
   hợp `cms.config` hiện tại → 422 (kiểu field / list cố định); bản ghi không có ở commit đó → 404. Publish đi qua đủ kiểm tra như mọi nháp.
-- **Quyền:** chỉ owner (như bản chép trên 2 site pilot). Không thêm hành động audit mới (bảng audit có CHECK cố định);
+- **Quyền:** M12: mọi vai trò (nút của Mr Spa hiện cho cả Editor); file / collection `access: "admin"` vẫn chỉ admin; khoá field vẫn kiểm lúc lưu nháp khôi phục và lúc publish. Không thêm hành động audit mới (bảng audit có CHECK cố định);
   việc publish sau đó được audit như thường.
 
 ## D. Hợp đồng visual editing (P9)

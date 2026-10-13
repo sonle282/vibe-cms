@@ -181,7 +181,8 @@ groups: f.list(f.object({ label: "Group", fields: { … } }), { label: "Menu gro
   exist; their values stay editable. On a collection: no new record. Checked at save and at publish.
 - `access: "admin"`: the whole file / collection is hidden from editors (403 `owner_only`, audited). `locked: "admin"`
   on a field is the softer form: editors see it, greyed out.
-- **Activity** (admins, under Users): publishes, sign-ins, people changes and refusals in plain words, 50 at a time.
+- **Activity** (admins, the second tab of People): the last 100 events in plain words — Date · Person · What happened ·
+  Change · Result — filtered All · Publishing · Sign-ins · Failed (API: `/api/cms/activity?kind=&limit=1..100`).
 
 ## Tuples, patterns, tokens, site rules (P12d)
 
@@ -276,12 +277,13 @@ A **phone** number follows `site.phone.country`: `"US"` / `"CA"` take an area co
 772-1111"; any other country, or none, takes the number with its country code ("+44 20 7946 0958"). The build and every
 save check both. In the site's code, `phoneHrefValue(phone, "US")` gives the number a `tel:` link calls (`+12157721111`).
 
-## History (P12c)
+## Version history (P12c, M12)
 
-Owners have **History** in the editor: every version of that file or record, newest first, read from the site's
-git history (CMS publishes — from this package or an older CMS — and changes made in the code). **Compare** says what
-restoring a version would change; **Restore as draft** makes it your draft, published like any other. Nothing is
-migrated: it reads GitHub with the site's token.
+Everyone has **Version history** in the editor's top bar (an admin-only file or collection: admins), a dialog as in the
+Mr Spa CMS: the last 10 versions of that file or record, newest first, read from the site's git history (CMS publishes
+— from this package or an older CMS — and changes made in the code), each with what restoring it would change
+("Changed: Tagline"). **Restore as draft** makes it your draft, published like any other; it asks first only when you
+already have a draft. Nothing is migrated: it reads GitHub with the site's token.
 
 ## CMS API and publishing (P5)
 
@@ -330,8 +332,10 @@ needs these bindings / secrets (docs/DESIGN.md §F.1):
 - `CMS_BOOTSTRAP_USERNAME` + `CMS_BOOTSTRAP_PASSWORD` once, for the first admin (then remove them),
 - Workers **Paid** is recommended: a sign-in costs ~16–45 ms CPU, Workers Free allows 10 ms.
 
-Owners manage people on the admin's **People** screen (API: `/api/cms/users`): add someone (their temporary password
-is shown once), change roles, disable / enable, reset a password. New and reset users must choose their own password
+Admins manage people on the admin's **People** screen, as in the Mr Spa CMS (API: `/api/cms/users`): the table Person ·
+Role · Status · Last sign-in; **Add a person** with a temporary password already filled in (change it if you like, Copy,
+share it privately) and the role Editor / Admin; each person's ⋯ has **Reset password** (the admin types the new one)
+and **Disable** / **Enable**. Roles are changed through the API (`set-role`). New and reset users must choose their own password
 at the first sign-in; anyone can change theirs later with **Change password** (the account menu at the bottom of the
 rail). An admin who forgot their password: `npx vibe-cms reset-admin-password` (a temporary one, shown once).
 

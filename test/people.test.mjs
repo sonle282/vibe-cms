@@ -67,115 +67,127 @@ const setup = async ({ as = "owner", confirm = () => true } = {}) => {
   const button = (scope, name) => [...scope.querySelectorAll("button")].find((element) => element.getAttribute("aria-label") === name || element.textContent === name);
   return { db, window, root, go, rowOf, button, asked, browserFor, ownerBrowser, toast: () => root.querySelector(".vc-toast").textContent };
 };
-const addPerson = async (h, username, displayName = "", role = "editor") => {
+const addPerson = async (h, username, role = "editor") => {
   type(h.window, h.root.querySelector("#vc-new-username"), username);
-  type(h.window, h.root.querySelector("#vc-new-name"), displayName);
-  h.root.querySelector(`#vc-new-role input[value="${role}"]`).checked = true;
-  h.root.querySelector("form.vc-people-add").dispatchEvent(new h.window.Event("submit", { bubbles: true, cancelable: true }));
+  for (const radio of h.root.querySelectorAll(".vc-people-role input")) radio.checked = radio.value === role;
+  const password = h.root.querySelector("#vc-new-password").value;
+  h.root.querySelector("form.vc-user-form").dispatchEvent(new h.window.Event("submit", { bubbles: true, cancelable: true }));
+  return password;
+};
+const status = (h) => h.root.querySelector(".vc-users-status");
+const menuItem = async (h, username, text) => {
+  h.root.querySelector(`[aria-label="Actions for ${username}"]`).click();
+  const item = [...h.rowOf(username).querySelectorAll(".vc-row-menu-item")].find((element) => element.textContent === text);
+  assert.ok(item, `${text} in the menu of ${username}`);
+  item.click();
+  await settle();
+};
+const resetTo = async (h, username, password) => {
+  await menuItem(h, username, "Reset password");
+  const dialog = h.window.document.querySelector(".vc-dialog");
+  assert.equal(dialog.querySelector(".vc-dialog-title").textContent, `Reset password for ${username}`);
+  assert.deepEqual([...dialog.querySelectorAll(".vc-dialog-actions button")].map((button) => button.textContent), ["Cancel", "Save password"]);
+  dialog.querySelector("#vc-reset-password").value = password;
+  dialog.querySelector('[data-value="save"]').click();
 };
 
-test("People: owners see it in the navigation; the list shows everyone, with no actions on yourself", async () => {
+test("M12 People (Mr Spa): tabs, \"N users.\", the table Person · Role · Status · Last sign-in with a ⋯ per person", async () => {
   const h = await setup();
   const nav = [...h.root.querySelectorAll(".vc-rail a.vc-rail-item")].map((a) => a.textContent.trim());
   assert.ok(nav.includes("Users"), "M1: Users at the bottom of the rail (Mr Spa)");
   await h.go("/admin/users");
   assert.equal(h.root.querySelector("h1").textContent, "People");
-  const me = h.rowOf("owner");
-  // Last sign-in: today (the setup signed in just now), in the browser's own date format.
-  const today = new Date().toLocaleString([], { day: "numeric", month: "short", year: "numeric" });
-  assert.ok(me.textContent.startsWith(`OOOlivia Owner owner (you)AdminActive${today}`), me.textContent);
-  assert.equal(me.querySelector("select"), null, "no role menu on yourself");
-  assert.equal(h.button(me, "Disable"), undefined, "you cannot disable yourself");
+  assert.ok(h.root.querySelector(".vc-body").classList.contains("vc-body-people"), "the full-width People layout");
+  assert.deepEqual([...h.root.querySelectorAll(".vc-tabs a")].map((a) => a.textContent), ["People", "Activity"]);
+  assert.equal(status(h).textContent, "1 user.");
+  assert.deepEqual([...h.root.querySelectorAll(".vc-users-table thead th")].map((th) => th.textContent), ["Person", "Role", "Status", "Last sign-in", "Actions"]);
+  const cells = [...h.rowOf("owner").querySelectorAll("td")].map((td) => td.textContent);
+  // Last sign-in: today (the setup signed in just now), "Oct 8" style.
+  const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  assert.deepEqual(cells.slice(0, 4), ["OWowner", "Admin", "Active", today]);
+  assert.ok(h.rowOf("owner").querySelector('[aria-label="Actions for owner"]'));
   for (const form of h.root.querySelectorAll("form")) assert.equal(form.getAttribute("method"), "post");
+  h.button(h.root, "Refresh").click();
+  await until(() => status(h).textContent === "1 user.", "the refresh");
 });
 
-test("People: add a person → the temporary password is shown once and really signs them in; problems are explained", async () => {
+test("M12 Add a person (Mr Spa): a temporary password is filled in, can be changed, and really signs them in; problems are said", async () => {
   const h = await setup();
   await h.go("/admin/users");
-  await addPerson(h, "Editor1", "Eddie Editor");
+  const field = h.root.querySelector("#vc-new-password");
+  assert.match(field.value, /^([a-km-np-zA-HJ-NP-Z2-9]{4}-){3}[a-km-np-zA-HJ-NP-Z2-9]{4}$/, "4 groups of 4, no look-alike letters");
+  assert.equal(h.root.querySelector("#vc-new-username").placeholder, "e.g. lan.showroom");
+  assert.deepEqual([...h.root.querySelectorAll(".vc-people-role strong")].map((strong) => strong.textContent), ["Editor", "Admin"]);
+  assert.equal(h.root.querySelector('.vc-people-role input[value="editor"]').checked, true, "Editor by default");
+  const password = await addPerson(h, "Editor1");
   await until(() => h.rowOf("editor1"), "the new row");
-  const secret = h.root.querySelector(".vc-secret");
-  assert.equal(secret.hidden, false);
-  const password = secret.querySelector(".vc-secret-value").textContent;
-  assert.match(password, /^[A-Za-z2-9]{20}$/);
-  assert.match(secret.textContent, /Added — temporary password for Eddie Editor \(editor1\)/);
-  assert.match(h.rowOf("editor1").textContent, /Must choose a password/);
+  assert.equal(status(h).textContent, "2 users.", "Mr Spa: \"User created.\" is replaced by the reloaded list");
+  assert.notEqual(field.value, password, "a fresh temporary password for the next person");
   assert.equal(h.root.querySelector("#vc-new-username").value, "", "the form is cleared");
+  assert.match(h.rowOf("editor1").textContent, /Editor.*Not yet/);
   const editor = h.browserFor();
   const first = await editor.login("editor1", password);
-  assert.deepEqual([first.ok, first.mustChangePassword], [true, true], "the shown password is the real one");
-  h.button(secret, "Done — hide it").click();
-  assert.equal(secret.hidden, true);
-  assert.equal(secret.textContent, "", "gone from the page");
+  assert.deepEqual([first.ok, first.mustChangePassword], [true, true], "they choose their own when they first sign in");
+
+  // The admin may type their own temporary password.
+  field.value = "typed-by-the-admin-1";
+  await addPerson(h, "lan.showroom", "owner");
+  await until(() => h.rowOf("lan.showroom"), "the second row");
+  assert.match(h.rowOf("lan.showroom").textContent, /Admin/);
+  assert.equal((await h.browserFor().login("lan.showroom", "typed-by-the-admin-1")).ok, true);
 
   await addPerson(h, "editor1");
-  await until(() => h.root.querySelector(".vc-people-add .vc-error").textContent, "the duplicate error");
-  assert.equal(h.root.querySelector(".vc-people-add .vc-error").textContent, "That username is already in use.");
+  await until(() => status(h).dataset.state === "error", "the duplicate error");
+  assert.equal(status(h).textContent, "That username is already in use.");
   await addPerson(h, "a b");
-  await until(() => /Username must be 3-32/.test(h.root.querySelector(".vc-people-add .vc-error").textContent), "the invalid-name error");
+  await until(() => /Username must be 3-32/.test(status(h).textContent), "the invalid-name error");
 });
 
-test("People: change role (asks first), disable (signed out at once) / enable, reset password (old one stops working)", async () => {
+test("M12 ⋯ (Mr Spa): Reset password (the admin types it; the old one stops working), Disable (asks; signed out at once) / Enable", async () => {
   let answer = true;
   const h = await setup({ confirm: () => answer });
   await h.go("/admin/users");
-  await addPerson(h, "eddie", "Ed");
+  const password = await addPerson(h, "eddie");
   await until(() => h.rowOf("eddie"), "the new row");
-  const password = h.root.querySelector(".vc-secret-value").textContent;
   const ed = h.browserFor();
   await ed.login("eddie", password);
   await ed.json("PUT", "/api/auth/password", { currentPassword: password, newPassword: "ed-own-password-1" });
-  assert.equal((await ed.json("GET", "/api/auth/me")).user.role, "editor");
 
-  // Role: saying no changes nothing; yes makes Ed an owner at once.
+  // Disable: saying no changes nothing; yes ends Ed's session.
   answer = false;
-  const select = h.rowOf("eddie").querySelector("select");
-  select.value = "owner"; select.dispatchEvent(new h.window.Event("change"));
-  await settle();
-  assert.equal(select.value, "editor");
-  assert.match(h.asked.at(-1), /Make Ed an admin\?/);
+  await menuItem(h, "eddie", "Disable");
+  assert.equal(h.asked.at(-1), "Disable user\n\nDisable eddie?");
+  assert.match(h.rowOf("eddie").textContent, /Active/);
   answer = true;
-  select.value = "owner"; select.dispatchEvent(new h.window.Event("change"));
-  await until(() => /now an admin/.test(h.toast()), "the role change");
-  assert.equal((await ed.json("GET", "/api/auth/me")).user.role, "owner");
-  assert.equal(h.rowOf("eddie").querySelector("select").value, "owner");
-
-  // Disable → Ed's session ends; enable → can sign in again.
-  h.button(h.rowOf("eddie"), "Disable Ed").click();
-  await until(() => /Disabled/.test(h.rowOf("eddie").textContent), "disabled");
-  assert.match(h.asked.at(-1), /Disable Ed\?[\s\S]*signed out at once/);
+  await menuItem(h, "eddie", "Disable");
+  await until(() => /Disabled/.test(h.rowOf("eddie")?.textContent ?? ""), "disabled");
+  assert.ok(h.rowOf("eddie").querySelector(".vc-content-status.is-off"));
   assert.equal((await ed.json("GET", "/api/auth/me")).error, "unauthenticated");
   assert.equal((await ed.login("eddie", "ed-own-password-1")).error, "invalid_credentials");
-  h.button(h.rowOf("eddie"), "Enable Ed").click();
-  await until(() => /Active/.test(h.rowOf("eddie").textContent), "enabled");
+  await menuItem(h, "eddie", "Enable");
+  assert.equal(h.asked.at(-1), "Enable user\n\nEnable eddie?");
+  await until(() => /Active/.test(h.rowOf("eddie")?.textContent ?? ""), "enabled");
   assert.equal((await ed.login("eddie", "ed-own-password-1")).ok, true);
 
-  // Reset → a new temporary password; the old password no longer works.
-  h.button(h.rowOf("eddie"), "Reset password of Ed").click();
-  await until(() => /Password reset — temporary password for Ed/.test(h.root.querySelector(".vc-secret").textContent), "the new temporary password");
-  const temporary = h.root.querySelector(".vc-secret-value").textContent;
+  // Reset: too short is not sent; then the typed password works and the old one no longer does.
+  await resetTo(h, "eddie", "short");
+  assert.ok(h.window.document.querySelector(".vc-dialog"), "the dialog stays open");
+  h.window.document.querySelector('.vc-dialog [data-value="cancel"]').click();
+  await settle();
+  await resetTo(h, "eddie", "a-new-temporary-1");
+  await until(() => status(h).textContent === "Password reset.", "the reset");
+  assert.equal(h.window.document.querySelector(".vc-dialog"), null, "the dialog closed");
   assert.equal((await ed.login("eddie", "ed-own-password-1")).error, "invalid_credentials");
-  assert.equal((await ed.login("eddie", temporary)).mustChangePassword, true);
+  assert.equal((await ed.login("eddie", "a-new-temporary-1")).mustChangePassword, true);
 });
 
-test("People: a refusal from the server is shown on the list (here: another owner made me an editor meanwhile)", async () => {
+test("M12 People: a refusal from the server is said in the status line (Mr Spa wording)", async () => {
   const h = await setup();
   await h.go("/admin/users");
-  await addPerson(h, "coowner", "Co Owner", "owner");
-  await until(() => h.rowOf("coowner"), "the new owner");
-  // The other owner makes me an editor; my page still shows People, and the server refuses my next change.
-  const co = h.browserFor();
-  const temporary = h.root.querySelector(".vc-secret-value").textContent;
-  await co.login("coowner", temporary);
-  await co.json("PUT", "/api/auth/password", { currentPassword: temporary, newPassword: "co-owner-password-1" });
-  const ownerId = h.db.raw.prepare("SELECT id FROM cms_users WHERE username = 'owner'").get().id;
-  assert.equal((await co.json("PATCH", `/api/cms/users/${ownerId}`, { action: "set-role", role: "editor" })).ok, true);
-  const select = h.rowOf("coowner").querySelector("select");
-  select.value = "editor"; select.dispatchEvent(new h.window.Event("change"));
-  await until(() => [...h.root.querySelectorAll(".vc-error")].some((element) => element.textContent.startsWith("Co Owner:")), "the refusal");
-  const errors = [...h.root.querySelectorAll(".vc-error")].map((element) => element.textContent).join(" ");
-  assert.match(errors, /Co Owner: Only an admin can manage people\./);
-  assert.equal(h.rowOf("coowner").querySelector("select").value, "owner", "the list shows what is true");
+  await menuItem(h, "owner", "Disable");
+  await until(() => status(h).dataset.state === "error", "the refusal");
+  assert.equal(status(h).textContent, "You cannot disable your current account.");
+  assert.match(h.rowOf("owner").textContent, /Active/, "the list shows what is true");
 });
 
 test("U2 / M1 shell: the rail (Pages, collections, Media, Drafts; Users at the bottom) and the account menu", async () => {
