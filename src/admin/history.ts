@@ -1,82 +1,75 @@
 /**
- * P12c: History (owners) — the versions of one file / record, newest first, read from the site's git history: CMS
- * publishes (this package or an older CMS) and edits made in the code. "Compare" says in plain words what restoring
- * that version would change on the website; "Restore as draft" makes it my draft — it goes live only when published.
+ * P12c / M12: Version history, as in the Mr Spa CMS — a dialog over the editor (every role; the top bar's clock icon):
+ * "Published versions for this resource. Choosing Restore creates a draft only.", the last 10 versions read from the
+ * site's git history (CMS publishes and edits made in the code), each with its date, "by …", what restoring it would
+ * change ("Changed: Banner › Heading · Added: …") and "Restore as draft". Restoring makes it my draft — it goes live
+ * only when published; it asks first only when I already have a draft ("Replace current draft").
  */
 import type { Field } from "../config/index.js";
-import { describeChange, summarizeChanges } from "./changes.js";
+import { summarizeChanges, type Change } from "./changes.js";
+import { openDialog } from "./dialog.js";
 import { clear, h } from "./dom.js";
 import type { ScreenKit } from "./people.js";
 
-export type HistoryVersion = { commit: string; date: string; title: string; who: string | null; viaCms: boolean; removed: boolean };
-type HistoryView = { resource: string; label: string; versions: HistoryVersion[] };
-type VersionView = { content: Record<string, unknown> | null; live: Record<string, unknown> | null; sameAsLive: boolean };
+export type HistoryVersion = { commit: string; date: string; title: string; who: string | null; viaCms: boolean; removed: boolean; content?: Record<string, unknown> | null };
+type HistoryView = { resource: string; label: string; versions: HistoryVersion[]; live?: Record<string, unknown> | null };
 export type HistoryTarget = { label: string; fields: Record<string, Field>; href: string };
 
-const when = (iso: string) => {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-};
+/** The Mr Spa CMS's summary line: "Changed: Banner › Heading · Added: Gallery" (each place once, at most 20). */
+export const historySummary = (changes: Change[]) => [...new Set(changes.map((change) => `${change.kind === "added" || change.kind === "created" ? "Added" : change.kind === "removed" ? "Removed" : "Changed"}: ${change.label}`))].slice(0, 20).join(" · ");
 
-export const historyScreen = async (kit: ScreenKit, stillHere: () => boolean, resource: string, target: HistoryTarget | undefined, go: (hash: string) => void) => {
-  const { doc, api, user } = kit;
-  const crumbs: Array<[string, string?]> = [...(target ? [[target.label, target.href] as [string, string]] : []), ["History"]];
-  if (user.role !== "owner") return kit.show({ title: "History", crumbs }, kit.message("History", "Only an admin can see the history and restore older versions."));
-  if (!target) return kit.show({ title: "History", crumbs }, kit.message("Not found", "There is nothing with this address in the CMS."));
-  const result = await api.get<HistoryView>(`/api/cms/history?resource=${encodeURIComponent(resource)}`);
-  if (!stillHere()) return;
-  if (!result.ok) return kit.failed(result, crumbs);
+/** Open the Version history dialog of one resource; `restored` runs after a version became my draft. */
+export const openHistory = (kit: ScreenKit, resource: string, target: HistoryTarget, restored: () => void) => {
+  const { doc, api } = kit;
+  const status = h(doc, "p", { class: "vc-history-status", role: "status", "aria-live": "polite" });
+  const list = h(doc, "div", { class: "vc-history-list" });
+  const dialog = openDialog(doc, {
+    title: "Version history", text: "Published versions for this resource. Choosing Restore creates a draft only.",
+    body: [status, list], buttons: [{ label: "Close", value: "close" }], dismiss: "close",
+  });
+  dialog.element.classList.add("vc-history-dialog");
 
-  const error = h(doc, "p", { class: "vc-error", role: "alert" });
   const restore = async (version: HistoryVersion, button: HTMLButtonElement) => {
-    if (!(await kit.ask(`Restore the version of ${when(version.date)} as your draft?\n\nThe website does not change until you review and publish it.`, { confirm: "Restore as draft" }))) return;
-    error.textContent = "";
-    button.disabled = true;
+    dialog.busy(true); button.disabled = true;
+    status.textContent = "Creating restore draft…";
     let done = await api.post<{ resource: string }>("/api/cms/history/restore", { resource, commit: version.commit });
-    if (!done.ok && done.error === "draft_exists" && (await kit.ask("You already have a draft of this. Replace it with the older version?", { confirm: "Replace draft", danger: true }))) done = await api.post<{ resource: string }>("/api/cms/history/restore", { resource, commit: version.commit, replace: true });
-    button.disabled = false;
-    if (!done.ok) { if (done.error !== "draft_exists") error.textContent = done.message; return; }
-    kit.say(`The version of ${when(version.date)} is now your draft. Review it, then publish.`);
-    go(target.href);
+    if (!done.ok && done.error === "draft_exists") {
+      if (!(await kit.ask("Replace current draft\n\nThis resource already has a draft. Replace it with this historical version?", { confirm: "Replace draft" }))) {
+        status.textContent = "Restore cancelled.";
+        dialog.busy(false); button.disabled = false;
+        return;
+      }
+      done = await api.post<{ resource: string }>("/api/cms/history/restore", { resource, commit: version.commit, replace: true });
+    }
+    dialog.busy(false); button.disabled = false;
+    if (!done.ok) { status.textContent = done.message || "Unable to create the restore draft."; return; }
+    dialog.close("close");
+    restored();
   };
 
-  const rows = result.data.versions.map((version, index) => {
-    const details = h(doc, "div", { class: "vc-history-changes", hidden: true });
-    const compare = h(doc, "button", { type: "button", class: "vc-button vc-quiet", "aria-expanded": "false" }, "Compare");
-    compare.addEventListener("click", async () => {
-      if (!details.hidden) { details.hidden = true; compare.setAttribute("aria-expanded", "false"); return; }
-      compare.disabled = true;
-      const view = await api.get<VersionView>(`/api/cms/history/version?resource=${encodeURIComponent(resource)}&commit=${version.commit}`);
-      compare.disabled = false;
-      clear(details);
-      if (!view.ok) details.append(h(doc, "p", { class: "vc-error" }, view.message));
-      else if (view.data.content === null) details.append(h(doc, "p", {}, "It did not exist in this version."));
-      else if (view.data.sameAsLive) details.append(h(doc, "p", {}, "This is what the website shows now."));
-      else {
-        const changes = summarizeChanges({ fields: target.fields, before: view.data.live ?? undefined, after: view.data.content });
-        details.append(h(doc, "p", { class: "vc-help" }, "Restoring it would change:"), h(doc, "ul", { class: "vc-changes" }, changes.map((change) => h(doc, "li", {}, describeChange(change)))));
-      }
-      details.hidden = false;
-      compare.setAttribute("aria-expanded", "true");
-    });
-    const restoreButton = h(doc, "button", { type: "button", class: "vc-button" }, "Restore as draft");
-    restoreButton.addEventListener("click", () => restore(version, restoreButton));
-    const source = version.viaCms ? "Published in the CMS" : "Changed in the website's code";
-    return h(doc, "li", { class: "vc-history-item", "data-commit": version.commit },
-      h(doc, "div", { class: "vc-history-head" },
-        h(doc, "time", { datetime: version.date, class: "vc-activity-when" }, when(version.date)),
-        h(doc, "span", {}, version.who ?? "—"),
-        h(doc, "span", { class: "vc-note" }, `${source}${index === 0 ? " · newest" : ""}`),
-        // U4 (Mr Spa 23): the newest version is what the website shows (once it has updated).
-        index === 0 && !version.removed ? h(doc, "span", { class: "vc-pill vc-pill-live" }, "Current") : null,
-        h(doc, "span", { class: "vc-history-actions" }, version.removed ? h(doc, "span", { class: "vc-note" }, "Removed here") : [compare, restoreButton])),
-      h(doc, "p", { class: "vc-history-title vc-mono" }, `${version.commit.slice(0, 7)} · ${version.title}`),
-      details);
-  });
-  kit.show({ title: `History · ${target.label}`, crumbs }, [
-    kit.heading(`History · ${target.label}`),
-    h(doc, "p", { class: "vc-help" }, "Every saved change of this on the website, newest first — from the CMS and from the website's code. Restoring an older version makes it your draft; nothing changes on the website until you publish it."),
-    error,
-    rows.length ? h(doc, "ol", { class: "vc-history" }, rows) : h(doc, "p", { class: "vc-empty" }, "No history yet."),
-  ]);
+  const load = async () => {
+    status.textContent = "Loading published versions…";
+    clear(list);
+    const result = await api.get<HistoryView>(`/api/cms/history?resource=${encodeURIComponent(resource)}&limit=10&contents=1`);
+    if (!result.ok) { status.textContent = result.message || "Unable to load version history."; return; }
+    const { versions, live } = result.data;
+    status.textContent = `${versions.length} published ${versions.length === 1 ? "version" : "versions"}.`;
+    if (!versions.length) { list.append(h(doc, "p", { class: "vc-note" }, "No published versions found for this resource.")); return; }
+    for (const version of versions) {
+      const date = new Date(version.date);
+      const gone = version.removed || version.content === null || version.content === undefined;
+      const changes = gone ? [] : summarizeChanges({ fields: target.fields, before: live ?? undefined, after: version.content! });
+      const text = gone ? "This version is unavailable." : changes.length ? historySummary(changes) : "Nothing is different from what the website shows now.";
+      const button = gone ? null : h(doc, "button", { type: "button", class: "vc-button" }, "Restore as draft");
+      button?.addEventListener("click", () => { void restore(version, button); });
+      list.append(h(doc, "article", { class: "vc-history-entry", "data-commit": version.commit },
+        h(doc, "div", { class: "vc-history-entry-head" },
+          h(doc, "strong", {}, Number.isNaN(date.getTime()) ? "Published version" : date.toLocaleString()),
+          h(doc, "span", {}, `by ${version.who || "unknown actor"}`)),
+        h(doc, "p", {}, text),
+        h(doc, "div", { class: "vc-history-entry-actions" }, button, h(doc, "code", { title: version.commit }, version.commit.slice(0, 8)))));
+    }
+  };
+  void load();
+  return dialog;
 };

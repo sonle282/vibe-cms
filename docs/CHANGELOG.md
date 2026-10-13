@@ -3,7 +3,28 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## Unreleased (M7, M11)
+## Unreleased (M7, M11, M12)
+
+**M12 — People, Activity, Version history and sign-in like the Mr Spa CMS.** Nothing to do on a site (no D1
+migration, no config change).
+
+- **People:** the tabs People | Activity; "N users." + Refresh; the table Person (initials + username) · Role · Status ·
+  Last sign-in ("Not yet") with a ⋯ per person: **Reset password** (the admin types the new one, 12–200 characters —
+  the person chooses their own at the next sign-in) and **Disable** / **Enable** (asked first). On the right **Add a
+  person**: Username ("e.g. lan.showroom"), a temporary password already filled in (4 × 4 letters and digits that are
+  not mixed up; change it if you like; Copy), the role cards Editor / Admin, **Create account**. Every outcome is said
+  in the status line ("User created.", "Password reset.", "You cannot disable your current account."). The role menu
+  and "Name (optional)" are gone from the screen (roles: the API's `set-role`).
+- **Activity:** the last 100 events — Date · Person · What happened · Change (the commit) · Result (Done / Failed);
+  filters **All · Publishing · Sign-ins · Failed**; "From the last N events." + Refresh. API: `?kind=failed`,
+  `?limit=1..100` (50 by default).
+- **Version history** is a dialog over the editor (the History screen is gone; its address opens the editor with the
+  dialog) and is there **for every role** — an admin-only file or collection stays admins only: "Published versions for
+  this resource. Choosing Restore creates a draft only.", the last 10, each "by …", what restoring it would change and
+  **Restore as draft**; it asks only over a draft ("Replace current draft"). API: `GET /history?limit=1..25`
+  (10 by default) `&contents=1` (each version's value + the live one); editors may read and restore.
+- **Sign-in:** "Signing in…" on the button while it works; a problem is said just above the button. At 900 px and below
+  the editor says "Open on a laptop"; the sign-in page is no longer covered.
 
 **M11 — Media and Drafts like the Mr Spa CMS.** Nothing to do on a site (no D1 migration).
 

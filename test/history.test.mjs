@@ -1,5 +1,6 @@
 // P12c: History + Restore as draft — versions from the branch's commits (CMS publishes and edits in the code), a JSON
-// list's record only where IT changed, compare, restore as a draft that is then published like any draft; owners only.
+// list's record only where IT changed, restore as a draft that is then published like any draft; M12: every role (an
+// admin-only resource: admins), and a Version history dialog over the editor as in the Mr Spa CMS.
 // The REAL API on memory stores with a fake GitHub on 127.0.0.1, and the admin on a fake DOM (happy-dom).
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -52,7 +53,7 @@ const harness = async () => {
   return { github, drafts, call, redeploy, publishChange, setConfig: (next) => { withConfig = next; api = build(); }, close: () => github.close() };
 };
 
-test("history of a file: CMS publishes and code edits, newest first, who did it; editors get 403", async () => {
+test("history of a file: CMS publishes and code edits, newest first, who did it; every role (M12), admin-only files: admins", async () => {
   const h = await harness();
   try {
     const first = await h.publishChange("/files/site", "file:site", { ...site, tagline: "First change" });
@@ -67,7 +68,17 @@ test("history of a file: CMS publishes and code edits, newest first, who did it;
       ["initial", "Init", false],
     ], "the unrelated commit is not listed; the CMS commit names the person");
     assert.equal(history.body.versions[1].commit, first);
-    assert.deepEqual([(await h.call("GET", "/history?resource=file%3Asite", { as: "editor" })).status, (await h.call("POST", "/history/restore", { as: "editor", body: { resource: "file:site", commit: first } })).status], [403, 403]);
+    // M12: 10 by default (?limit=1..25); contents=1 adds each version's value and the live one.
+    const withContents = (await h.call("GET", "/history?resource=file%3Asite&limit=2&contents=1")).body;
+    assert.deepEqual([withContents.versions.length, withContents.versions[1].content.tagline, withContents.live.tagline], [2, "First change", "Edited in the code"]);
+    assert.equal(history.body.live, undefined, "no contents unless asked");
+    // M12 (Mr Spa's top bar): editors see the history and restore as their own draft…
+    assert.deepEqual([(await h.call("GET", "/history?resource=file%3Asite", { as: "editor" })).status, (await h.call("POST", "/history/restore", { as: "editor", body: { resource: "file:site", commit: first } })).status], [200, 200]);
+    assert.equal((await h.drafts.get("usr_editor", "file:site")).content.tagline, "First change");
+    // …but not of an admin-only file.
+    h.setConfig({ ...config, files: config.files.map((file, index) => (index === 0 ? { ...file, access: "admin" } : file)) });
+    assert.deepEqual([(await h.call("GET", "/history?resource=file%3Asite", { as: "editor" })).body.error, (await h.call("POST", "/history/restore", { as: "editor", body: { resource: "file:site", commit: first, replace: true } })).body.error], ["owner_only", "owner_only"]);
+    h.setConfig(config);
     assert.equal((await h.call("GET", "/history")).status, 400);
     assert.equal((await h.call("GET", "/history/version?resource=file%3Asite&commit=nothex")).status, 400);
   } finally { await h.close(); }
@@ -124,7 +135,7 @@ test("restore as draft → review → publish puts the old version back; refusal
   } finally { await h.close(); }
 });
 
-test("admin: History from the editor (owners), compare in plain words, restore opens the draft", async () => {
+test("M12 admin: Version history is a dialog over the editor (Mr Spa) — what restoring changes, Restore as draft, asks only over a draft", async () => {
   const h = await harness();
   try {
     await h.publishChange("/files/site", "file:site", { ...site, tagline: "A new tagline" });
@@ -133,28 +144,50 @@ test("admin: History from the editor (owners), compare in plain words, restore o
     window.document.body.append(root);
     const fetch = async (url, init = {}) => {
       const target = new URL(url, "http://localhost");
-      const result = await h.call(init.method ?? "GET", target.pathname.replace(/^\/api\/cms/, "") + target.search, { body: init.body ? JSON.parse(init.body) : undefined });
+      const result = await h.call(init.method ?? "GET", target.pathname.replace(/^\/api\/cms/, "") + target.search, { as: "editor", body: init.body ? JSON.parse(init.body) : undefined });
       return new Response(JSON.stringify(result.body), { status: result.status, headers: { "content-type": "application/json" } });
     };
-    const app = startAdmin({ root, boot: adminBoot(config, { id: "usr_owner", username: "olivia", displayName: "Olivia", role: "owner" }), fetch, window, confirm: () => true, storage: null });
+    const asked = [];
+    let answer = false;
+    const app = startAdmin({ root, boot: adminBoot(config, { id: "usr_editor", username: "eddie", displayName: "Eddie", role: "editor" }), fetch, window, confirm: (message) => { asked.push(message); return answer; }, storage: null });
     await app.ready;
+    const wait = async (test, what) => { for (let i = 0; i < 200; i += 1) { if (test()) return; await new Promise((resolve) => setTimeout(resolve, 5)); } assert.fail(`timed out waiting for ${what}`); };
     const go = async (path) => { await app.go(path); await new Promise((resolve) => setTimeout(resolve, 0)); await app.idle(); };
     await go("/admin/pages/site");
-    const link = root.querySelector('[data-action="history"]');
-    assert.equal(link?.getAttribute("href"), "/admin/history/file%3Asite");
-    await go(link.getAttribute("href"));
-    const items = [...root.querySelectorAll(".vc-history-item")];
-    assert.equal(items.length, 2);
-    assert.match(items[0].textContent, /Olivia.*Published in the CMS · newest/);
-    assert.match(items[1].textContent, /Changed in the website's code/);
-    const compare = [...items[1].querySelectorAll("button")].find((button) => button.textContent === "Compare");
-    compare.click();
-    for (let i = 0; i < 50 && items[1].querySelector(".vc-history-changes").hidden; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
-    assert.match(items[1].querySelector(".vc-history-changes").textContent, /Restoring it would change:.*Tagline: A new tagline → A made-up salon/);
-    [...items[1].querySelectorAll("button")].find((button) => button.textContent === "Restore as draft").click();
-    for (let i = 0; i < 100 && window.location.pathname !== "/admin/pages/site"; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+    const button = root.querySelector('[data-action="history"]');
+    assert.deepEqual([button.tagName, button.getAttribute("aria-label"), button.dataset.tooltip], ["BUTTON", "View version history", "Version history"], "an editor has it too");
+    button.click();
+    const dialog = window.document.querySelector(".vc-dialog.vc-history-dialog");
+    assert.equal(dialog.querySelector(".vc-dialog-title").textContent, "Version history");
+    assert.equal(dialog.querySelector(".vc-dialog-text").textContent, "Published versions for this resource. Choosing Restore creates a draft only.");
+    await wait(() => /^[0-9]+ published version/.test(dialog.querySelector(".vc-history-status").textContent), "the versions");
+    assert.equal(dialog.querySelector(".vc-history-status").textContent, "2 published versions.");
+    const entries = [...dialog.querySelectorAll(".vc-history-entry")];
+    assert.match(entries[0].querySelector(".vc-history-entry-head").textContent, /by Olivia$/);
+    assert.equal(entries[0].querySelector("p").textContent, "Nothing is different from what the website shows now.");
+    assert.equal(entries[1].querySelector("p").textContent, "Changed: Tagline");
+    assert.equal(entries[1].querySelector("code").textContent.length, 8);
+    assert.deepEqual([...dialog.querySelectorAll(".vc-dialog-actions button")].map((element) => element.textContent), ["Close"]);
+    const restore = () => [...entries[1].querySelectorAll("button")].find((element) => element.textContent === "Restore as draft").click();
+    restore();
+    await wait(() => !window.document.querySelector(".vc-history-dialog"), "the dialog to close");
     await app.idle();
     assert.equal(window.location.pathname, "/admin/pages/site");
-    assert.equal((await h.drafts.get("usr_owner", "file:site")).content.tagline, site.tagline, "the old version is the owner's draft");
+    assert.equal((await h.drafts.get("usr_editor", "file:site")).content.tagline, site.tagline, "the old version is my draft");
+    assert.equal(asked.length, 0, "no question without a draft");
+    // Over a draft: "Replace current draft" — No keeps it ("Restore cancelled.").
+    root.querySelector('[data-action="history"]').click();
+    const again = window.document.querySelector(".vc-history-dialog");
+    await wait(() => again.querySelectorAll(".vc-history-entry").length === 2, "the versions again");
+    [...again.querySelectorAll(".vc-history-entry")[1].querySelectorAll("button")].find((element) => element.textContent === "Restore as draft").click();
+    await wait(() => again.querySelector(".vc-history-status").textContent === "Restore cancelled.", "the cancel");
+    assert.equal(asked.at(-1), "Replace current draft\n\nThis resource already has a draft. Replace it with this historical version?");
+    again.querySelector('.vc-dialog-actions [data-value="close"]').click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(window.document.querySelectorAll(".vc-history-dialog").length, 0, "closed");
+    // The History address of before opens the editor with the dialog.
+    await go("/admin/history/file%3Asite");
+    assert.equal(window.location.pathname, "/admin/pages/site");
+    assert.ok(window.document.querySelector(".vc-history-dialog"));
   } finally { await h.close(); }
 });

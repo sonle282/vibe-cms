@@ -66,8 +66,8 @@ for (const [name, value] of Object.entries({
             <p class="vc-sign-sub">Edit the website at {siteHost}</p>
             <label for="username">Username</label><input id="username" name="username" class="vc-input" autocomplete="username" autocapitalize="none" spellcheck="false" required />
             <label for="password">Password</label><input id="password" name="password" class="vc-input" type="password" autocomplete="current-password" required />
-            <button type="submit" class="vc-button vc-primary">Sign in</button>
-            <p class="vc-error" role="alert"></p>
+            <p class="vc-error vc-sign-error" role="alert" aria-live="polite"></p>
+            <button type="submit" class="vc-button vc-primary" data-busy="Signing in…">Sign in</button>
             <p class="vc-sign-foot">Forgot your password? Ask an admin to reset it.</p>
           </form>
         )}
@@ -80,8 +80,8 @@ for (const [name, value] of Object.entries({
             <input type="text" name="username" autocomplete="username" value={current?.user.username ?? ""} hidden readonly />
             <label for="current">Temporary password</label><input id="current" name="currentPassword" class="vc-input" type="password" autocomplete="current-password" required />
             <label for="new">New password</label><input id="new" name="newPassword" class="vc-input" type="password" autocomplete="new-password" minlength="12" required />
-            <button type="submit" class="vc-button vc-primary">Save password</button>
-            <p class="vc-error" role="alert"></p>
+            <p class="vc-error vc-sign-error" role="alert" aria-live="polite"></p>
+            <button type="submit" class="vc-button vc-primary" data-busy="Saving…">Save password</button>
           </form>
         )}
       </main>
@@ -107,11 +107,16 @@ for (const [name, value] of Object.entries({
         const form = document.getElementById(id) as HTMLFormElement | null;
         form?.addEventListener("submit", async (event) => {
           event.preventDefault();
+          // M12 (Mr Spa): "Signing in…" on the button while it works; a problem is said just above the button.
           const button = form.querySelector("button");
-          if (button) button.disabled = true;
-          const result = await run(form);
-          if (result.ok) location.reload();
-          else { form.querySelector(".vc-error")!.textContent = result.data.message ?? "Something went wrong."; if (button) button.disabled = false; }
+          const error = form.querySelector(".vc-error")!;
+          const label = button?.textContent ?? "";
+          error.textContent = "";
+          if (button) { button.disabled = true; button.textContent = button.dataset.busy ?? label; }
+          const result = await run(form).catch(() => ({ ok: false, data: { message: "The CMS could not reach the server. Check your internet connection, then try again." } }));
+          if (result.ok) { location.reload(); return; }
+          error.textContent = result.data.message ?? "Unable to sign in. Please try again.";
+          if (button) { button.disabled = false; button.textContent = label; }
         });
       };
       const value = (form: HTMLFormElement, name: string) => (form.elements.namedItem(name) as HTMLInputElement).value;

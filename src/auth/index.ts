@@ -308,8 +308,8 @@ export const createCmsAuth = (deps: CmsAuthDeps) => {
       const lastOwner = async () => target.role === "owner" && target.status === "active" && (await activeOwners()) <= 1;
       switch (payload.action) {
         case "disable": {
-          if (target.id === user.userId) throw new AuthError(400, "cannot_disable_self", "You cannot disable your own account.");
-          if (await lastOwner()) throw new AuthError(400, "last_owner", "Keep at least one active admin.");
+          if (target.id === user.userId) throw new AuthError(400, "cannot_disable_self", "You cannot disable your current account.");
+          if (await lastOwner()) throw new AuthError(400, "last_owner", "Keep at least one active administrator.");
           await db().prepare("UPDATE cms_users SET status = 'disabled', session_version = session_version + 1, updated_at = ? WHERE id = ?").bind(at, id).run();
           await log("user_disable", id, {});
           return json({ ok: true, user: publicUser((await byId(id))!) });
@@ -330,7 +330,7 @@ export const createCmsAuth = (deps: CmsAuthDeps) => {
           const wanted = roleOf(payload.role);
           if (!wanted) throw new AuthError(400, "invalid_role", "Role must be admin or editor.");
           payload.role = wanted;
-          if (wanted === "editor" && (await lastOwner())) throw new AuthError(400, "last_owner", "Keep at least one active admin.");
+          if (wanted === "editor" && (await lastOwner())) throw new AuthError(400, "last_owner", "Keep at least one active administrator.");
           await db().prepare("UPDATE cms_users SET role = ?, updated_at = ? WHERE id = ?").bind(payload.role, at, id).run();
           await log("user_role_change", id, { from: target.role, to: payload.role });
           return json({ ok: true, user: publicUser((await byId(id))!) });

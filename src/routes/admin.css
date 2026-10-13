@@ -122,7 +122,9 @@ textarea.vc-input { resize: vertical; line-height: 1.45; }
 .vc-sign-foot { margin: 16px 0 0; color: var(--text-secondary); font-size: var(--text-12); text-align: center; }
 .vc-sign-card h1 { margin: 0 0 6px; font-size: 22px; font-weight: 700; text-align: center; letter-spacing: -.01em; }
 .vc-sign-card label { display: block; margin: 14px 0 6px; font-size: 13px; font-weight: 500; }
-.vc-sign-card .vc-button { margin-top: 18px; width: 100%; min-height: 44px; font-size: 15px; }
+.vc-sign-card .vc-button { margin-top: 4px; width: 100%; min-height: 44px; font-size: 15px; }
+.vc-sign-card .vc-sign-error { min-height: 18px; margin: 10px 0 0; font-size: 12px; }
+.vc-sign-card .vc-button:disabled { cursor: wait; opacity: .6; }
 
 /* ---------- shell (U2: the Mr Spa CMS frame — rail 64 · top bar 56 · canvas padding 24 · inspector 360) */
 body.vc-page:has(.vc-app) { overflow: hidden; }
@@ -443,13 +445,15 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
 .vc-activity + .vc-error + .vc-button { margin-top: 12px; }
 
 /* P12c: History — one card per version, newest first. */
-.vc-history { list-style: none; margin: 16px 0 0; padding: 0; overflow: hidden; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-14); }
-.vc-history-item { padding: 14px 18px; border-top: 1px solid var(--hairline); }
-.vc-history-item:first-child { border-top: 0; }
-.vc-history-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; }
-.vc-history-actions { margin-left: auto; display: flex; gap: 8px; }
-.vc-history-title { margin: 6px 0 0; color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
-.vc-history-changes { margin-top: 8px; border-top: 1px solid var(--hairline); padding-top: 8px; }
+/* M12: Version history = a dialog (Mr Spa: 760 px, rows in grey cards, "Restore as draft" + the 8-character commit). */
+.vc-dialog.vc-history-dialog { width: min(760px, calc(100vw - 40px)); max-height: min(720px, calc(100vh - 40px)); }
+.vc-history-status { min-height: 20px; margin: 4px 0 0; color: var(--text-secondary); font-size: 13px; }
+.vc-history-list { display: grid; gap: 10px; }
+.vc-history-entry { padding: 14px; background: var(--canvas); border: 1px solid var(--hairline); border-radius: 12px; }
+.vc-history-entry-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.vc-history-entry-head span, .vc-history-entry-actions code { color: var(--text-secondary); font-size: 12px; }
+.vc-history-entry p { margin: 8px 0 12px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.vc-history-entry-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 
 
 /* U3: dialogs (Mr Spa 03 / 23) — a centred card over a dimmed page; one primary button, a destructive one is red. */
@@ -602,13 +606,14 @@ label.vc-button[role="button"] { cursor: pointer; }
 
 /* Smaller than 900 px: the editor asks for a laptop (Mr Spa 24). */
 .vc-small-screen { display: none; }
-@media (max-width: 899px) {
-  .vc-small-screen { position: fixed; inset: 0; z-index: 100; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 24px; text-align: center; background: var(--canvas); }
+/* M12 (Mr Spa): at 900 px and below the editor says "Open on a laptop"; the sign-in page stays usable. */
+@media (max-width: 900px) {
+  .vc-page[data-state="signed-in"] .vc-small-screen { position: fixed; inset: 0; z-index: 100; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 24px; text-align: center; background: var(--canvas); }
   .vc-small-screen .vc-icon { color: var(--text-secondary); stroke-width: 1.6; }
   .vc-small-screen h2 { margin: 6px 0 0; font-size: 20px; }
   .vc-small-screen p { max-width: 320px; margin: 0; color: var(--text-secondary); }
   .vc-small-screen a { margin-top: 8px; color: var(--accent); font-weight: 600; text-decoration: none; }
-  .vc-root, .vc-sign { display: none; }
+  .vc-page[data-state="signed-in"] .vc-root { display: none; }
 }
 
 /* ---------- M5: the image card of the Mr Spa CMS (image-field.ts, layout "outline") */
@@ -927,3 +932,58 @@ button.vc-media-place:hover { background: var(--surface-hover); }
 .vc-drafts-empty strong { font-size: 15px; }
 .vc-drafts-empty span { max-width: 320px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
 .vc-activity-commit { color: var(--accent); font-size: 12px; }
+
+/* ---------- M12: People & activity of the Mr Spa CMS */
+.vc-body.vc-body-people { padding: 0; }
+.vc-body.vc-body-people .vc-page-inner { max-width: none; height: 100%; }
+.vc-people-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; min-height: 100%; }
+.vc-people-main, .vc-activity-view { display: grid; align-content: start; gap: 16px; padding: 24px 40px 40px; }
+.vc-people-toolbar, .vc-activity-toolbar { display: flex; align-items: center; gap: 10px; }
+.vc-people-toolbar { justify-content: flex-end; }
+.vc-people-toolbar .vc-users-status, .vc-activity-toolbar .vc-users-status { margin-left: auto; }
+.vc-users-status { color: var(--text-secondary); font-size: 12px; }
+.vc-users-status[data-state="error"] { color: var(--danger); }
+.vc-users-status[data-state="success"] { color: var(--success); }
+.vc-workspace-card { overflow: visible; border: 1px solid var(--hairline); border-radius: var(--radius-14); background: var(--surface); box-shadow: 0 1px 2px #1d1d1f0a; }
+.vc-users-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.vc-users-table th, .vc-users-table td { padding: 13px 15px; border-bottom: 1px solid var(--surface-off); color: var(--text); text-align: left; vertical-align: middle; }
+.vc-users-table th { color: var(--text-secondary); font-size: 12px; font-weight: 500; }
+.vc-users-table tr:last-child td { border-bottom: 0; }
+.vc-people-person { display: inline-flex; align-items: center; gap: 10px; }
+.vc-people-person strong { font-weight: 500; }
+.vc-people-initials { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--canvas); color: var(--text-secondary); font-size: 11px; font-weight: 700; }
+.vc-people-note { margin: 0; color: var(--text-secondary); font-size: 13px; }
+.vc-user-actions { width: 1%; text-align: right; }
+.vc-row-menu { position: relative; display: inline-block; }
+.vc-row-menu-button { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: var(--radius-8); background: none; color: var(--text-secondary); font-size: 18px; line-height: 1; cursor: pointer; }
+.vc-row-menu-button:hover { background: var(--canvas); }
+.vc-row-menu-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vc-row-menu-list { position: absolute; top: calc(100% + 4px); right: 0; z-index: 20; display: grid; min-width: 180px; padding: 4px; border: 1px solid var(--hairline); border-radius: var(--radius-10); background: var(--surface); box-shadow: 0 12px 32px rgba(0, 0, 0, .12); }
+.vc-row-menu-list[hidden] { display: none; }
+.vc-row-menu-item { min-height: 32px; padding: 0 10px; border: 0; border-radius: var(--radius-6); background: none; color: var(--text); font: 400 13px/1 var(--font-ui); text-align: left; cursor: pointer; }
+.vc-row-menu-item:hover, .vc-row-menu-item:focus { background: var(--canvas); outline: none; }
+.vc-people-panel { display: grid; align-content: start; border-left: 1px solid var(--hairline); background: var(--surface); }
+.vc-people-panel-head { display: grid; gap: 2px; padding: 20px; border-bottom: 1px solid var(--hairline); }
+.vc-people-panel-head span { color: var(--text-secondary); font-size: 12px; }
+.vc-people-panel-head h2 { margin: 0; color: var(--text); font-size: 16px; font-weight: 600; }
+.vc-user-form { display: grid; gap: 10px; padding: 20px; }
+.vc-people-label { margin-top: 8px; font-size: 13px; font-weight: 500; }
+.vc-people-password { display: flex; gap: 8px; }
+.vc-people-password .vc-input { flex: 1 1 auto; font-variant-numeric: tabular-nums; }
+.vc-people-help { margin: -2px 0 6px; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.vc-people-roles { display: grid; gap: 8px; margin: 8px 0 12px; padding: 0; border: 0; }
+.vc-people-roles legend { margin-bottom: 8px; padding: 0; font-size: 13px; font-weight: 700; }
+.vc-people-role { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--hairline); border-radius: var(--radius-12); cursor: pointer; }
+.vc-people-role:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.vc-people-role > span { display: grid; gap: 2px; }
+.vc-people-role strong { font-size: 14px; font-weight: 600; }
+.vc-people-role > span > span { color: var(--text-secondary); font-size: 12px; }
+.vc-people-role input { margin: 0; }
+.vc-user-form .vc-button.vc-primary { width: 100%; min-height: 40px; justify-content: center; }
+.vc-activity-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.vc-activity-filter { min-height: 30px; padding: 0 12px; border: 1px solid var(--hairline); border-radius: 16px; background: var(--surface); color: var(--text); font: 400 13px/1 var(--font-ui); cursor: pointer; }
+.vc-activity-filter[aria-pressed="true"] { border-color: var(--text); background: var(--text); color: var(--surface); }
+.vc-activity-filter:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vc-activity-result.is-failed { background: var(--danger-bg); color: var(--danger); }
+.vc-activity-empty { color: var(--text-secondary) !important; text-align: center !important; }
+@media (max-width: 1100px) { .vc-people-layout { grid-template-columns: minmax(0, 1fr); } .vc-people-panel { border-top: 1px solid var(--hairline); border-left: 0; } }

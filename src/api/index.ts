@@ -16,8 +16,9 @@
  *   POST   /media                           P10: upload one prepared image (raw bytes; x-file-name header)
  *   POST   /publish                         { resources: [...] } → exactly one commit (with the uploads it uses)
  *   GET    /live-version                    the version of the content this Worker serves
- *   GET    /activity?kind=&before=          P12b: the audit log in pages, for owners (kind: all | publish | signin | people | denied)
- *   GET    /history?resource=               P12c (owners): the versions of a file / record, from the branch's commits
+ *   GET    /activity?kind=&before=&limit=   P12b / M12: the audit log in pages, for owners (kind: all | publish | signin | people | denied | failed)
+ *   GET    /history?resource=&limit=&contents=1   P12c / M12 (every role; admin-only resources: admins): the versions of
+ *                                          a file / record from the branch's commits (10, up to 25); contents=1 adds each value + live
  *   GET    /history/version?resource=&commit=   one version's content (+ sameAsLive)
  *   POST   /history/restore                 { resource, commit, replace? } → that version becomes my draft
  * P12b: a file / collection with access: "owner" answers 403 owner_only to editors (and is not listed for them); lists
@@ -731,6 +732,8 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     signin: { stages: ["auth"], actions: ["login", "login_failed", "logout", "password_change", "bootstrap"] },
     people: { stages: ["people"], actions: ["user_create", "user_disable", "user_enable", "user_password_reset", "user_role_change"] },
     denied: { actions: ["denied", "login_failed"] },
+    // M12 (Mr Spa): Failed = everything that did not go through.
+    failed: { actions: ["failed", "denied", "login_failed"] },
   };
   const ACTIVITY_PAGE = 50;
 
@@ -754,24 +757,32 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     const beforeText = params.get("before");
     const before = beforeText === null ? undefined : Number(beforeText);
     if (before !== undefined && !(Number.isSafeInteger(before) && before > 0)) fail(400, "bad_request", "before must be the id of an activity row.");
-    const rows = await audit.list({ limit: ACTIVITY_PAGE, before, ...filter });
+    // M12: the Mr Spa CMS shows the last 100 events (?limit=1..100; 50 by default).
+    const asked = Number(params.get("limit") ?? ACTIVITY_PAGE);
+    const limit = Number.isInteger(asked) && asked >= 1 && asked <= 100 ? asked : ACTIVITY_PAGE;
+    const rows = await audit.list({ limit, before, ...filter });
     const names = new Map((await (deps.userNames?.() ?? Promise.resolve([]))).map((person) => [person.id, person.displayName || person.username]));
     const entries = rows.map((row) => ({
       id: row.id, at: row.at, userId: row.userId, who: names.get(row.userId) ?? (row.userId === "anonymous" ? null : row.userId), role: row.role,
       action: row.action, stage: row.stage, resource: row.resource, what: resourceLabel(row.resource, names), detail: row.detail,
     }));
-    return json({ kind, entries, next: rows.length === ACTIVITY_PAGE ? rows[rows.length - 1].id : null });
+    return json({ kind, entries, next: rows.length === limit ? rows[rows.length - 1].id : null });
   };
 
   // ---------------------------------------------------------------- history (P12c)
 
-  const HISTORY_LIMIT = 20;
+  /** M12: the Mr Spa CMS shows the last 10 versions (?limit=1..25). */
+  const HISTORY_LIMIT = 10;
+  const HISTORY_MAX = 25;
   /** The user id in a Vibe CMS commit message ("By: usr_… (owner) via Vibe CMS"). */
   const committedBy = (message: string) => /\nBy: ([A-Za-z0-9_-]{1,80}) \((?:owner|editor)\) via Vibe CMS/.exec(message)?.[1];
-  const historyTarget = (user: Identity, resource: string | null) => {
-    if (user.role !== "owner") fail(403, "owner_only", "Only an admin can see the history and restore older versions.");
+  /** M12: every role (as in the Mr Spa CMS's top bar); an admin-only file / collection stays admins only. */
+  const historyTarget = async (user: Identity, resource: string | null, stage?: "draft") => {
     if (!resource) return fail(400, "bad_request", "resource is required (e.g. file:site).");
-    try { return targetOf(resource); } catch (error) { if (error instanceof ApiError) throw error; return fail(400, "bad_request", `Not a resource id: ${resource}`); }
+    let target: Target;
+    try { target = targetOf(resource); } catch (error) { if (error instanceof ApiError) throw error; return fail(400, "bad_request", `Not a resource id: ${resource}`); }
+    await requireAccess(user, target, stage);
+    return target;
   };
   const historyPublisher = () => {
     const publisher = need(deps.publisher, "publisher");
@@ -787,33 +798,45 @@ export const createCmsApi = (deps: CmsApiDeps) => {
    * only the commits that changed THAT record). Also the publishes made by an older CMS or edits in the code.
    */
   const history = async (request: Request, user: Identity) => {
-    const target = historyTarget(user, new URL(request.url).searchParams.get("resource"));
+    const params = new URL(request.url).searchParams;
+    const target = await historyTarget(user, params.get("resource"));
     const publisher = historyPublisher();
+    const asked = Number(params.get("limit") ?? HISTORY_LIMIT);
+    const limit = Number.isInteger(asked) && asked >= 1 && asked <= HISTORY_MAX ? asked : HISTORY_LIMIT;
+    // M12: ?contents=1 — each version's value and the live one, so the dialog can say what restoring would change.
+    const withContents = params.get("contents") === "1";
     const shared = target.kind === "item" && target.collection.store.kind === "json-array";
-    const commits = await publisher.history(pathOf(target), shared ? HISTORY_LIMIT + 1 : HISTORY_LIMIT);
-    let kept = commits.map((commit) => ({ commit, removed: false }));
+    const commits = await publisher.history(pathOf(target), shared ? limit + 1 : limit);
+    let kept: Array<{ commit: (typeof commits)[number]; removed: boolean; value?: unknown }> = commits.map((commit) => ({ commit, removed: false }));
     if (shared) {
       const values: unknown[] = [];
       for (const commit of commits) values.push(await valueAt(publisher, target, commit.sha));
       // A commit counts when the record differs from the next older commit's; the oldest one read counts when the record is in it.
       const last = commits.length - 1;
-      kept = commits.map((commit, index) => ({ commit, removed: values[index] === undefined, changed: index === last ? values[index] !== undefined : !sameValue(values[index], values[index + 1]) }))
-        .filter((entry, index) => entry.changed && index < HISTORY_LIMIT);
+      kept = commits.map((commit, index) => ({ commit, removed: values[index] === undefined, value: values[index], changed: index === last ? values[index] !== undefined : !sameValue(values[index], values[index + 1]) }))
+        .filter((entry, index) => entry.changed && index < limit);
+    } else if (withContents) {
+      kept = await Promise.all(kept.map(async (entry) => ({ ...entry, value: await valueAt(publisher, target, entry.commit.sha) })));
     }
+    const current = withContents ? await live(target) : undefined;
     const names = new Map((await (deps.userNames?.() ?? Promise.resolve([]))).map((person) => [person.id, person.displayName || person.username]));
     return json({
       resource: target.resource, label: target.kind === "file" ? target.label : target.id,
-      versions: kept.map(({ commit, removed }) => {
+      versions: kept.map(({ commit, removed, value }) => {
         const by = committedBy(commit.message);
-        return { commit: commit.sha, date: commit.date, title: commit.message.split("\n")[0], who: (by && names.get(by)) || commit.author || null, viaCms: /^cms: publish\b/.test(commit.message), removed };
+        return {
+          commit: commit.sha, date: commit.date, title: commit.message.split("\n")[0], who: (by && names.get(by)) || commit.author || null, viaCms: /^cms: publish\b/.test(commit.message), removed,
+          ...(withContents ? { content: value ?? null } : {}),
+        };
       }),
+      ...(current ? { live: current.value ?? null } : {}),
     });
   };
 
   /** One version's content, and whether it is what the website shows now. */
   const historyVersion = async (request: Request, user: Identity) => {
     const params = new URL(request.url).searchParams;
-    const target = historyTarget(user, params.get("resource"));
+    const target = await historyTarget(user, params.get("resource"));
     const commit = commitParam(params.get("commit"));
     const content = await valueAt(historyPublisher(), target, commit);
     const current = await live(target);
@@ -823,7 +846,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
   /** Restore as draft: the old version becomes my draft of the resource; it is published like any draft. */
   const historyRestore = async (request: Request, user: Identity) => {
     const body = await readBody(request);
-    const target = historyTarget(user, typeof body.resource === "string" ? body.resource : null);
+    const target = await historyTarget(user, typeof body.resource === "string" ? body.resource : null, "draft");
     const commit = commitParam(body.commit);
     const drafts = need(deps.drafts, "storage");
     const audit = need(deps.audit, "storage");

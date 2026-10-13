@@ -26,7 +26,7 @@ import { openMediaScreen } from "./media-screen.js";
 import { createInspector, inspectorSections, sectionOfPath, type Inspector, type InspectorSection } from "./inspector.js";
 import { openChangePassword, peopleScreen, type ScreenKit } from "./people.js";
 import { activityScreen } from "./activity.js";
-import { historyScreen, type HistoryTarget } from "./history.js";
+import { openHistory, type HistoryTarget } from "./history.js";
 import { ADMIN_BASE, adminHref, legacyHashPath, parseAdminPath, type AdminRoute } from "./routes.js";
 import { applyLeafChanges, buildFailedText, deriveSaveState, elapsedText, publishBlockReason, unsavedLeafChanges, type LeafChange, type PublishedState, type SaveState } from "./save-state.js";
 import { createRecovery, forgetAllRecovery, forgetRecovery, readRecovery, recoveryQuestion, type Recovery } from "./recovery.js";
@@ -340,6 +340,10 @@ export const startAdmin = (options: AdminOptions) => {
     let target = parseAdminPath(win.location.pathname);
     // M2: /admin/account (My account of before) is the Change password dialog, over the first page.
     const openPassword = target.kind === "account";
+    // M12: /admin/history/<resource> (the History screen of before) is the Version history dialog, over its editor.
+    const historyFor = target.kind === "history" ? target.resource : undefined;
+    const historyOver = historyFor ? historyTarget(historyFor) : undefined;
+    if (historyOver) { win.history.replaceState(null, "", historyOver.href); target = parseAdminPath(win.location.pathname); }
     // Mr Spa: /admin opens the first page's editor.
     if (target.kind === "home" || target.kind === "account") {
       win.history.replaceState(null, "", boot.files[0] ? adminHref.file(boot.files[0].key) : adminHref.pages());
@@ -374,9 +378,8 @@ export const startAdmin = (options: AdminOptions) => {
       else if (target.kind === "review") await review(target.resource, stillHere);
       else if (target.kind === "drafts") await draftsScreen(stillHere);
       else if (target.kind === "media") await mediaScreen(stillHere);
-      else if (target.kind === "users") await peopleScreen(kit, stillHere);
-      else if (target.kind === "audit") await activityScreen(kit, stillHere, target.filter);
-      else if (target.kind === "history") await historyScreen(kit, stillHere, target.resource, historyTarget(target.resource), (next) => { void go(next, { force: true }); });
+      else if (target.kind === "users") await peopleScreen(peopleKit, stillHere);
+      else if (target.kind === "audit") await activityScreen(peopleKit, stillHere, target.filter);
       else show({ title: "Not found", crumbs: [["Pages", adminHref.pages()], ["Not found"]] }, message("Not found", "There is nothing at this address in the CMS.", link(adminHref.pages(), "Go to Pages")));
     } catch {
       if (stillHere()) show({ title: "Error", crumbs: [["Pages", adminHref.pages()], ["Error"]] }, message("Something went wrong", "The page could not be shown. Reload to try again."));
@@ -386,6 +389,7 @@ export const startAdmin = (options: AdminOptions) => {
     focusAfterShow = undefined;
     if (stillHere() && !after?.()) main.querySelector<HTMLElement>("h1")?.focus();
     if (stillHere() && openPassword) openChangePassword(kit);
+    if (stillHere() && historyFor && historyOver) openHistory(kit, historyFor, historyOver, () => { void go(historyOver.href, { force: true }); });
   };
 
   const failed = (result: ApiFail, crumbsFor: Array<[string, string?]>) => {
@@ -400,6 +404,9 @@ export const startAdmin = (options: AdminOptions) => {
     failed: (result, crumbsFor) => failed(result, crumbsFor),
     copy: async (text) => { try { await win.navigator.clipboard.writeText(text); return true; } catch { return false; } },
   };
+
+  // M12: People & activity use the whole width (the Add a person panel on the right).
+  const peopleKit: ScreenKit = { ...kit, show: (screen, content) => { body.classList.add("vc-body-people"); show({ ...screen, leave: () => body.classList.remove("vc-body-people") }, content); } };
 
   // ---------------------------------------------------------------- overview
 
@@ -715,8 +722,12 @@ export const startAdmin = (options: AdminOptions) => {
       return previewUrl(pattern, live as Record<string, unknown>);
     })();
     const viewLive = liveUrl ? h(doc, "a", { href: liveUrl, target: "_blank", rel: "noopener", class: "vc-icon-button vc-top-icon", "data-action": "view-live", "aria-label": "View live", "data-tooltip": "View live" }, icon(doc, "external")) : null;
-    // P12c: History, for owners, once the resource exists on the website.
-    const historyLink = user.role === "owner" && !isNew && view?.content ? h(doc, "a", { href: adminHref.history(resourceOf()), class: "vc-icon-button vc-top-icon", "data-action": "history", "aria-label": "View version history", "data-tooltip": "Version history" }, icon(doc, "history")) : null;
+    // P12c / M12: Version history (every role, as in the Mr Spa CMS), once the resource exists on the website.
+    const historyLink = !isNew && view?.content ? topIcon("history", "View version history", "history", () => {
+      const resource = resourceOf();
+      const over = historyTarget(resource);
+      if (over) openHistory(kit, resource, over, () => { void go(over.href, { force: true }); });
+    }, "Version history") : null;
     const discard = topIcon("discard", "Discard draft", "undo", () => { void discardHere(); });
     const reloadKeep = topIcon("reload-keep", "Reload and keep my changes", "rotate-ccw", () => { void reloadKeepingChanges(); });
     const checkAgain = topIcon("check-again", "Check again whether the publish is live", "refresh", () => { void checkLive(); }, "Check again");

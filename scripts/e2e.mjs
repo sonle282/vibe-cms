@@ -109,9 +109,19 @@ try {
   check("signed out → the sign-in form posts", (await page.locator("form#login").getAttribute("method")) === "post");
   check("sign-in (U4): the site's mark and name, its address, one primary button", /^Sign in to Demo Salon$/.test((await page.locator("form#login h1").textContent()) ?? "") && /Edit the website at demo.example/.test(await page.locator("form#login").innerText()));
   await shot("u4-sign-in");
+  // M12 (Mr Spa): a problem is said just above the button, which reads "Sign in" again; a phone still gets the form.
+  await page.fill("#username", "nobody-here");
+  await page.fill("#password", "not-a-real-password");
+  await page.click("#login button[type=submit]");
+  await page.locator("#login .vc-error", { hasText: /\S/ }).waitFor();
+  const signInOrder = await page.locator("#login").evaluate((form) => [...form.children].map((element) => element.classList.contains("vc-error") ? "error" : element.tagName === "BUTTON" ? "button" : "").filter(Boolean).join(" "));
+  check("sign-in: the problem is above the button, the button reads Sign in again", signInOrder === "error button" && (await page.locator("#login button[type=submit]").textContent()) === "Sign in" && await page.locator("#login button[type=submit]").isEnabled(), signInOrder);
+  await page.setViewportSize({ width: 390, height: 800 });
+  check("sign-in on a phone: the form, not Open on a laptop", await page.locator("form#login").isVisible() && !(await page.locator(".vc-small-screen").isVisible()));
+  await page.setViewportSize({ width: 1280, height: 900 });
   await signIn(BOOT.username, BOOT.password, OWNER_PASSWORD);
   // U4: smaller than 900 px, the editor asks for a laptop (Mr Spa 24).
-  await page.setViewportSize({ width: 800, height: 900 });
+  await page.setViewportSize({ width: 900, height: 900 });
   check("small screen: Open on a laptop, the editor hidden", await page.locator(".vc-small-screen").isVisible() && !(await page.locator(".vc-rail").isVisible()) && /Open on a laptop/.test(await page.locator(".vc-small-screen").innerText()));
   await page.setViewportSize({ width: 1280, height: 900 });
   // M1 (Mr Spa): /admin opens the first page's editor, at its own address.
@@ -561,34 +571,35 @@ try {
   await open("/admin/pages/site");
   // M1 (Mr Spa): the record's save state follows the publish until the site serves it (this Worker is not rebuilt).
   check("after publishing: the salon info says 'Publishing…' until the site serves it", (await saveState()) === "Publishing… this usually takes a few minutes", await saveState());
+  // M12 (Mr Spa): Version history is a dialog over the editor.
   await page.locator('[data-action="history"]').click();
-  await page.locator(".vc-history-item").first().waitFor();
-  const versions = await page.locator(".vc-history-item").allInnerTexts();
-  check("history: the publish and the first version, newest first", versions.length === 2 && /Published in the CMS · newest/.test(versions[0]) && /Changed in the website's code/.test(versions[1]), versions);
-  // This Worker is not rebuilt after the publish, so the website still shows the first version: comparing the
-  // published one lists what it changes; the first one is "what the website shows now".
-  const compareText = async (index) => {
-    const item = page.locator(".vc-history-item").nth(index);
-    await item.getByRole("button", { name: "Compare" }).click();
-    await item.locator(".vc-history-changes:not([hidden])").waitFor();
-    return { text: await item.locator(".vc-history-changes").innerText(), lines: await item.locator(".vc-changes li").count() };
-  };
-  const newest = await compareText(0); const oldest = await compareText(1);
-  check("history: compare lists what the published version changes on the website", /Restoring it would change:/.test(newest.text) && newest.lines > 0, newest);
-  check("history: the first version is what the website shows now", /This is what the website shows now/.test(oldest.text), oldest);
+  const historyDialog = page.locator(".vc-history-dialog");
+  await historyDialog.locator(".vc-history-status", { hasText: /^\d+ published versions?\.$/ }).waitFor();
+  const versions = await historyDialog.locator(".vc-history-entry").allInnerTexts();
+  check("history: a dialog with the publish and the first version, newest first", versions.length === 2 && (await historyDialog.locator(".vc-history-status").textContent()) === "2 published versions." && /by /.test(versions[0]), versions);
+  // This Worker is not rebuilt after the publish, so the website still shows the first version: the published one
+  // says what restoring it changes; the first one is "what the website shows now".
+  const summaries = await historyDialog.locator(".vc-history-entry p").allTextContents();
+  check("history: what restoring each version would change", /^(Changed|Added|Removed): /.test(summaries[0]) && summaries[1] === "Nothing is different from what the website shows now.", summaries);
+  await shot("m12-version-history");
+  await historyDialog.getByRole("button", { name: "Close" }).click();
+  await historyDialog.waitFor({ state: "detached" });
 
-  // ---------------------------------------------------------------- P8b: the owner adds an editor on the People screen
+  // ---------------------------------------------------------------- P8b / M12: the owner adds an editor on the People screen (Mr Spa)
   await page.locator(".vc-rail-bottom").getByRole("link", { name: "Users" }).click();
-  await page.locator("form.vc-people-add").waitFor();
+  await page.locator("form.vc-user-form").waitFor();
   await page.getByLabel("Username", { exact: true }).fill("editor1");
-  await page.getByLabel("Name (optional)").fill("Editor One");
-  await page.locator('#vc-new-role input[value="editor"]').check();
-  await page.getByRole("button", { name: "Add person" }).click();
-  await page.locator(".vc-secret-value").waitFor();
-  const created = { temporaryPassword: (await page.locator(".vc-secret-value").textContent()) ?? "" };
+  await page.locator(".vc-people-role", { hasText: "Editor" }).click();
+  const created = { temporaryPassword: await page.getByLabel("Temporary password").inputValue() };
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.locator('tr[data-user="editor1"]').waitFor();
   await shot("p8b-people");
-  check("People: the new editor's temporary password is shown once", /^[A-Za-z2-9]{20}$/.test(created.temporaryPassword) && /Must choose a password/.test(await page.locator('tr[data-user="editor1"]').innerText()));
-  check("People: the add form posts", (await page.locator("form.vc-people-add").getAttribute("method")) === "post");
+  check("People: a temporary password is filled in, and the new editor is listed", /^([A-Za-z2-9]{4}-){3}[A-Za-z2-9]{4}$/.test(created.temporaryPassword) && /Editor\s+Active\s+Not yet/.test(await page.locator('tr[data-user="editor1"]').innerText()));
+  check("People: the add form posts", (await page.locator("form.vc-user-form").getAttribute("method")) === "post");
+  await page.getByRole("link", { name: "Activity" }).click();
+  await page.locator(".vc-users-status", { hasText: /From the last \d+ events?\./ }).waitFor();
+  const filters = (await page.locator(".vc-activity-filter").allTextContents()).join(" ");
+  check("Activity: the filters and the last events (Mr Spa)", filters === "All Publishing Sign-ins Failed" && (await page.locator(".vc-users-table tbody tr").count()) > 1, filters);
   await page.locator(".vc-avatar").click();
   await page.getByRole("menuitem", { name: "Sign out" }).click();
   await page.locator("form#login").waitFor();

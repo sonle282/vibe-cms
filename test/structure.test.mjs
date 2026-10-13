@@ -165,7 +165,7 @@ test("API: /activity — owners only, plain filters, 50 a page with `before`, na
     ], "newest first, no 'started' rows, names and labels");
     assert.equal(all.next, null);
     const words = all.entries.map((row) => describeActivity(row).text);
-    assert.deepEqual(words, ["Failed sign-in (unknown username)", "Changed the role of Eddie to editor", "Refused to save Service · spa-pedicure: Price is for admins only", "Published Salon info (abcdef1)", "Signed in"]);
+    assert.deepEqual(words, ["Sign-in failed", "Changed the role of Eddie to editor", "Refused to save Service · spa-pedicure: Price is for admins only", "Published Salon info", "Signed in"]);
     assert.deepEqual((await h.call("GET", "/activity?kind=publish")).body.entries.map((row) => row.action), ["succeeded"]);
     assert.deepEqual((await h.call("GET", "/activity?kind=denied")).body.entries.map((row) => row.action), ["login_failed", "denied"]);
     assert.deepEqual((await h.call("GET", "/activity?kind=people")).body.entries.map((row) => row.action), ["user_role_change"]);
@@ -232,12 +232,15 @@ test("admin: editor — no owner-only section, no Activity; fixed collection has
     // U4: Activity is the second tab of People (Mr Spa 19 / 20).
     assert.ok([...owner.root.querySelectorAll(".vc-rail a.vc-rail-item")].some((link) => link.textContent.trim() === "Users"));
     await owner.go("/admin/audit");
-    const rows = [...owner.root.querySelectorAll(".vc-activity tbody tr")].map((row) => [...row.querySelectorAll("td")].slice(1).map((cell) => cell.textContent.trim()));
-    assert.deepEqual(rows, [["Eddie Editor", "Refused to publish Team member · sam: only admins can change it", "—", "Failed"]]);
+    const rows = [...owner.root.querySelectorAll(".vc-users-table tbody tr")].map((row) => [...row.querySelectorAll("td")].slice(1).map((cell) => cell.textContent.trim()));
+    assert.deepEqual(rows, [["Eddie", "Refused to publish Team member · sam: only admins can change it", "—", "Failed"]]);
     assert.equal(owner.root.querySelector('.vc-tabs [aria-current="page"]').textContent, "Activity");
-    assert.equal(owner.root.querySelector('.vc-filters [aria-current="page"]').textContent, "All");
+    // M12 (Mr Spa): All · Publishing · Sign-ins · Failed; "From the last N events."
+    assert.deepEqual([...owner.root.querySelectorAll(".vc-activity-filter")].map((button) => button.textContent), ["All", "Publishing", "Sign-ins", "Failed"]);
+    assert.equal(owner.root.querySelector('.vc-activity-filter[aria-pressed="true"]').textContent, "All");
+    assert.equal(owner.root.querySelector(".vc-users-status").textContent, "From the last 1 event.");
     await owner.go("/admin/audit/publish");
-    assert.match(owner.root.textContent, /Nothing of this kind yet/);
+    assert.match(owner.root.textContent, /Nothing to show here yet\./);
     assert.equal(owner.root.querySelector('.vc-rail a[aria-current="page"]').textContent, "Users");
   } finally { owner.h.close(); }
 });
