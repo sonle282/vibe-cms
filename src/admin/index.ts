@@ -13,6 +13,8 @@ export { ACCEPTED_TYPES, adjustImage, CROP_PRESETS, cropRect, measureImage, open
 export { createRichEditor, type PickedImage, type RichEditor, type RichEditorOptions } from "./rich-editor.js";
 export { cleanRichDom, isEmptyRich, normalizeBlocks } from "./clean.js";
 export { attachBridge, bindingPath, configBinds, fieldAt, resolveBinding, resolveList, type Bridge, type BridgeOptions, type PreviewOwner, type PreviewSelection } from "./bridge.js";
+// M3: the page inspector of the Mr Spa CMS.
+export { countItems, createInspector, inspectorSections, orderSectionsByPage, sectionOfPath, sectionSummary, SECTION_LIST_HINT, type Inspector, type InspectorOptions, type InspectorSection } from "./inspector.js";
 export { createPreview, framedUrl, PREVIEW_DEVICES, previewScale, previewUrl, type Preview, type PreviewDevice, type PreviewOptions } from "./preview.js";
 // U3: the dialog and the toast of the Mr Spa CMS.
 export { confirmDialog, openDialog, type ConfirmOptions, type DialogButton, type DialogOptions, type OpenDialog } from "./dialog.js";

@@ -21,12 +21,13 @@ import { createForm, type Form, type ReferenceTarget } from "./form.js";
 import { ACCEPTED_TYPES, adjustImage, measureImage, openImagePicker, prepareImage, type Adjust, type LibraryImage, type Measure, type Prepare, type PreparedImage } from "./media.js";
 import { configBinds, fieldAt, type PreviewOwner } from "./bridge.js";
 import { createPreview, previewUrl, type Preview } from "./preview.js";
+import { createInspector, inspectorSections, type Inspector } from "./inspector.js";
 import { openChangePassword, peopleScreen, type ScreenKit } from "./people.js";
 import { activityScreen } from "./activity.js";
 import { historyScreen, type HistoryTarget } from "./history.js";
 import { ADMIN_BASE, adminHref, legacyHashPath, parseAdminPath, type AdminRoute } from "./routes.js";
 import { applyLeafChanges, deriveSaveState, publishBlockReason, unsavedLeafChanges, type LeafChange, type PublishedState, type SaveState } from "./save-state.js";
-import { clone, countChanges, getAt, ID_PATTERN, parsePathText, pathText, slugify, type Path } from "./value.js";
+import { clone, countChanges, getAt, ID_PATTERN, keyPath, parsePathText, pathText, slugify, type Path } from "./value.js";
 
 export type AdminOptions = {
   root: HTMLElement;
@@ -608,6 +609,7 @@ export const startAdmin = (options: AdminOptions) => {
     const refresh = () => {
       const count = dirty();
       title.textContent = titleText();
+      inspector?.setTitle(titleText());
       const published = hasDraft ? undefined : publishedStateOf(resourceOf());
       const reason = stale ? "The website changed after this draft was started. Discard it and make your change again."
         : publishBlockReason({ conflict, dirty: count > 0, hasDraft, invalid: Boolean(problem), changes: hasDraft && !count ? changesToPublish().length : 0 });
@@ -632,6 +634,11 @@ export const startAdmin = (options: AdminOptions) => {
     const form: Form = createForm({
       doc, fields, sections: input.kind === "file" ? input.file.sections : undefined, value: start, role: user.role, references, readOnly, pickImage, choices: view?.choices, notify: (text, action) => say(text, "info", action),
       markdown: collection?.markdown && !("body" in collection.fields) ? ["body"] : [],
+      // M3 (Mr Spa): deleting a list item asks first; a click on an item's card shows it on the page; the validation
+      // summary's buttons go to their field (opening its section).
+      confirm: (text, choice) => ask(text, choice),
+      onItem: (path) => { preview?.scrollTo(path); },
+      reveal: (text) => { reveal(text); },
       onChange: (value, path) => {
         if (collection && isNew && path.length === 1 && path[0] === collection.idField && !autoId) idTouched = true;
         if (collection && isNew && !idTouched && path[0] !== collection.idField) {
@@ -667,19 +674,37 @@ export const startAdmin = (options: AdminOptions) => {
           reveal(text);
           suppressScroll = false;
         },
+        // M3: the rows of the inspector follow the order of the page.
+        onReady: (bridge) => inspector?.setOrder(bridge.order()),
       });
     }
-    /** Focus a field (or the closest one that has its own control). */
+    // M3: with the page on the canvas, the form sits in the Mr Spa inspector — sections at level 1, one at level 2.
+    const sectionList = inspectorSections(fields, input.kind === "file" ? input.file.sections : undefined, titleText() || input.crumbs.at(-1)?.[0] || "");
+    const sessionStore = (() => { try { return win.sessionStorage; } catch { return null; } })();
+    const inspector: Inspector | undefined = preview ? createInspector({
+      doc, form, fields, sections: sectionList, crumb: input.crumbs.at(-1)?.[0] ?? "Pages", title: titleText(), before: [banner],
+      value: () => form.value(), saved: () => saved, session: sessionStore, local: storage ?? null, resource: resourceOf(),
+      onEnter: (section) => { preview?.bridge()?.showSection(section.fields.map((key) => keyPath(key)), section.label, section.key.startsWith("_") ? undefined : section.key); },
+      onLeave: () => { preview?.bridge()?.clearSelection(); lastFocused = ""; },
+    }) : undefined;
+    /** Focus a field (or the closest one that has its own control), opening its section first (M3). */
     const reveal = (text: string) => {
+      inspector?.openFor(text);
       let key = text;
       while (key) { if (form.focus(key)) { lastFocused = key; return true; } key = /^(.*?)(\.[^.[\]]+|\[[^\]]*\])$/.exec(key)?.[1] ?? ""; }
       return false;
     };
     form.element.addEventListener("focusin", (event) => {
-      const at = (event.target as Element | null)?.closest?.("[data-path]")?.getAttribute("data-path");
-      if (!at || at === lastFocused) return;
+      const target = event.target as Element | null;
+      // M3 (Mr Spa): the field being edited is marked in the inspector.
+      const top = target?.closest?.(".vc-section > .vc-field, .vc-form > .vc-field");
+      for (const other of form.element.querySelectorAll(".vc-field-active")) if (other !== top) other.classList.remove("vc-field-active");
+      top?.classList.add("vc-field-active");
+      const at = target?.closest?.("[data-path]")?.getAttribute("data-path");
+      if (!at || at === lastFocused) { suppressScroll = false; return; }
       lastFocused = at;
       if (!suppressScroll) preview?.scrollTo(parsePathText(at));
+      suppressScroll = false;
     });
 
     const validate = () => {
@@ -788,14 +813,14 @@ export const startAdmin = (options: AdminOptions) => {
     actions.append(save, publish);
     if (stale) showBanner("The website changed after this draft was started (someone published). Publishing this draft is refused until you discard it and make your change again on the current content.");
     const crumbsFor: Array<[string, string?]> = [...input.crumbs, [titleText() || "…"]];
-    const content = [title, fieldsRequiredNote(fields), banner, form.element];
+    const content = inspector ? [inspector.element] : [title, fieldsRequiredNote(fields), banner, form.element];
     const split = preview ? h(doc, "div", { class: "vc-editor-split vc-preview-on" }, h(doc, "div", { class: "vc-editor-main" }, ...content), preview.element) : undefined;
     if (preview) {
       body.classList.add("vc-body-wide");
       // U2: the device switch in the middle of the top bar.
       topCenter.append(preview.devices);
     }
-    show({ title: titleText(), crumbs: crumbsFor, dirty, save: doSave, refreshState: refresh, resource: resourceOf(), leave: () => { preview?.destroy(); body.classList.remove("vc-body-wide"); } }, split ? [split] : content);
+    show({ title: titleText(), crumbs: crumbsFor, dirty, save: doSave, refreshState: refresh, resource: resourceOf(), leave: () => { preview?.destroy(); inspector?.destroy(); body.classList.remove("vc-body-wide"); } }, split ? [split] : content);
     preview?.start();
     refresh();
     if (pendingFocus) { const target = pendingFocus; pendingFocus = undefined; focusAfterShow = () => reveal(target); }

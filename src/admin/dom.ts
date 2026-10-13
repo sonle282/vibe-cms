@@ -60,6 +60,7 @@ const ICONS: Record<string, string[]> = {
   logout: ["m16 17 5-5-5-5", "M21 12H9", "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"],
   user: ["M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2", "M12 3a4 4 0 1 0 0 8a4 4 0 1 0 0-8z"],
   chevron: ["m9 18 6-6-6-6"],
+  "chevron-left": ["m15 18-6-6 6-6"],
   upload: ["M12 3v12", "m17 8-5-5-5 5", "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"],
   search: ["M11 3a8 8 0 1 0 0 16a8 8 0 1 0 0-16z", "m21 21-4.3-4.3"],
   // M1: the rail and top bar of the Mr Spa CMS (FileText, Package, PenLine, Monitor, TabletSmartphone, Smartphone,

@@ -3,7 +3,27 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## Unreleased (M1, M2)
+## Unreleased (M1, M2, M3)
+
+**M3 — the page inspector of the Mr Spa CMS (two levels).** Nothing to do on a site; `sections` in `cms.config.ts` are
+what it lists (a page without sections opens straight at its fields).
+
+- **Level 1:** crumb "Pages" (or the collection), the page's name; the tip "Click any part of the page, or pick a
+  section below." (× hides it, remembered); one row per section **in the order the page shows them** — its name, one
+  line of what it holds (its title / heading, else its first text, else "2 banners", else "N editable fields"), an
+  orange dot when it has unsaved changes, "›".
+- **Level 2:** ← "Close section", crumb = the page, title = the section; Esc goes back to its row (not while typing);
+  a 220 ms slide; the open section is remembered for the session. A click on the page or a validation problem opens
+  the field's section. Each field: its label (a small dot), its help, then the input; the one being edited is blue.
+- **Validation summary:** "N validation errors" at the top, one button per problem that goes to its field.
+- **Lists:** "Banner 1" over the item's own words (or "Untitled"); ↑ ↓ × buttons; **deleting asks first** ("Delete
+  banner 2?", red Delete); "2 of 3 allowed." (a fixed set has no count); "Add banner"; a click on a card shows the
+  item on the page.
+- **Preview:** the chip "Section · Field" sits above the outline, or just inside when there is no room; the page
+  scrolls only when the field is out of sight, then the outline flashes once (not with reduced motion); opening a
+  section outlines it with its name.
+- Gone: the character counter under every text field (the input holds at most `maxLength`; the Mr Spa CMS counts only
+  the search description, M7).
 
 **M2 — roles are Admin / Editor** (the Mr Spa CMS's names). Nothing to do on a site; its data stays as it is.
 
