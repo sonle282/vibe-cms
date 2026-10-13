@@ -21,5 +21,5 @@ had time to update.
 ## What this repository never contains
 
 Secrets, tokens, `.env` / `.dev.vars` files, or any customer site's data. CI scans the whole git history for secrets
-(gitleaks) on every push and pull request. If you spot something that looks like a secret, report it as above — a
+(gitleaks) on every pull request. If you spot something that looks like a secret, report it as above — a
 leaked secret is revoked and replaced, not only deleted from the repository.

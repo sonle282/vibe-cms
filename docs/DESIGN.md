@@ -414,8 +414,8 @@ giờ là email. Writer trả `rewroteWholeFile` khi phải viết lại cả fi
 GitHub Packages đòi token kể cả với gói public → **không dùng**. Thay vào đó:
 
 - Mỗi bản = 1 **GitHub Release** `vX.Y.Z` có file `vibe-cms-X.Y.Z.tgz` (kết quả `npm pack`: `dist/`, `src/routes/`,
-  README, LICENSE, CHANGELOG). Workflow `.github/workflows/release.yml` chạy khi push tag `v*`: `npm ci` → `npm run check`
-  → kiểm tag = `package.json` version → `npm pack` → tạo Release kèm file `.tgz` + sha256. Không tạo tag bằng tay khi
+  README, LICENSE, CHANGELOG). Workflow `.github/workflows/release.yml` chạy khi push tag `v*`: `npm ci` → `npm run build` +
+  `pack:check` (từ 2026-10-13; `npm run check` đầy đủ đã chạy ở CI của PR release — CI chỉ chạy trên PR) → kiểm tag = `package.json` version → `npm pack` → tạo Release kèm file `.tgz` + sha256. Không tạo tag bằng tay khi
   chưa được duyệt (bản đầu tiên phát hành khi lõi đủ dùng — reviewer báo).
 - Site cài bằng URL công khai, ghim đúng phiên bản:
   `"@sonle282/vibe-cms": "https://github.com/sonle282/vibe-cms/releases/download/vX.Y.Z/vibe-cms-X.Y.Z.tgz"`.

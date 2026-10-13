@@ -1,11 +1,10 @@
 # Vibe CMS CI: secret scan of the whole git history (gitleaks), then typecheck, unit tests, build + check + local smoke of
 # the demo site (wrangler dev --local), and an install of the packed package from a local release URL (P11). Nothing
 # is published or deployed; no secrets are used.
-# About 2–4 minutes per run (public repo: free).
+# About 3 minutes per run (public repo: free). Pull requests only: GitHub runs it on the PR merged into main, so a
+# second run on main after the merge checked the same code again (dropped 2026-10-13).
 name: ci
 on:
-  push:
-    branches: [main]
   pull_request:
 permissions:
   contents: read
