@@ -80,7 +80,7 @@ export const summarizeChanges = ({ fields, before, after, references = {}, newRe
   const show = (field: Field, value: unknown): string => {
     if (value === undefined || value === null) return "";
     switch (field.type) {
-      case "text": case "select": return short(String(value));
+      case "text": case "select": case "link": case "phone": return short(String(value));
       case "pick": return short(typeof value === "string" ? choiceLabels?.[value] ?? value : String(value));
       case "toggle": return value === true ? "Yes" : value === false ? "No" : "";
       case "number": return typeof value === "number" ? String(value) : short(String(value));

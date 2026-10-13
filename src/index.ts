@@ -1,6 +1,8 @@
 export { contentPaths, vibeCms, vibeCms as default, VIRTUAL_CONFIG, VIRTUAL_CONTENT, type VibeCmsOptions } from "./integration.js";
 export { checkSite, loadCmsConfig, type LoadOptions } from "./load-config.js";
 export { checkContent } from "./check/content.js";
+// M4: the Link and Phone fields — e.g. a site writes a Phone field's number as tel:${phoneHrefValue(phone, "US")}.
+export { formatPhone, LINK_KINDS, linkOpensText, linkProblem, parseHref, phoneHrefValue, phoneProblem, toHref, type LinkKind, type LinkPage, type LinkValue } from "./check/link.js";
 export * from "./config/index.js";
 export * from "./writer/index.js";
 export * from "./store/index.js";

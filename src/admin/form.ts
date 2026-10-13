@@ -16,6 +16,8 @@ import { createRichEditor, type RichEditor, type RichEditorOptions } from "./ric
 import { clone, emptyValue, getAt, holdsLockedValue, isRecord, keyPath, parsePathText, pathText, setAt, slugify, type Path } from "./value.js";
 import { fieldAt } from "./bridge.js";
 import { pickPlace, type PickChoices } from "../check/picks.js";
+import { formatPhone, phoneProblem, type LinkPage } from "../check/link.js";
+import { createLinkControl, invalidLinks } from "./link.js";
 
 export type ReferenceOption = { id: string; label: string };
 export type ReferenceTarget = { label: string; itemLabel: string; items: ReferenceOption[] };
@@ -50,6 +52,10 @@ export type FormOptions = {
   onItem?: (path: Path) => void;
   /** M3: go to a field (the validation summary's buttons); focus by default. */
   reveal?: (path: string) => void;
+  /** M4: what Link fields offer and show — the site's pages, its host ("Opens: mysalon.example/about"), site.phone.country. */
+  links?: { pages: readonly LinkPage[]; host: string; country?: string };
+  /** M4: the page is on the canvas — a Link field says its destination is not visible there (as the Mr Spa CMS does). */
+  previewNotes?: boolean;
 };
 
 export type Form = {
@@ -63,6 +69,8 @@ export type Form = {
   clearErrors(): void;
   /** Focus the first input of a field (by path text). */
   focus(path: string): boolean;
+  /** M4: how many Link fields hold a value that cannot be saved (Save waits until they are fixed). */
+  invalidLinks(): number;
   /** P8d: the visual editors on the form (rich text, Markdown body), by path text; `ready` once all show their value. */
   editors: Map<string, RichEditor>;
   ready: Promise<void>;
@@ -76,6 +84,8 @@ export const topKeyOf = (fields: Record<string, Field>, entry: string) => {
   return Object.keys(fields).sort((a, b) => b.length - a.length).find((key) => entry.startsWith(`${key}.`) || entry.startsWith(`${key}[`));
 };
 export const OWNER_NOTE = "Editors see this but only an admin can change it.";
+/** M4 (Mr Spa): under a Link field while the page is on the canvas. */
+export const LINK_PREVIEW_NOTE = "Link destination: not visible in the preview.";
 
 export const createForm = (options: FormOptions): Form => {
   const { doc, role } = options;
@@ -125,7 +135,7 @@ export const createForm = (options: FormOptions): Form => {
     const helpId = uid("help");
     const errorId = uid("err");
     const notes = [field.help, locked ? LOCK_HELP : null, reason].filter(Boolean).join(" ");
-    const help = notes || extraHelp ? h(doc, "p", { class: "vc-help", id: helpId }, notes, extraHelp ? " " : null, extraHelp) : null;
+    const help = notes || extraHelp ? h(doc, "p", { class: "vc-help", id: helpId }, notes, notes && extraHelp ? " " : null, extraHelp) : null;
     const error = h(doc, "p", { class: "vc-error", id: errorId, hidden: true });
     const label = group
       ? h(doc, "legend", { class: hideLabel ? "vc-label vc-sr-only" : "vc-label" }, ...labelContent(field, locked))
@@ -222,6 +232,36 @@ export const createForm = (options: FormOptions): Form => {
     input.value = typeof current === "number" ? String(current) : current === undefined || current === null ? "" : String(current);
     input.addEventListener("input", () => { const text = input.value.trim(); set(path, text === "" ? undefined : Number.isFinite(Number(text)) ? Number(text) : text); });
     return { control: input, id, show: (value: unknown) => { input.value = typeof value === "number" ? String(value) : ""; } };
+  };
+
+  // M4: link — Page · Web address · Phone · Email (src/admin/link.ts); only a value that can be saved is written.
+  const linkInput = (field: Extract<Field, { type: "link" }>, path: Path, disabled: boolean) => {
+    const id = uid("f");
+    const current = getAt(state, path);
+    const wasAbsent = current === undefined;
+    const links = options.links ?? { pages: [], host: "" };
+    const control = createLinkControl({
+      doc, id, href: typeof current === "string" ? current : "", pages: links.pages, host: links.host, country: links.country,
+      label: field.label, required: field.required, disabled, onChange: (href) => set(path, href === "" && wasAbsent ? undefined : href),
+    });
+    return { control: control.element, id, show: (value: unknown) => control.show(typeof value === "string" ? value : ""), inputs: control.inputs, describedBy: control.describedBy };
+  };
+
+  // M4: phone — a tel input; a number that can be used is written the way people read it once the person leaves it.
+  const phoneInput = (path: Path, disabled: boolean) => {
+    const id = uid("f");
+    const current = getAt(state, path);
+    const wasAbsent = current === undefined;
+    const country = options.links?.country;
+    const input = h(doc, "input", { id, type: "tel", class: "vc-input vc-phone", disabled, autocomplete: "off", inputmode: "tel", placeholder: country === "US" || country === "CA" ? "(215) 772-1111" : "+44 20 7946 0958" });
+    input.value = typeof current === "string" ? current : current === undefined || current === null ? "" : String(current);
+    input.addEventListener("input", () => set(path, input.value === "" && wasAbsent ? undefined : input.value));
+    input.addEventListener("change", () => {
+      if (phoneProblem(input.value, country)) return;
+      const shown = formatPhone(input.value, country);
+      if (shown !== input.value) { input.value = shown; set(path, shown); }
+    });
+    return { control: input, id, show: (value: unknown) => { input.value = typeof value === "string" ? value : ""; } };
   };
 
   // P12g: toggle — a checkbox; unticking a value that was never set leaves it out again.
@@ -549,6 +589,19 @@ export const createForm = (options: FormOptions): Form => {
         const { control, id, show } = numberInput(field, path, disabled);
         return wrap({ ...common, group: false, control, inputId: id, show });
       }
+      case "link": {
+        const { control, id, show, inputs, describedBy } = linkInput(field, path, disabled);
+        const note = options.previewNotes ? h(doc, "span", { class: "vc-preview-only" }, LINK_PREVIEW_NOTE) : undefined;
+        const wrapper = wrap({ ...common, group: false, control, inputId: id, show, extraHelp: note });
+        // The page list and the address box (one on screen at a time) both read the help, "Opens: …" and the error.
+        const described = [wrapper.querySelector(":scope > .vc-help")?.id, describedBy, wrapper.querySelector(":scope > .vc-error")?.id].filter(Boolean).join(" ");
+        for (const input of inputs) input.setAttribute("aria-describedby", described);
+        return wrapper;
+      }
+      case "phone": {
+        const { control, id, show } = phoneInput(path, disabled);
+        return wrap({ ...common, group: false, control, inputId: id, show });
+      }
       case "toggle": {
         const { control, show } = toggleInput(field, path, disabled);
         return wrap({ ...common, field: { ...shown, help: undefined }, group: false, control, show });
@@ -676,5 +729,6 @@ export const createForm = (options: FormOptions): Form => {
       return placed;
     },
     focus: (path) => focusPath(path),
+    invalidLinks: () => invalidLinks(element),
   };
 };

@@ -52,6 +52,8 @@ const FIELD_OPTIONS: Record<string, string[]> = {
   pick: ["choices"],
   toggle: [],
   number: ["min", "max", "integer"],
+  link: [],
+  phone: [],
 };
 const TOP_LEVEL = ["configVersion", "site", "repo", "roles", "contentDirs", "files", "collections", "media"];
 
@@ -250,6 +252,27 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     if (!url || !/^https?:$/.test(url.protocol)) err(context, "site.url", `must be a full http(s) address (got ${show(site.url)})`, 'e.g. "https://mysalon.example"');
     if (site.timezone !== undefined) {
       try { new Intl.DateTimeFormat("en", { timeZone: String(site.timezone) }); } catch { err(context, "site.timezone", `unknown time zone ${show(site.timezone)}`, 'use an IANA name, e.g. "America/New_York"'); }
+    }
+    for (const key of Object.keys(site)) if (!["name", "url", "timezone", "phone", "pages"].includes(key)) err(context, `site.${key}`, "unknown setting", "allowed: name, url, timezone, phone, pages");
+    // M4: phone numbers follow the site's country; Link fields may also open site.pages.
+    if (site.phone !== undefined) {
+      if (!isRecord(site.phone) || typeof site.phone.country !== "string" || !/^[A-Z]{2}$/.test(site.phone.country)) err(context, "site.phone", `must be { country: "<2-letter code>" } (got ${show(site.phone)})`, 'e.g. phone: { country: "US" }');
+      else for (const key of Object.keys(site.phone)) if (key !== "country") err(context, `site.phone.${key}`, "unknown setting", "phone has country");
+    }
+    if (site.pages !== undefined) {
+      if (!Array.isArray(site.pages)) err(context, "site.pages", "must be a list of { path, label }", '[{ path: "/booking/", label: "Booking" }]');
+      else {
+        const seen = new Set<string>();
+        site.pages.forEach((page, index) => {
+          const where = `site.pages[${index}]`;
+          if (!isRecord(page)) { err(context, where, `must be { path, label } (got ${show(page)})`, '{ path: "/booking/", label: "Booking" }'); return; }
+          for (const key of Object.keys(page)) if (!["path", "label"].includes(key)) err(context, `${where}.${key}`, "unknown setting", "a page has path and label");
+          if (typeof page.path !== "string" || !page.path.startsWith("/") || page.path.startsWith("//") || /\s/.test(page.path)) err(context, `${where}.path`, `must be an address on the site, starting with / (got ${show(page.path)})`, 'e.g. "/booking/"');
+          else if (seen.has(page.path)) err(context, `${where}.path`, `${show(page.path)} is listed twice`, "remove the copy");
+          else seen.add(page.path);
+          if (!filled(page.label)) err(context, `${where}.label`, "required — the page's name editors see", 'e.g. label: "Booking"');
+        });
+      }
     }
   }
 

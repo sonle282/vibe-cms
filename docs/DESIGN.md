@@ -664,8 +664,8 @@ nào là tên / host của site thì lấy từ config.
 | Danh sách: cột, lọc, ⋯ | `list: { columns, filters, search }`; nhãn nút `labels: { add: "Add product" }` |
 | Thiết bị Laptop / Tablet / Mobile | cố định 1280 × 800 / 768 × 1024 / 390 × 844 |
 | "Live on {host}", "5–10 minutes" | `site.host` + `publish.typicalMinutes` |
-| Link Page / Web address / Phone / Email | `f.link()`; danh sách trang = file có `preview` + route của collection |
-| SĐT "(215) 772-1111" | `f.phone()` + `site.phone: { country: "US" }` |
+| Link Page / Web address / Phone / Email | `f.link()` (lưu nguyên href); danh sách trang = file / collection có `preview` cố định (trang list của collection, không phải trang từng bản ghi) + `site.pages: [{ path, label }]` (policy, booking…) |
+| SĐT "(215) 772-1111" | `f.phone()` + `site.phone: { country: "US" }` (US / CA: mã vùng + 7 số; nước khác: kèm mã nước) |
 | Ảnh Desktop / Mobile 1 thẻ | `f.image({ mobile: "mobileImage" })` |
 
 ### H.3 Đặc tả UI (nguyên văn Mr Spa; `{…}` = lấy từ config)

@@ -87,7 +87,7 @@ const loadCollection = (ctx: Ctx, root: string, collection: CmsCollection, index
 
 /** root = the project root (the folder of cms.config.ts). */
 export const checkContent = (config: CmsConfig, root: string): CheckResult => {
-  const ctx: Ctx = { errors: [], warnings: [], ids: new Map() };
+  const ctx: Ctx = { errors: [], warnings: [], ids: new Map(), ...(config.site.phone?.country ? { phoneCountry: config.site.phone.country } : {}) };
   const imageNames = readImageNames(config, root, ctx.errors);
   if (imageNames) ctx.imageNames = imageNames;
   const loaded = config.collections.map((collection, index) => loadCollection(ctx, root, collection, index));

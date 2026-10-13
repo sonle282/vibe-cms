@@ -146,7 +146,9 @@ test("form: lists — add, move, delete, max; nested lists of objects", () => {
   press(form, "footerLinks[0].links", "Move Link 2 up");
   at(form, "footerLinks[0].links").querySelector(".vc-add").click();
   type(window, control(form, "footerLinks[0].links[2].label"), "Blog");
-  type(window, control(form, "footerLinks[0].links[2].href"), "/blog/");
+  // M4: a link — Web address, then the address.
+  at(form, "footerLinks[0].links[2].href").querySelector('[data-link-kind="url"]').click();
+  type(window, at(form, "footerLinks[0].links[2].href").querySelector("input.vc-link-text"), "/blog/");
   press(form, "footerLinks[0].links", "Delete Link 1");
   assert.deepEqual(form.value().footerLinks[0].links, [{ label: "Services", href: "/services/" }, { label: "Blog", href: "/blog/" }]);
   const groups = at(form, "footerLinks");

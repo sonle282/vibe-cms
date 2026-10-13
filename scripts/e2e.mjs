@@ -55,6 +55,8 @@ try {
     await page.locator(`[data-section-key="${key}"]`).click();
     await page.locator(`.vc-form > [data-section="${key}"]:not([hidden])`).waitFor();
   };
+  // M4: a Link field — Web address, then the address (a page of the site would be picked from its list).
+  const link = async (path, value) => { await field(path).getByRole("radio", { name: "Web address" }).click(); await field(path).locator("input.vc-link-text").fill(value); };
   // M3: deleting a list item asks first (the CMS dialog, red Delete).
   const confirmDelete = async () => { const dialog = page.getByRole("alertdialog", { name: /^Delete / }); await dialog.getByRole("button", { name: "Delete", exact: true }).click(); await dialog.waitFor({ state: "detached" }); };
   // P8d: the visual editor — its editable area, a toolbar button, and its source view ("Edit HTML" / "Edit Markdown").
@@ -180,7 +182,27 @@ try {
   await input("footerLinks[0].title").fill("Visit us");
   await field("footerLinks[0].links").getByRole("button", { name: "Add link" }).click();
   await input("footerLinks[0].links[2].label").fill("Blog");
-  await input("footerLinks[0].links[2].href").fill("/blog/");
+  // M4 (Mr Spa): a link shows what it opens — Page for a page of the site, with its list and where it goes.
+  const teamLink = field("footerLinks[0].links[1].href");
+  check("link (M4): Page · Web address · Phone · Email, the site's pages, “Opens: demo.example/team/”",
+    assertEqual(await teamLink.getByRole("radio").allTextContents(), ["Page", "Web address", "Phone", "Email"])
+    && (await teamLink.getByRole("radio", { name: "Page" }).getAttribute("aria-checked")) === "true"
+    && assertEqual(await teamLink.locator("select option").allTextContents(), ["Salon info — /", "Services — /services/", "Team — /team/"])
+    && (await teamLink.locator(".vc-link-opens").textContent()) === "Opens: demo.example/team/"
+    && (await teamLink.locator(".vc-help").textContent()) === "Link destination: not visible in the preview.",
+  { kinds: await teamLink.getByRole("radio").allTextContents(), pages: await teamLink.locator("select option").allTextContents(), opens: await teamLink.locator(".vc-link-opens").textContent() });
+  // A wrong address is never written: it says why, and Save waits until it is fixed.
+  await link("footerLinks[0].links[2].href", "blog page");
+  const newLink = field("footerLinks[0].links[2].href");
+  check("link (M4): a wrong address says why in plain words, “— until this is fixed”, Save off with the reason",
+    (await newLink.locator(".vc-link-error").textContent()) === "Enter a full web address, like https://example.com or /about."
+    && /— until this is fixed$/.test(await newLink.locator(".vc-link-opens").textContent())
+    && await page.getByRole("button", { name: "Save draft" }).isDisabled()
+    && (await page.getByRole("button", { name: "Save draft" }).getAttribute("data-tooltip")) === "Fix the link marked in red before saving.",
+  { error: await newLink.locator(".vc-link-error").textContent(), opens: await newLink.locator(".vc-link-opens").textContent(), tooltip: await page.getByRole("button", { name: "Save draft" }).getAttribute("data-tooltip") });
+  await newLink.locator("input.vc-link-text").fill("/blog/");
+  check("link (M4): fixed, it is written and Save is back", (await newLink.locator(".vc-link-opens").textContent()) === "Opens: demo.example/blog/" && await newLink.locator(".vc-link-error").isHidden() && await page.getByRole("button", { name: "Save draft" }).isEnabled());
+  await shot("m4-link");
   await button("footerLinks[0].links", "Move Link 3 up").click();
   await button("footerLinks[0].links", "Delete Link 1").click();
   await confirmDelete();
@@ -188,7 +210,7 @@ try {
   await input("footerLinks[1].title").fill("Legal");
   await field("footerLinks[1].links").getByRole("button", { name: "Add link" }).click();
   await input("footerLinks[1].links[0].label").fill("Privacy");
-  await input("footerLinks[1].links[0].href").fill("/privacy/");
+  await link("footerLinks[1].links[0].href", "/privacy/");
   await input("seo.title").fill("Demo Salon");
   await input("seo.description").fill("Invented salon.\nSecond line.");
   // P12g: the banner price points to a package of the same file (pick, choices from the content) + a toggle.

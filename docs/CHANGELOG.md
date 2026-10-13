@@ -3,7 +3,21 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## Unreleased (M1, M2, M3, M3c)
+## Unreleased (M1, M2, M3, M3c, M4)
+
+**M4 — the Link and Phone fields of the Mr Spa CMS.** Nothing to do on a site; new in `cms.config.ts`:
+
+- **`f.link`**: saved as the href the site already uses (an existing link comes back byte for byte). The editor picks
+  **Page · Web address · Phone · Email**; Page lists the files and collections with a fixed `preview`, then the new
+  `site.pages` (`[{ path, label }]`), with **Find a page** above more than 8. One line says where it goes ("Opens:
+  mysalon.example/about", "Opens: call (215) 772-1111", "Opens: nothing (no link)"). A wrong link is never written: the
+  field says why in plain words ("Enter a full web address, like https://example.com or /about."), "Opens: … — until
+  this is fixed", and **Save is off** ("Fix the link marked in red before saving."). In the page inspector: "Link
+  destination: not visible in the preview." The build and every save check the links of the content.
+- **`f.phone`** + **`site.phone: { country }`**: `"US"` / `"CA"` numbers need their area code and are shown "(215)
+  772-1111" once typed; other countries take the number with its country code. `tel:` links follow the same rule.
+- `phoneHrefValue`, `formatPhone`, `parseHref`, `toHref`, `linkProblem`, `linkOpensText` are exported for a site's code.
+- Unknown keys under `site` are now refused by the build (allowed: name, url, timezone, phone, pages).
 
 **M3c — sections like the Mr Spa CMS's, for any shape of content.** Nothing to do on a site; new possibilities in
 `cms.config.ts`:

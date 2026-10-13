@@ -18,6 +18,7 @@ import { createToast } from "./toast.js";
 import { installTooltips } from "./tooltip.js";
 import { summarizeChanges, type Change, type ReferenceLabels } from "./changes.js";
 import { createForm, type Form, type ReferenceTarget } from "./form.js";
+import { INVALID_LINK_REASON, LINK_VALIDITY } from "./link.js";
 import { ACCEPTED_TYPES, adjustImage, measureImage, openImagePicker, prepareImage, type Adjust, type LibraryImage, type Measure, type Prepare, type PreparedImage } from "./media.js";
 import { configBinds, fieldAt, type PreviewOwner } from "./bridge.js";
 import { createPreview, previewUrl, type Preview } from "./preview.js";
@@ -608,20 +609,22 @@ export const startAdmin = (options: AdminOptions) => {
     const stale = Boolean(view?.draft?.stale);
     const refresh = () => {
       const count = dirty();
+      // M4 (Mr Spa): a link that cannot be saved holds Save until it is fixed.
+      const badLinks = form.invalidLinks();
       title.textContent = titleText();
       inspector?.setTitle(titleText());
       const published = hasDraft ? undefined : publishedStateOf(resourceOf());
       const reason = stale ? "The website changed after this draft was started. Discard it and make your change again."
         : publishBlockReason({ conflict, dirty: count > 0, hasDraft, invalid: Boolean(problem), changes: hasDraft && !count ? changesToPublish().length : 0 });
       const state = deriveSaveState({
-        unsaved: count, hasDraft, canSave: !conflict && !saving && !discarding, publishBlockReason: reason, recordLive, host: siteHost(),
+        unsaved: count, hasDraft, canSave: !conflict && !saving && !discarding && !badLinks, publishBlockReason: reason, recordLive, host: siteHost(),
         busy: saving ? "Saving draft…" : discarding ? "Discarding draft…" : undefined,
         problem: problem || undefined, published,
       });
       showState(state);
       save.disabled = !state.saveEnabled;
       save.textContent = saving ? "Saving…" : "Save draft";
-      save.dataset.tooltip = count && conflict ? "Resolve conflicts or loading errors before saving." : "Save your changes as a draft.";
+      save.dataset.tooltip = badLinks ? INVALID_LINK_REASON : count && conflict ? "Resolve conflicts or loading errors before saving." : "Save your changes as a draft.";
       publish.disabled = !state.publishEnabled;
       publish.textContent = discarding ? "Discarding…" : "Publish";
       publish.dataset.tooltip = state.publishTooltip;
@@ -639,6 +642,9 @@ export const startAdmin = (options: AdminOptions) => {
       confirm: (text, choice) => ask(text, choice),
       onItem: (path) => { preview?.scrollTo(path); },
       reveal: (text) => { reveal(text); },
+      // M4: Link fields offer the site's pages and say where a link goes; Phone fields follow site.phone.country.
+      links: { pages: boot.site.pages ?? [], host: siteHost(), ...(boot.site.phone ? { country: boot.site.phone.country } : {}) },
+      previewNotes: Boolean((input.kind === "file" ? input.file.preview : input.collection.preview) && options.preview !== false),
       onChange: (value, path) => {
         if (collection && isNew && path.length === 1 && path[0] === collection.idField && !autoId) idTouched = true;
         if (collection && isNew && !idTouched && path[0] !== collection.idField) {
@@ -712,7 +718,7 @@ export const startAdmin = (options: AdminOptions) => {
       const ids = new Map<string, Set<string>>();
       for (const [key, target] of Object.entries(references)) ids.set(key, new Set(target.items.map((item) => item.id)));
       const system = collection ? [collection.idField, ...(collection.status ? [collection.status.field] : []), ...(collection.markdown ? ["body"] : [])] : [];
-      const problems = checkRecordValues({ fields: configFields, record: value, ids, system }).errors.map(({ path, message: text }) => ({ path, message: text }));
+      const problems = checkRecordValues({ fields: configFields, record: value, ids, system, ...(boot.site.phone ? { phoneCountry: boot.site.phone.country } : {}) }).errors.map(({ path, message: text }) => ({ path, message: text }));
       if (collection) {
         const id = value[collection.idField];
         if (typeof id !== "string" || !id) problems.push({ path: collection.idField, message: "Fill in the ID." });
@@ -823,6 +829,8 @@ export const startAdmin = (options: AdminOptions) => {
     show({ title: titleText(), crumbs: crumbsFor, dirty, save: doSave, refreshState: refresh, resource: resourceOf(), leave: () => { preview?.destroy(); inspector?.destroy(); body.classList.remove("vc-body-wide"); } }, split ? [split] : content);
     preview?.start();
     refresh();
+    // M4: a Link field turning invalid / valid turns Save off / on.
+    form.element.addEventListener(LINK_VALIDITY, () => refresh());
     if (pendingFocus) { const target = pendingFocus; pendingFocus = undefined; focusAfterShow = () => reveal(target); }
   };
 

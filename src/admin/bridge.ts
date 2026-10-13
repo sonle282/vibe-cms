@@ -240,6 +240,8 @@ export const attachBridge = (options: BridgeOptions): Bridge => {
     const field = found?.field;
     if (field?.type === "image" && !found?.rest.length) { setImage(element, raw); return; }
     if (field?.type === "image" && found?.rest[0] === "alt") { const image = element.tagName === "IMG" ? element : element.querySelector("img"); image?.setAttribute("alt", typeof raw === "string" ? raw : ""); return; }
+    // M4: a link is never shown as text — on an <a> it is the address.
+    if (field?.type === "link") { const href = safeUrl(raw, "href"); if (href && element.tagName === "A") element.setAttribute("href", href); return; }
     if (element.tagName === "IMG") { const src = safeUrl(raw, "src"); if (src) element.setAttribute("src", src); return; }
     if (field?.type === "richText") {
       const text = typeof raw === "string" ? raw : "";

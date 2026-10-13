@@ -234,6 +234,26 @@ priority: f.number({ label: "Order", integer: true, min: 1, max: 99 }),   // a J
 id: f.text({ label: "ID", from: "name", pattern: "[a-z0-9]+(?:-[a-z0-9]+)*" }),  // made from "name" while the item is new
 ```
 
+## Links and phone numbers (M4)
+
+```ts
+site: { name: "My Salon", url: "https://mysalon.example", phone: { country: "US" },
+        pages: [{ path: "/booking/", label: "Booking" }] },   // more pages a link may open
+// …
+book: f.link({ label: "Book button", required: true }),  // "/booking/", "https://…", "tel:+12157721111", "mailto:…"
+phone: f.phone({ label: "Phone", locked: "admin" }),      // "(215) 772-1111"
+```
+
+A **link** is saved as the href the site already has (nothing is rewritten). The editor picks what it opens: **Page**
+(the files and collections with a fixed `preview`, then `site.pages`; "Find a page" above more than 8), **Web
+address**, **Phone** or **Email**, and always sees where it goes ("Opens: mysalon.example/booking/", "Opens: call (215)
+772-1111"). A wrong link is never written: the field says why in plain words, "Opens: … — until this is fixed", and
+Save waits ("Fix the link marked in red before saving."). Not `required` = it may be empty ("No link").
+
+A **phone** number follows `site.phone.country`: `"US"` / `"CA"` take an area code + 7 digits and show them as "(215)
+772-1111"; any other country, or none, takes the number with its country code ("+44 20 7946 0958"). The build and every
+save check both. In the site's code, `phoneHrefValue(phone, "US")` gives the number a `tel:` link calls (`+12157721111`).
+
 ## History (P12c)
 
 Owners have **History** in the editor: every version of that file or record, newest first, read from the site's
