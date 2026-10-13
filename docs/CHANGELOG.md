@@ -5,6 +5,8 @@ migration that is not automatic. Each entry says what a site has to do.
 
 ## 0.22.0 — 2026-10-13 (M1–M6: the Mr Spa CMS editor — frame, roles, inspector, sections, links, images, publishing)
 
+- **Site action:** none — no data change, no D1 migration. Optional: write the role name `"owner"` as `"admin"` in `cms.config.ts` (`roles`, `locked`, `access`; the old name only warns); `cms.config.ts` `site` now refuses unknown keys; for `publish.buildCheck` the GitHub token also needs Checks: read.
+
 **M6 — saving and publishing like the Mr Spa CMS.** Nothing to do on a site; new optional settings.
 
 - **Publish = two dialogs:** "Review changes" ("Review the changes to {name} before publishing.") — the changes by
