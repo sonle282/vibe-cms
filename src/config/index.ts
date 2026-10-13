@@ -150,6 +150,12 @@ export type CmsConfig = {
    * at the same path without "public"); `maxBytes` = largest file after the browser has prepared it (default 10 MiB).
    * The site's R2 bucket <site>-media (binding CMS_MEDIA) holds them until they are published.
    */
+  /**
+   * M6: publishing, as the admin tells it. `typicalMinutes` = how long the site's build usually takes ("5–10": the
+   * status says "Publishing… this usually takes 5–10 minutes"; default "a few"); `buildCheck` = the name of the GitHub
+   * check run that builds the site (e.g. "Workers Builds"): when it fails, the admin says so instead of waiting.
+   */
+  publish?: { typicalMinutes?: string; buildCheck?: string };
   media?: {
     dir?: string;
     /** P12h: the address uploads are served at until the site is built with them (default: dir without "public"). */

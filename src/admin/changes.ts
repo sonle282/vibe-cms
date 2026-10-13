@@ -32,6 +32,8 @@ export type SummaryInput = {
   newRecord?: { itemLabel: string; title: string };
   /** P12g: the labels of pick values ("packages/the-essential-reset" → "The Essential Reset"). */
   choiceLabels?: Record<string, string>;
+  /** M6: keep whole texts (not cut at 140 characters). */
+  full?: boolean;
 };
 
 const MAX = 140;
@@ -69,7 +71,9 @@ export const formatHours = (value: unknown) => {
   }).join(" · ");
 };
 
-export const summarizeChanges = ({ fields, before, after, references = {}, newRecord, choiceLabels }: SummaryInput): Change[] => {
+export const summarizeChanges = ({ fields, before, after, references = {}, newRecord, choiceLabels, full }: SummaryInput): Change[] => {
+  // M6: `full` — whole texts (the review marks the changed words in them); otherwise cut at 140 characters.
+  const fit = (text: string) => (full ? text.replace(/\s+/g, " ").trim() : short(text));
   const out: Change[] = [];
   if (newRecord && (before === undefined || before === null)) {
     out.push({ path: "", label: `New ${newRecord.itemLabel.toLowerCase()}`, kind: "created", after: newRecord.title });
@@ -80,24 +84,24 @@ export const summarizeChanges = ({ fields, before, after, references = {}, newRe
   const show = (field: Field, value: unknown): string => {
     if (value === undefined || value === null) return "";
     switch (field.type) {
-      case "text": case "select": case "link": case "phone": return short(String(value));
-      case "pick": return short(typeof value === "string" ? choiceLabels?.[value] ?? value : String(value));
+      case "text": case "select": case "link": case "phone": return fit(String(value));
+      case "pick": return fit(typeof value === "string" ? choiceLabels?.[value] ?? value : String(value));
       case "toggle": return value === true ? "Yes" : value === false ? "No" : "";
-      case "number": return typeof value === "number" ? String(value) : short(String(value));
-      case "richText": return short(plainText(String(value)));
+      case "number": return typeof value === "number" ? String(value) : fit(String(value));
+      case "richText": return fit(plainText(String(value)));
       case "image": return typeof value === "string" ? value : isRecord(value) ? String(value.src ?? "") : "";
       case "hours": return formatHours(value);
       case "reference": return Array.isArray(value) ? value.map((id) => refLabel(field.to, id)).join(", ") : refLabel(field.to, value);
-      case "object": return isRecord(value) ? short(Object.values(value).filter((entry) => typeof entry === "string").join(", ")) : "";
+      case "object": return isRecord(value) ? fit(Object.values(value).filter((entry) => typeof entry === "string").join(", ")) : "";
       case "list": return Array.isArray(value) ? `${value.length} item${value.length === 1 ? "" : "s"}` : "";
-      case "tuple": return Array.isArray(value) ? short(field.items.map((item, index) => show(item, value[index])).filter(Boolean).join(" · ")) : "";
+      case "tuple": return Array.isArray(value) ? fit(field.items.map((item, index) => show(item, value[index])).filter(Boolean).join(" · ")) : "";
     }
   };
   const itemSummary = (field: Field, value: unknown) => {
     if (field.type === "object" && isRecord(value)) {
       for (const [key, child] of Object.entries(field.fields)) {
         const inner = getAt(value, keyPath(key));
-        if ((child.type === "text" || child.type === "select") && typeof inner === "string" && inner) return short(inner);
+        if ((child.type === "text" || child.type === "select") && typeof inner === "string" && inner) return fit(inner);
       }
       return "";
     }
@@ -120,7 +124,7 @@ export const summarizeChanges = ({ fields, before, after, references = {}, newRe
         const [tb, ta] = [typeof b === "string" ? b : "", typeof a === "string" ? a : ""];
         const lock = isLocked ? { locked: true } : {};
         const before = out.length;
-        if (short(plainText(tb)) !== short(plainText(ta))) push({ path: where, label, kind: kindOf(plainText(tb).trim(), plainText(ta).trim()), before: short(plainText(tb)), after: short(plainText(ta)), ...lock });
+        if (fit(plainText(tb)) !== fit(plainText(ta))) push({ path: where, label, kind: kindOf(plainText(tb).trim(), plainText(ta).trim()), before: fit(plainText(tb)), after: fit(plainText(ta)), ...lock });
         const [ib, ia] = [imagesIn(tb), imagesIn(ta)];
         const size = (image: RichImage) => (image.width ? `${image.width} px wide` : "original size");
         for (const image of ia) {
@@ -128,17 +132,17 @@ export const summarizeChanges = ({ fields, before, after, references = {}, newRe
           if (!was) { push({ path: where, label: `${label} › image`, kind: "added", after: image.src, ...lock }); continue; }
           ib.splice(ib.indexOf(was), 1);
           if (was.width !== image.width) push({ path: where, label: `${label} › image size`, kind: "changed", before: size(was), after: size(image), ...lock });
-          if (was.alt !== image.alt) push({ path: where, label: `${label} › image alt text`, kind: kindOf(was.alt, image.alt), before: short(was.alt), after: short(image.alt), ...lock });
+          if (was.alt !== image.alt) push({ path: where, label: `${label} › image alt text`, kind: kindOf(was.alt, image.alt), before: fit(was.alt), after: fit(image.alt), ...lock });
         }
         for (const image of ib) push({ path: where, label: `${label} › image`, kind: "removed", before: image.src, ...lock });
-        if (out.length === before) push({ path: where, label, kind: "changed", before: short(plainText(tb)), after: `${short(plainText(ta))} (new formatting)`, ...lock });
+        if (out.length === before) push({ path: where, label, kind: "changed", before: fit(plainText(tb)), after: `${fit(plainText(ta))} (new formatting)`, ...lock });
         return;
       }
       case "image": {
         const parts = (value: unknown) => (typeof value === "string" ? { src: value, alt: "", mobile: "" } : isRecord(value) ? { src: String(value.src ?? ""), alt: String(value.alt ?? ""), mobile: String(value.mobile ?? "") } : { src: "", alt: "", mobile: "" });
         const [pb, pa] = [parts(b), parts(a)];
         if (pb.src !== pa.src) push({ path: where, label, kind: kindOf(pb.src, pa.src), before: pb.src, after: pa.src, ...(isLocked ? { locked: true } : {}) });
-        if (pb.alt !== pa.alt) push({ path: `${where}.alt`, label: `${label} › alt text`, kind: kindOf(pb.alt, pa.alt), before: short(pb.alt), after: short(pa.alt), ...(isLocked ? { locked: true } : {}) });
+        if (pb.alt !== pa.alt) push({ path: `${where}.alt`, label: `${label} › alt text`, kind: kindOf(pb.alt, pa.alt), before: fit(pb.alt), after: fit(pa.alt), ...(isLocked ? { locked: true } : {}) });
         if (pb.mobile !== pa.mobile) push({ path: `${where}.mobile`, label: `${label} › image for phones`, kind: kindOf(pb.mobile, pa.mobile), before: pb.mobile, after: pa.mobile, ...(isLocked ? { locked: true } : {}) });
         return;
       }
@@ -218,7 +222,7 @@ export const summarizeChanges = ({ fields, before, after, references = {}, newRe
   // Keys the config does not describe (set by the site's code): mention them, never hide a change.
   const known = new Set(Object.keys(fields).map((key) => keyPath(key)[0]));
   for (const key of new Set([...Object.keys(b), ...Object.keys(a)])) if (!known.has(key as string) && !same(b[key], a[key])) {
-    const text = (value: unknown) => (value === undefined ? "" : short(typeof value === "string" ? value : JSON.stringify(value)));
+    const text = (value: unknown) => (value === undefined ? "" : fit(typeof value === "string" ? value : JSON.stringify(value)));
     push({ path: pathText([key]), label: `${key} (not in the form)`, kind: kindOf(b[key], a[key]), before: text(b[key]), after: text(a[key]) });
   }
   return out;

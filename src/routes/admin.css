@@ -761,3 +761,20 @@ label.vc-button[role="button"] { cursor: pointer; }
 .vc-adjust-status { min-height: 18px; margin-top: 14px; }
 .vc-adjust-status[data-state="saving"] { color: var(--accent-hover); }
 .vc-adjust-status[data-state="error"] { color: var(--danger); }
+
+/* ---------- M6: "Review changes" of the Mr Spa CMS (grouped by section, the changed words marked, image thumbnails) */
+.vc-dialog.vc-review-dialog { width: min(620px, 100%); max-height: min(78vh, 720px); }
+.vc-review-summary { display: grid; gap: 14px; max-height: 50vh; overflow: auto; margin: 0 0 8px; }
+.vc-review-group { display: grid; gap: 5px; }
+.vc-review-group h3 { margin: 0; color: var(--text); font-size: 13px; }
+.vc-review-group ul { display: grid; gap: 5px; margin: 0; padding-left: 18px; color: var(--text-secondary); font-size: 12px; }
+.vc-review-group li { display: grid; gap: 2px; }
+.vc-review-group li strong { color: var(--text); font-weight: 600; }
+.vc-review-values { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.vc-review-value { display: inline-flex; min-width: 0; align-items: center; gap: 6px; }
+.vc-review-value.is-after, .vc-review-value.is-after .vc-review-text { color: var(--text); }
+.vc-review-thumb { flex: 0 0 auto; width: 40px; height: 28px; border-radius: var(--radius-6); background: var(--canvas); object-fit: contain; }
+.vc-review-mark { border-radius: var(--radius-5); padding: 0 2px; background: var(--success-bg); color: var(--success-strong); }
+.vc-review-value.is-before .vc-review-mark { background: var(--canvas); color: var(--text-secondary); text-decoration: line-through; }
+.vc-review-arrow { color: var(--text-disabled); }
+.vc-review-empty { margin: 0; color: var(--text-secondary); font-size: 13px; }

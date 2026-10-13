@@ -368,7 +368,7 @@ test("shell: leaving with unsaved changes asks; saying no keeps the page and the
 
 // ------------------------------------------------------------------ P8: review + publish + live, against the real API and a fake GitHub
 
-const publishShell = async ({ storage = new Map(), maxWaitMs = 5_000 } = {}) => {
+const publishShell = async ({ storage = new Map(), maxWaitMs = 5_000, cfg = config, now, confirm = () => true, pollMs = 5 } = {}) => {
   const { window, document } = dom();
   const github = await startFakeGitHub({ owner: config.repo.owner, name: config.repo.name, branch: config.repo.branch, files });
   const drafts = createMemoryDraftStore();
@@ -376,19 +376,23 @@ const publishShell = async ({ storage = new Map(), maxWaitMs = 5_000 } = {}) => 
   const publisher = createGitHubPublisher({ token: github.token, repo: config.repo, apiUrl: github.url });
   let live = { ...files };
   const user = { userId: "usr_owner", role: "owner" };
-  const build = () => createCmsApi({ config, source: createBundledSource(live), drafts, audit, publisher, identify: () => user });
+  const build = () => createCmsApi({ config: cfg, source: createBundledSource(live), drafts, audit, publisher, identify: () => user });
   let api = build();
   const fetch = async (url, init = {}) => api.handle(new Request(new URL(url, "http://localhost"), { ...init, headers: { ...(init.headers ?? {}), origin: "http://localhost" } }));
   const call = async (method, url, body) => (await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).json();
   const root = document.createElement("div");
   document.body.append(root);
-  const store = { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) };
-  const app = startAdmin({ root, boot: adminBoot(config, { id: user.userId, username: "owner", displayName: "Owner", role: "owner" }), fetch, window, confirm: () => true, pollMs: 5, maxWaitMs, storage: store });
+  const store = { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key), key: (index) => [...storage.keys()][index] ?? null, get length() { return storage.size; } };
+  const asked = [];
+  const app = startAdmin({ root, boot: adminBoot(cfg, { id: user.userId, username: "owner", displayName: "Owner", role: "owner" }), fetch, window, confirm: (message, choice) => { asked.push(message); return confirm(message, choice); }, ...(pollMs === undefined ? {} : { pollMs }), maxWaitMs, storage: store, ...(now ? { now } : {}) });
   await app.ready;
   const go = async (path) => { await app.go(path); await settle(); await app.idle(); };
   const until = async (test, what) => { for (let i = 0; i < 400; i += 1) { if (test()) return; await new Promise((resolve) => setTimeout(resolve, 5)); } assert.fail(`timed out waiting for ${what}`); };
   return {
-    window, root, github, drafts, call, go, until, storage,
+    window, root, github, drafts, call, go, until, storage, asked, app,
+    dialog: () => window.document.querySelector(".vc-dialog"),
+    press: (text) => [...window.document.querySelectorAll(".vc-dialog button")].find((button) => button.textContent === text).click(),
+    tooltip: () => root.querySelector(".vc-save-state").dataset.tooltip,
     state: () => (root.querySelector(".vc-save-state").hidden ? "" : root.querySelector(".vc-state-long").textContent),
     kind: () => root.querySelector(".vc-save-state").dataset.kind,
     badge: () => root.querySelector(".vc-badge"),
@@ -419,8 +423,11 @@ test("U4 Drafts: one row per draft (what changes, when); Publish opens its revie
     // Publish one row: its review dialog, then only it goes to the website.
     row("file:site").querySelector('[data-action="publish-draft"]').click();
     const dialog = () => h.window.document.querySelector(".vc-dialog");
-    assert.match(dialog().querySelector(".vc-changes").textContent, /Tagline/);
-    [...dialog().querySelectorAll("button")].find((button) => button.textContent === "Publish to website").click();
+    // M6 (Mr Spa): Review changes, then "Publish {name}" — This will publish to {host}.
+    assert.equal(dialog().querySelector(".vc-dialog-title").textContent, "Review changes");
+    assert.match(dialog().querySelector(".vc-review-summary").textContent, /Changed: Tagline/);
+    h.press("Continue to publish");
+    await h.until(() => h.asked.some((message) => message === "Publish Salon info\n\nThis will publish to demo.example."), "the confirm");
     await h.until(() => !dialog(), "the publish");
     await h.until(() => !row("file:site") && row("item:services:spa-pedicure"), "the screen again, with the other draft waiting");
     assert.match(JSON.parse(h.github.files()["src/data/site.json"]).tagline, /Fresh tagline/);
@@ -527,13 +534,16 @@ test("P8 shell: nothing to publish; the editor's Review & publish needs a saved 
     h.root.querySelector('[data-action="save"]').click();
     await h.until(() => !review.disabled, "the saved draft");
     assert.equal(review.dataset.tooltip, "Review changes before publishing.");
-    // U3: Publish opens the review dialog of this draft; Cancel changes nothing.
+    // M6 (Mr Spa): Publish opens "Review changes" — grouped by section, the changed words marked; Cancel changes nothing.
     review.click();
     const dialog = () => h.window.document.querySelector(".vc-dialog");
     assert.ok(dialog(), "the dialog opens");
-    assert.match(dialog().querySelector(".vc-dialog-title").textContent, /^Publish .+\?$/);
-    assert.match(dialog().textContent, /These changes go live on .+ in a few minutes\. Other pages are not affected\./);
-    assert.match(dialog().querySelector(".vc-changes").textContent, /Changed/);
+    assert.equal(dialog().querySelector(".vc-dialog-title").textContent, "Review changes");
+    assert.equal(dialog().querySelector(".vc-dialog-text").textContent, "Review the changes to Salon info before publishing.");
+    assert.equal(dialog().querySelector(".vc-review-group h3").textContent, "Homepage");
+    assert.equal(dialog().querySelector(".vc-review-group li strong").textContent, "Changed: Tagline");
+    assert.equal(dialog().querySelector(".vc-review-value.is-after .vc-review-mark").textContent, "Changed");
+    assert.deepEqual([...dialog().querySelectorAll(".vc-dialog-actions button")].map((button) => button.textContent), ["Cancel", "Continue to publish"]);
     const choice = (text) => [...dialog().querySelectorAll("button")].find((button) => button.textContent === text);
     assert.equal(h.window.document.activeElement, choice("Cancel"), "the safe choice has focus");
     choice("Cancel").click();
@@ -544,6 +554,84 @@ test("P8 shell: nothing to publish; the editor's Review & publish needs a saved 
     review.click();
     h.window.document.dispatchEvent(new h.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     assert.equal(dialog(), null);
+  } finally { await h.close(); }
+});
+
+test("M6 shell: Publish = Review changes → Publish {name}; Publishing… then the chip counts the time; a failed build says so; Check again", async () => {
+  let clock = Date.parse("2026-10-13T10:00:00Z");
+  const cfg = { ...config, publish: { typicalMinutes: "5–10", buildCheck: "Workers Builds" } };
+  const h = await publishShell({ cfg, now: () => clock, maxWaitMs: 20 * 60_000 });
+  try {
+    await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Fresh tagline" }));
+    await h.go("/admin/pages/site");
+    h.root.querySelector('[data-action="publish"]').click();
+    h.press("Continue to publish");
+    await h.until(() => h.state() === "Publishing… this usually takes 5–10 minutes", "publishing");
+    assert.equal(h.asked.at(-1), "Publish Salon info\n\nThis will publish to demo.example.");
+    assert.equal(h.root.querySelector(".vc-toast:not([hidden])"), null, "no toast (Mr Spa)");
+    clock += 65_000;
+    await h.until(() => h.tooltip() === "Publishing… this usually takes 5–10 minutes · 1m 5s", "the time in the tooltip");
+    // The site's build fails: said in plain words, with the commit, instead of waiting.
+    h.github.setCheckRuns(h.github.head(), [{ id: 1, name: "Workers Builds: demo", status: "completed", conclusion: "failure" }]);
+    await h.until(() => /^The website build failed for this publish \(commit [0-9a-f]{8}\)\. The website still shows the previous version\.$/.test(h.state()), "the failed build");
+    assert.equal(h.kind(), "problem");
+    assert.equal(h.root.querySelector('[data-action="check-again"]').hidden, false);
+    assert.ok(h.storage.get("vibe-cms:publishing"), "the receipt stays (checked again on reload)");
+    // Fixed and deployed: Check again → Live.
+    h.github.setCheckRuns(h.github.head(), [{ id: 2, name: "Workers Builds: demo", status: "completed", conclusion: "success" }]);
+    h.redeploy();
+    h.root.querySelector('[data-action="check-again"]').click();
+    await h.until(() => h.state() === "No changes" || h.state() === "Live on demo.example", "live");
+    assert.equal(h.storage.get("vibe-cms:publishing"), undefined, "the receipt goes once live");
+  } finally { await h.close(); }
+});
+
+test("M6: live checks at 0, 10, 20, 30, 45 s, then every 60 s, for at most 20 minutes", async () => {
+  const { LIVE_CHECK_STEPS } = await import("../dist/admin/app.js");
+  assert.deepEqual(LIVE_CHECK_STEPS, [10_000, 20_000, 30_000, 45_000, 60_000]);
+  const { buildState } = await import("../dist/index.js");
+  const run = (id, status, conclusion) => ({ id, name: "Workers Builds: site", status, conclusion });
+  assert.equal(buildState([], "Workers Builds"), "pending");
+  assert.equal(buildState([run(1, "in_progress", null)], "workers builds"), "pending");
+  assert.equal(buildState([run(1, "completed", "failure"), run(2, "completed", "success")], "Workers Builds"), "success", "the newest run");
+  assert.equal(buildState([run(3, "completed", "timed_out")], "Workers Builds"), "failed");
+  assert.equal(buildState([{ id: 9, name: "lint", status: "completed", conclusion: "failure" }], "Workers Builds"), "pending", "other checks do not count");
+});
+
+test("M6 shell: unsaved edits are kept in this browser (400 ms after typing, 24 h) and offered back — Restore changes / Discard them", async () => {
+  let clock = Date.parse("2026-10-13T10:00:00Z");
+  const storage = new Map();
+  let answer = true;
+  const h = await publishShell({ storage, now: () => clock, confirm: (message) => (message.startsWith("Restore unsaved changes?") ? answer : true) });
+  try {
+    await h.go("/admin/pages/site");
+    type(h.window, h.root.querySelector('[data-path="tagline"] input'), "Typed, never saved");
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    const copy = JSON.parse(storage.get("vibe-cms:unsaved:v1:file:site"));
+    assert.equal(copy.content.tagline, "Typed, never saved");
+    assert.equal(copy.user, "owner");
+    // The tab is closed and opened again 3 minutes later: the question, then the edits come back as unsaved changes.
+    clock += 3 * 60_000;
+    const again = await publishShell({ storage, now: () => clock, confirm: (message) => (message.startsWith("Restore unsaved changes?") ? answer : true) });
+    try {
+      // /admin opens the first page (Salon info) by itself.
+      await again.until(() => again.state() === "1 unsaved change", "the restored edit");
+      assert.equal(again.asked[0], "Restore unsaved changes?\n\nYou were editing this page 3 minutes ago and those changes were not saved (for example the page was refreshed or the tab was closed). Restore them? They come back as unsaved changes; press Save draft to keep them.");
+      assert.equal(again.root.querySelector('[data-path="tagline"] input').value, "Typed, never saved");
+      // Saved: the copy goes.
+      again.root.querySelector('[data-action="save"]').click();
+      await again.until(() => again.state() === "Draft saved · not live yet", "the save");
+      assert.equal(storage.has("vibe-cms:unsaved:v1:file:site"), false);
+    } finally { await again.close(); }
+    // "Discard them" removes the copy; older than 24 hours it is not offered.
+    storage.set("vibe-cms:unsaved:v1:file:site", JSON.stringify({ ...copy, savedAt: clock }));
+    answer = false;
+    const third = await publishShell({ storage, now: () => clock, confirm: (message) => (message.startsWith("Restore unsaved changes?") ? answer : true) });
+    try {
+      await third.until(() => !storage.has("vibe-cms:unsaved:v1:file:site"), "the copy removed");
+      await third.until(() => third.state() === "No changes", "the page as saved");
+      assert.equal(third.state(), "No changes", "nothing restored");
+    } finally { await third.close(); }
   } finally { await h.close(); }
 });
 

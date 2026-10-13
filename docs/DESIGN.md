@@ -767,11 +767,13 @@ nào là tên / host của site thì lấy từ config.
   1. **"Review changes"**: "Review the changes to {name} before publishing.", nhóm theo section, "Changed: / Added: /
      Removed:", cũ → mới, chữ đổi được `<mark>`, ảnh thu nhỏ 40 × 28; "Cancel" / "Continue to publish".
   2. **"Publish {name}"**: "This will publish to {host}."; "Cancel" / "Publish".
-- Sau publish:
-  - Theo dõi live ở 0 / 10 / 20 / 30 / 45 s rồi mỗi 60 s, tối đa 20 phút; vẫn theo khi chuyển màn.
+- Sau publish (M6 ✅, theo spec đọc từ code Mr Spa):
+  - Theo dõi live ở 0 / 10 / 20 / 30 / 45 s rồi mỗi 60 s, tối đa 20 phút tính từ lúc publish; vẫn theo khi chuyển màn;
+    thời gian đã qua ("· 1m 5s") nằm trong tooltip của chip.
   - Biên nhận lưu localStorage để theo tiếp sau khi tải lại trang.
   - Live → tải lại bản ghi lặng lẽ.
-  - "The website build failed for this publish (commit …)" khi có `publish.buildCheck`.
+  - "The website build failed for this publish (commit …)" khi có `publish.buildCheck` (check run GitHub có tên đó,
+    vd. "Workers Builds"; `GET /live-version?commit=` trả `build`). Biên nhận giữ tới khi live.
 - Rời trang: "Leave without saving?" / "Keep editing" / "Discard changes".
 - Huỷ: "Discard your draft?" / "Discard unsaved changes?"; bản ghi mới: "Discard this new {item}?…".
 - Xung đột 409: "Reload and keep my changes".

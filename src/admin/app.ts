@@ -22,12 +22,14 @@ import { INVALID_LINK_REASON, LINK_VALIDITY } from "./link.js";
 import { ACCEPTED_TYPES, adjustImage, imageFileProblem, measureImage, openAdjust, openImagePicker, prepareImage, type Adjust, type LibraryImage, type Measure, type Prepare, type PreparedImage, type Upload } from "./media.js";
 import { configBinds, fieldAt, type PreviewOwner } from "./bridge.js";
 import { createPreview, previewUrl, type Preview } from "./preview.js";
-import { createInspector, inspectorSections, sectionOfPath, type Inspector } from "./inspector.js";
+import { createInspector, inspectorSections, sectionOfPath, type Inspector, type InspectorSection } from "./inspector.js";
 import { openChangePassword, peopleScreen, type ScreenKit } from "./people.js";
 import { activityScreen } from "./activity.js";
 import { historyScreen, type HistoryTarget } from "./history.js";
 import { ADMIN_BASE, adminHref, legacyHashPath, parseAdminPath, type AdminRoute } from "./routes.js";
-import { applyLeafChanges, deriveSaveState, publishBlockReason, unsavedLeafChanges, type LeafChange, type PublishedState, type SaveState } from "./save-state.js";
+import { applyLeafChanges, buildFailedText, deriveSaveState, elapsedText, publishBlockReason, unsavedLeafChanges, type LeafChange, type PublishedState, type SaveState } from "./save-state.js";
+import { createRecovery, forgetAllRecovery, forgetRecovery, readRecovery, recoveryQuestion, type Recovery } from "./recovery.js";
+import { reviewSummary, type ReviewGroup } from "./review.js";
 import { clone, countChanges, getAt, ID_PATTERN, keyPath, parsePathText, pathText, slugify, type Path } from "./value.js";
 
 export type AdminOptions = {
@@ -70,7 +72,10 @@ export const editorFields = (target: { kind: "file"; file: BootFile } | { kind: 
 
 type DraftRow = { resource: string; kind: "file" | "item"; key: string; id: string | null; label: string; group: string; updatedAt: string; revision: number; isNew: boolean; stale: boolean };
 type PublishResult = { commitSha: string | null; resources: string[]; files: string[]; expectedLiveVersion: string; warnings: Array<{ resource: string; code: string; fields?: string[] }>; attempts: number };
-type PendingPublish = { expected: string; at: number; userId: string; labels: string[]; resources?: string[] };
+/** M6: the publish receipt (localStorage, until the change is live): `commit` = the commit, for the build check. */
+type PendingPublish = { expected: string; at: number; userId: string; labels: string[]; resources?: string[]; commit?: string };
+/** M6 (the Mr Spa CMS's publish-wait.ts): the waits between live checks — 10, 20, 30, 45 s, then every 60 s. */
+export const LIVE_CHECK_STEPS = [10_000, 20_000, 30_000, 45_000, 60_000];
 const PENDING_KEY = "vibe-cms:publishing";
 
 type Screen = { title: string; crumbs: Array<[string, string?]>; dirty?: () => number; save?: () => Promise<void>; leave?: () => void; refreshState?: () => void; resource?: string };
@@ -94,7 +99,7 @@ export const startAdmin = (options: AdminOptions) => {
   const askLeave = (count: number) => ask(leaveMessage(count), { cancel: "Keep editing", confirm: "Discard changes", danger: true });
   const now = options.now ?? (() => Date.now());
   const pollMs = options.pollMs ?? 10_000;
-  const maxWaitMs = options.maxWaitMs ?? 15 * 60_000;
+  const maxWaitMs = options.maxWaitMs ?? 20 * 60_000;
   const storage = options.storage === undefined ? (() => { try { return win.localStorage; } catch { return null; } })() : options.storage;
   const { user } = boot;
   const media = boot.media ?? { uploads: false, base: "/assets/uploads", maxBytes: 10 * 1024 * 1024 };
@@ -165,6 +170,7 @@ export const startAdmin = (options: AdminOptions) => {
     closeMenu();
     if (!(await mayLeave())) return;
     dirtyGuard = false;
+    forgetAllRecovery(storage);
     await api.post("/api/auth/logout", {});
     win.location.assign(ADMIN_BASE);
   } }, "Sign out");
@@ -203,10 +209,12 @@ export const startAdmin = (options: AdminOptions) => {
     h(doc, "span", { class: "vc-state-dot", "aria-hidden": "true" }),
     h(doc, "span", { class: "vc-state-text", role: "status", "aria-live": "polite" }, stateLong, stateShort));
   /** null hides it (list screens: Mr Spa shows the save state only while a record is open). */
-  const showState = (state: Pick<SaveState, "kind" | "label" | "shortLabel"> | null) => {
+  const showState = (state: Pick<SaveState, "kind" | "label" | "shortLabel"> & { tooltip?: string } | null) => {
     saveState.hidden = !state;
     if (!state) return;
     saveState.dataset.kind = state.kind;
+    // M6 (Mr Spa): the chip's tooltip carries the time since Publish ("· 1m 5s").
+    if (state.tooltip && state.tooltip !== state.label) saveState.dataset.tooltip = state.tooltip; else delete saveState.dataset.tooltip;
     stateLong.textContent = state.label;
     stateShort.textContent = state.shortLabel;
   };
@@ -556,6 +564,9 @@ export const startAdmin = (options: AdminOptions) => {
   let focusAfterShow: (() => boolean) | undefined;
   /** M1: "Reload and keep my changes" — my changes, put back on the version the editor loads next. */
   let carry: { path: string; changes: LeafChange[] } | undefined;
+  /** M6: write the open record's pending recovery copy now (the page is going away). */
+  let flushRecovery: (() => void) | undefined;
+  win.addEventListener("pagehide", () => flushRecovery?.());
 
   type EditorInput = { stillHere: () => boolean; crumbs: Array<[string, string?]>; url: string | undefined } & ({ kind: "file"; file: BootFile } | { kind: "item"; collection: BootCollection; id: string | undefined });
 
@@ -587,7 +598,10 @@ export const startAdmin = (options: AdminOptions) => {
     carry = undefined;
     const start = kept ? applyLeafChanges(saved, kept) : saved;
     let saving = false;
+    let publishing = false;
     let discarding = false;
+    /** M6: while "Restore unsaved changes?" is open, the copy is neither written nor removed. */
+    let offering = false;
     let conflict = false;
     let problem = "";
     let idTouched = !isNew;
@@ -625,8 +639,9 @@ export const startAdmin = (options: AdminOptions) => {
     const checkAgain = topIcon("check-again", "Check again whether the publish is live", "refresh", () => { void checkLive(); }, "Check again");
 
     const dirty = () => countChanges(saved, form.value());
+    const referenceLabels = (): ReferenceLabels => Object.fromEntries(Object.entries(references).map(([key, target]) => [key, Object.fromEntries(target.items.map((item) => [item.id, item.label]))]));
     const changesToPublish = () => {
-      const labels: ReferenceLabels = Object.fromEntries(Object.entries(references).map(([key, target]) => [key, Object.fromEntries(target.items.map((item) => [item.id, item.label]))]));
+      const labels = referenceLabels();
       return summarizeChanges({ fields, before: live, after: saved, references: labels, choiceLabels: choiceLabelsOf(view?.choices), ...(collection && !live ? { newRecord: { itemLabel: collection.itemLabel, title: titleText() } } : {}) });
     };
     const stale = Boolean(view?.draft?.stale);
@@ -636,24 +651,29 @@ export const startAdmin = (options: AdminOptions) => {
       const badLinks = form.invalidLinks();
       title.textContent = titleText();
       inspector?.setTitle(titleText());
-      const published = hasDraft ? undefined : publishedStateOf(resourceOf());
+      const liveNow = hasDraft ? undefined : publishedStateOf(resourceOf());
+      const published = liveNow === "failed" ? undefined : liveNow;
       const reason = stale ? "The website changed after this draft was started. Discard it and make your change again."
         : publishBlockReason({ conflict, dirty: count > 0, hasDraft, invalid: Boolean(problem), changes: hasDraft && !count ? changesToPublish().length : 0 });
       const state = deriveSaveState({
         unsaved: count, hasDraft, canSave: !conflict && !saving && !discarding && !badLinks, publishBlockReason: reason, recordLive, host: siteHost(),
-        busy: saving ? "Saving draft…" : discarding ? "Discarding draft…" : undefined,
-        problem: problem || undefined, published,
+        busy: saving ? "Saving draft…" : publishing ? "Publishing…" : discarding ? "Discarding draft…" : undefined,
+        problem: problem || (liveNow === "failed" ? buildFailedText(liveState?.pending.commit ?? "") : "") || undefined, published,
+        typicalMinutes: boot.publish?.typicalMinutes,
+        ...(published === "publishing" || published === "waiting" ? { detail: elapsedText(now() - (liveState?.pending.at ?? now())) } : {}),
       });
+      if (!offering && recovery) recovery.sync(count > 0);
       showState(state);
       save.disabled = !state.saveEnabled;
       save.textContent = saving ? "Saving…" : "Save draft";
       save.dataset.tooltip = badLinks ? INVALID_LINK_REASON : count && conflict ? "Resolve conflicts or loading errors before saving." : "Save your changes as a draft.";
       publish.disabled = !state.publishEnabled;
-      publish.textContent = discarding ? "Discarding…" : "Publish";
+      // Mr Spa: while saving, Publish reads "Saving…" too.
+      publish.textContent = publishing ? "Publishing…" : saving ? "Saving…" : discarding ? "Discarding…" : "Publish";
       publish.dataset.tooltip = state.publishTooltip;
       discard.hidden = !(hasDraft || count > 0) || saving || discarding;
       reloadKeep.hidden = !conflict;
-      checkAgain.hidden = published !== "waiting";
+      checkAgain.hidden = published !== "waiting" && liveNow !== "failed";
       syncMore();
     };
 
@@ -686,6 +706,14 @@ export const startAdmin = (options: AdminOptions) => {
         refresh();
       },
     });
+
+    const recovery: Recovery | undefined = isNew ? undefined : createRecovery({ storage, resource: resourceOf(), user: user.username, version: () => version, content: () => form.value(), dirty: () => dirty() > 0, now });
+    flushRecovery = recovery?.flush;
+    // The copy is read before the first refresh (which removes a copy while there are no unsaved changes).
+    const snapshot = !isNew && !kept ? readRecovery(storage, resourceOf(), now()) : null;
+    const offer = snapshot && JSON.stringify(snapshot.content) !== JSON.stringify(saved) && (snapshot.user === null || snapshot.user === user.username) && snapshot.version === version ? snapshot : null;
+    if (offer) offering = true;
+    else if (snapshot) forgetRecovery(storage, resourceOf());
 
     // P9: the page in the canvas, showing this draft as it is typed.
     const owner = (): PreviewOwner => (input.kind === "file" ? `file:${input.file.key}` : `item:${input.collection.key}:${input.id ?? (String(form.value()[input.collection.idField] ?? "") || "new")}`);
@@ -815,9 +843,23 @@ export const startAdmin = (options: AdminOptions) => {
       dirtyGuard = true;
     };
 
-    const publishHere = () => {
-      if (publish.disabled || dirty()) return;
-      openPublishDialog({ resource: resourceOf(), title: titleText(), changes: changesToPublish(), onFailed: refresh, onDone: () => { void go(currentPath, { replace: true, force: true }); } });
+    // M6 (Mr Spa): "Review changes" (by section) → "Publish {name}" → publish; Publish reads "Publishing…" and the
+    // outcome is the save state (no toast).
+    const publishHere = async () => {
+      if (publish.disabled || dirty() || publishing) return;
+      const name = titleText();
+      const changes = summarizeChanges({ fields, before: live, after: saved, references: referenceLabels(), choiceLabels: choiceLabelsOf(view?.choices), full: true, ...(collection && !live ? { newRecord: { itemLabel: collection.itemLabel, title: name } } : {}) });
+      if (!changes.length) { problem = "There are no changes to publish."; refresh(); return; }
+      if (!(await confirmPublish(name, reviewGroups(changes, sectionList, name)))) return;
+      publishing = true;
+      problem = "";
+      refresh();
+      const result = await publishResource(resourceOf(), name);
+      publishing = false;
+      if (!result.ok) { problem = publishProblem(result); refresh(); return; }
+      hasDraft = false;
+      forgetRecovery(storage, resourceOf());
+      await go(currentPath, { replace: true, force: true });
     };
 
     // Mr Spa: the one Discard icon — a saved draft is deleted (the website keeps what it shows); unsaved edits only
@@ -843,7 +885,7 @@ export const startAdmin = (options: AdminOptions) => {
       if (isNew && collection) await go(adminHref.list(collection.key), { force: true });
       else await go(currentPath, { replace: true, force: true });
     };
-    const checkLive = async () => { await liveTick(); refresh(); };
+    const checkLive = async () => { await liveTick(0); refresh(); };
 
     save.addEventListener("click", () => { void doSave(); });
     setTopIcons([viewLive, historyLink, discard, reloadKeep, checkAgain]);
@@ -857,11 +899,23 @@ export const startAdmin = (options: AdminOptions) => {
       // U2: the device switch in the middle of the top bar.
       topCenter.append(preview.devices);
     }
-    show({ title: titleText(), crumbs: crumbsFor, dirty, save: doSave, refreshState: refresh, resource: resourceOf(), leave: () => { preview?.destroy(); inspector?.destroy(); body.classList.remove("vc-body-wide"); } }, split ? [split] : content);
+    show({ title: titleText(), crumbs: crumbsFor, dirty, save: doSave, refreshState: refresh, resource: resourceOf(), leave: () => { recovery?.stop(); if (flushRecovery === recovery?.flush) flushRecovery = undefined; if (dirty()) forgetRecovery(storage, resourceOf()); preview?.destroy(); inspector?.destroy(); body.classList.remove("vc-body-wide"); } }, split ? [split] : content);
     preview?.start();
     refresh();
     // M4: a Link field turning invalid / valid turns Save off / on.
     form.element.addEventListener(LINK_VALIDITY, () => refresh());
+    // M6 (Mr Spa): a copy of the unsaved edits in this browser — offered back when the record is opened again.
+    if (offer) {
+      const here = currentPath;
+      const noun = input.kind === "file" ? "page" : input.collection.itemLabel.toLowerCase();
+      void ask(recoveryQuestion(noun, offer.savedAt, now()), { confirm: "Restore changes", cancel: "Discard them" }).then((yes) => {
+        offering = false;
+        if (currentPath !== here || !input.stillHere()) return;
+        if (!yes) { forgetRecovery(storage, resourceOf()); return; }
+        carry = { path: here, changes: unsavedLeafChanges(saved, offer.content) };
+        void go(here, { replace: true, force: true });
+      });
+    }
     if (pendingFocus) { const target = pendingFocus; pendingFocus = undefined; focusAfterShow = () => reveal(target); }
   };
 
@@ -925,34 +979,36 @@ export const startAdmin = (options: AdminOptions) => {
     });
   };
 
-  /** U3 / U4: the review dialog of one draft (Mr Spa 03) — what changes, then "Publish to website". */
-  const openPublishDialog = (input: { resource: string; title: string; changes: Change[]; onFailed?: () => void; onDone: () => void }) => {
-    const host = siteHost();
-    const problem = h(doc, "div", { class: "vc-dialog-problem", role: "alert", hidden: true });
-    openDialog(doc, {
-      title: `Publish ${input.title}?`,
-      text: `These changes go live on ${host} in a few minutes. Other pages are not affected.`,
-      body: [input.changes.length ? h(doc, "ul", { class: "vc-changes vc-dialog-changes" }, input.changes.map(changeItem)) : h(doc, "p", { class: "vc-note" }, "No differences from the website. Publishing it only clears the draft."), problem],
-      buttons: [{ label: "Cancel", value: "cancel" }, { label: "Publish to website", kind: "primary", value: "publish" }],
-      onButton: async (value, dialog) => {
-        if (value !== "publish") return true;
-        dialog.busy(true);
-        problem.hidden = true;
-        const result = await api.post<PublishResult>("/api/cms/publish", { resources: [input.resource] });
-        dialog.busy(false);
-        if (!result.ok) {
-          input.onFailed?.();
-          clear(problem);
-          problem.append(h(doc, "p", {}, publishProblem(result)), h(doc, "a", { href: adminHref.review(input.resource), onclick: () => dialog.close("cancel") }, "Open in Review & publish"));
-          problem.hidden = false;
-          return false;
-        }
-        if (result.data.commitSha) watchLive({ expected: result.data.expectedLiveVersion, at: now(), userId: user.id, labels: [input.title], resources: result.data.resources });
-        void refreshDrafts();
-        input.onDone();
-        return true;
-      },
+  /** M6 (Mr Spa): the changes grouped by the inspector's sections (one group, named after the record, without them). */
+  const reviewGroups = (changes: Change[], sections: InspectorSection[], name: string): ReviewGroup[] => {
+    const groups = sections.map((section) => ({ label: section.key === "_all" ? name : section.label, changes: [] as Change[] }));
+    const rest: Change[] = [];
+    for (const change of changes) {
+      const section = sectionOfPath(sections, change.path);
+      (section ? groups[sections.indexOf(section)].changes : rest).push(change);
+    }
+    return rest.length ? [{ label: name, changes: rest }, ...groups] : groups;
+  };
+  /** M6 (Mr Spa): "Review changes" → "Publish {name}" (This will publish to {host}.). True = publish. */
+  const confirmPublish = async (name: string, groups: ReviewGroup[]) => {
+    const review = openDialog(doc, {
+      title: "Review changes", text: `Review the changes to ${name} before publishing.`,
+      body: [reviewSummary(doc, groups)],
+      buttons: [{ label: "Cancel", value: "cancel" }, { label: "Continue to publish", kind: "primary", value: "continue" }],
     });
+    review.element.classList.add("vc-review-dialog");
+    review.element.querySelector<HTMLElement>('[data-value="cancel"]')?.focus();
+    if ((await review.done) !== "continue") return false;
+    return ask(`Publish ${name}\n\nThis will publish to ${siteHost()}.`, { confirm: "Publish" });
+  };
+  /** Publish one resource; a commit is then followed until it is live. */
+  const publishResource = async (resource: string, name: string) => {
+    const result = await api.post<PublishResult>("/api/cms/publish", { resources: [resource] });
+    if (result.ok) {
+      if (result.data.commitSha) watchLive({ expected: result.data.expectedLiveVersion, at: now(), userId: user.id, labels: [name], resources: result.data.resources, commit: result.data.commitSha });
+      void refreshDrafts();
+    }
+    return result;
   };
 
   // ---------------------------------------------------------------- U4: Drafts (Mr Spa 18)
@@ -973,12 +1029,19 @@ export const startAdmin = (options: AdminOptions) => {
       return `${plural(changes.length, "change")}: ${places.slice(0, 3).join(", ")}${places.length > 3 ? ` and ${places.length - 3} more` : ""}`;
     };
     const waiting = reviews.map(({ row, view, changes }) => {
-      const publishButton = h(doc, "button", { type: "button", class: "vc-button", "data-action": "publish-draft", disabled: row.stale || !view.ok, onclick: () => openPublishDialog({ resource: row.resource, title: row.label, changes, onDone: () => { pending = route(); } }) }, "Publish");
+      const publishButton = h(doc, "button", { type: "button", class: "vc-button", "data-action": "publish-draft", disabled: row.stale || !view.ok, onclick: async () => {
+        // M6: the same two dialogs as in the editor.
+        const sections = inspectorSections(fieldsOfDraft(row) ?? {}, row.kind === "file" ? boot.files.find((entry) => entry.key === row.key)?.sections : undefined, row.label);
+        if (!(await confirmPublish(row.label, reviewGroups(changes, sections, row.label)))) return;
+        const result = await publishResource(row.resource, row.label);
+        if (!result.ok) { say(publishProblem(result), "error"); return; }
+        pending = route();
+      } }, "Publish");
       const discard = async () => {
         if (!(await ask(`Discard your draft?\n\nThe website stays as it is. The changes saved in this ${row.label} draft are deleted.`, { confirm: "Discard draft", danger: true }))) return;
         const result = await api.delete(urlOfDraft(row));
         if (!result.ok) { say(result.message, "error"); return; }
-        say("Draft discarded.");
+        // M6 (Mr Spa): no toast — the list shows it.
         pending = route();
       };
       return h(doc, "li", { class: "vc-row vc-draft-row", "data-resource": row.resource },
@@ -1198,44 +1261,55 @@ export const startAdmin = (options: AdminOptions) => {
   // screens are open, and after a reload. Once live, the open record reloads quietly.
 
   let liveTimer: ReturnType<typeof setTimeout> | undefined;
-  let liveState: { state: PublishedState; resources: string[]; pending: PendingPublish } | undefined;
+  let elapsedTimer: ReturnType<typeof setInterval> | undefined;
+  type LiveState = PublishedState | "failed";
+  let liveState: { state: LiveState; resources: string[]; pending: PendingPublish } | undefined;
   const publishedStateOf = (resource: string) => (liveState && liveState.resources.includes(resource) ? liveState.state : undefined);
   const remember = (pending: PendingPublish | null) => { try { if (pending) storage?.setItem(PENDING_KEY, JSON.stringify(pending)); else storage?.removeItem(PENDING_KEY); } catch { /* private mode: just not remembered */ } };
+  // M6 (Mr Spa): the chip's tooltip counts the time since Publish, every second, while it builds.
+  const startElapsed = () => { if (!elapsedTimer) elapsedTimer = setInterval(() => current?.refreshState?.(), 1000); };
+  const stopElapsed = () => { if (elapsedTimer) clearInterval(elapsedTimer); elapsedTimer = undefined; };
   const liveChanged = () => {
     const screen = current;
     if (liveState?.state === "live" && screen?.resource && liveState.resources.includes(screen.resource) && !screen.dirty?.()) { void go(currentPath, { replace: true, force: true }); return; }
     screen?.refreshState?.();
   };
-  const liveTick = async () => {
+  /** The wait before check `attempt` (0 = now): 10, 20, 30, 45 s, then every 60 s (tests pass their own pollMs). */
+  const waitBefore = (attempt: number) => (options.pollMs ?? LIVE_CHECK_STEPS[Math.min(attempt - 1, LIVE_CHECK_STEPS.length - 1)]);
+  const liveTick = async (attempt = 0) => {
     if (!liveState) return;
     if (liveTimer) clearTimeout(liveTimer);
     liveTimer = undefined;
     const { pending } = liveState;
-    const result = await api.get<{ liveVersion: string }>("/api/cms/live-version");
+    const result = await api.get<{ liveVersion: string; build?: string }>(`/api/cms/live-version${pending.commit ? `?commit=${encodeURIComponent(pending.commit)}` : ""}`);
     if (!liveState || liveState.pending !== pending) return;
     if (result.ok && result.data.liveVersion === pending.expected) {
       remember(null);
+      stopElapsed();
       liveState = { ...liveState, state: "live" };
       liveChanged();
       return;
     }
-    if (now() - pending.at >= maxWaitMs) {
-      liveState = { ...liveState, state: "waiting" };
-      liveChanged();
-      return;
-    }
-    liveTimer = setTimeout(() => { void liveTick(); }, pollMs);
+    // The site's build failed (publish.buildCheck): say so instead of waiting. The receipt stays (checked again on reload).
+    if (result.ok && result.data.build === "failed") { stopElapsed(); liveState = { ...liveState, state: "failed" }; liveChanged(); return; }
+    // At most 20 minutes from the publish (also across reloads); check `attempt` 0 always runs.
+    const wait = waitBefore(attempt + 1);
+    if (now() - pending.at + wait > maxWaitMs) { stopElapsed(); liveState = { ...liveState, state: "waiting" }; liveChanged(); return; }
+    if (liveState.state !== "publishing") { liveState = { ...liveState, state: "publishing" }; liveChanged(); }
+    startElapsed();
+    liveTimer = setTimeout(() => { void liveTick(attempt + 1); }, wait);
   };
   const watchLive = (pending: PendingPublish) => {
     if (liveTimer) clearTimeout(liveTimer);
     remember(pending);
     liveState = { state: "publishing", resources: pending.resources ?? [], pending };
-    liveTimer = setTimeout(() => { void liveTick(); }, pollMs);
+    startElapsed();
+    void liveTick(0);
   };
-  // A publish started before a reload (by this person) is still watched.
+  // A publish started before a reload (by this person) is still watched: the receipt stays until it is live.
   try {
     const saved = JSON.parse(storage?.getItem(PENDING_KEY) ?? "null") as PendingPublish | null;
-    if (saved && saved.userId === user.id && typeof saved.expected === "string" && now() - saved.at < 6 * 3600_000) watchLive(saved);
+    if (saved && saved.userId === user.id && typeof saved.expected === "string" && typeof saved.at === "number") watchLive(saved);
     else if (saved) remember(null);
   } catch { remember(null); }
 

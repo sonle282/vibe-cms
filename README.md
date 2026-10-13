@@ -281,6 +281,21 @@ The site needs:
   5. In the site folder: `npx wrangler secret put VIBE_GITHUB_TOKEN` and paste it. Never put it in the repository,
      `cms.config.ts` or `wrangler.jsonc`; for local development only, `.dev.vars` (git-ignored).
   6. To rotate: create the new token, `wrangler secret put` it, then revoke the old one on GitHub.
+  7. With `publish.buildCheck` (below): also **Checks: Read-only**, so the admin can see the site's build.
+
+**Publishing in the admin (M6, as in the Mr Spa CMS).** Publish opens **Review changes** (the record's changes by
+section, before → after, the changed words marked, images as thumbnails), then **Publish {name}** ("This will publish
+to {host}."). The status then says "Publishing… this usually takes {typicalMinutes} minutes" (the time since Publish in
+its tooltip), checks at 0, 10, 20, 30, 45 s and then every minute, for at most 20 minutes, also after a reload, and
+says "Live on {host}" (the record reloads quietly) or "Still publishing — check again in a few minutes". Unsaved edits
+are kept in the browser for 24 hours: opening the record again asks **Restore unsaved changes?**.
+
+```ts
+publish: { typicalMinutes: "5–10", buildCheck: "Workers Builds" },  // both optional
+```
+
+`buildCheck` = the name of the GitHub check run that builds the site (Cloudflare Workers Builds is "Workers Builds"):
+when it fails, the status says "The website build failed for this publish (commit …)" instead of waiting.
 
 ## Sign-in and People (P6)
 

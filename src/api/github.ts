@@ -35,7 +35,22 @@ export interface GitPublisher {
   exists?(sha: string, paths: string[]): Promise<Set<string>>;
   /** P12c: the newest commits on the branch that changed `path` (GitHub's commits list filtered by path). */
   history?(path: string, limit: number): Promise<HistoryCommit[]>;
+  /** M6: the check runs of a commit (the site's build, e.g. Cloudflare "Workers Builds"). */
+  checkRuns?(sha: string): Promise<CheckRun[]>;
 }
+export type CheckRun = { id: number; name: string; status: string; conclusion: string | null };
+
+/**
+ * M6 (the Mr Spa CMS's publish-build.ts): the state of the site's build for a commit, from the newest check run whose
+ * name holds `name` (any case) — pending while it runs or is not there yet; unknown when GitHub cannot say.
+ */
+export const buildState = (runs: readonly CheckRun[], name: string): "pending" | "success" | "failed" | "unknown" => {
+  const wanted = name.toLowerCase();
+  const run = runs.filter((entry) => entry.name.toLowerCase().includes(wanted)).sort((a, b) => b.id - a.id)[0];
+  if (!run || run.status !== "completed") return "pending";
+  if (run.conclusion === "success") return "success";
+  return ["failure", "cancelled", "timed_out", "startup_failure"].includes(run.conclusion ?? "") ? "failed" : "unknown";
+};
 
 export type HistoryCommit = { sha: string; date: string; message: string; author: string };
 
@@ -134,6 +149,10 @@ export const createGitHubPublisher = ({ token, repo, apiUrl = "https://api.githu
         for (const path of wanted) if (names.has(path)) found.add(path);
       }
       return found;
+    },
+    async checkRuns(sha) {
+      const rows = await json<{ check_runs?: Array<{ id: number; name: string; status: string; conclusion: string | null }> }>(await call("GET", `/commits/${encodeURIComponent(sha)}/check-runs?per_page=50`), "check_runs");
+      return (rows.check_runs ?? []).map((run) => ({ id: run.id, name: run.name, status: run.status, conclusion: run.conclusion }));
     },
     async history(path, limit) {
       type Row = { sha: string; commit: { message: string; author?: { name?: string; date?: string } | null; committer?: { date?: string } | null } };

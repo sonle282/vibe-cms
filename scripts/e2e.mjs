@@ -452,12 +452,15 @@ try {
   await open("/admin/catalog/posts/spring-colours");
   await input("title").fill("Spring colours");
   await save();
-  // U3: the editor's Publish opens the review dialog of this draft (what changes); Cancel leaves it a draft.
+  // M6 (Mr Spa): Publish = "Review changes" (by section, the changed words marked) → "Publish {name}"; Cancel leaves it a draft.
   await page.locator('[data-action="publish"]').click();
-  const publishDialog = page.getByRole("alertdialog", { name: /^Publish .+\?$/ });
-  const publishText = await publishDialog.innerText();
-  await shot("u3-publish-dialog");
-  check("publish dialog: lists this draft's change and publishes to the website", /These changes go live on .+ in a few minutes/.test(publishText) && /Title: Spring colours \(draft\)\s*→\s*Spring colours/.test(publishText) && await publishDialog.getByRole("button", { name: "Publish to website" }).isVisible(), publishText);
+  const reviewDialog = page.getByRole("alertdialog", { name: "Review changes" });
+  const editorReview = await reviewDialog.innerText();
+  await shot("m6-review-changes");
+  check("review changes (M6): the record's changes, before → after, the changed words marked", /Review the changes to Spring colours before publishing\./.test(editorReview) && /Changed: Title/.test(editorReview) && /Spring colours \(draft\)\s*→\s*Spring colours/.test(editorReview) && (await reviewDialog.locator(".vc-review-value.is-before mark").textContent()).trim() === "(draft)", editorReview);
+  await reviewDialog.getByRole("button", { name: "Continue to publish" }).click();
+  const publishDialog = page.getByRole("alertdialog", { name: "Publish Spring colours" });
+  check("publish (M6): “This will publish to demo.example.” · Cancel · Publish", /This will publish to demo\.example\./.test(await publishDialog.innerText()) && await publishDialog.getByRole("button", { name: "Publish", exact: true }).isVisible(), await publishDialog.innerText());
   await publishDialog.getByRole("button", { name: "Cancel" }).click();
   // U3: the CMS dialog, not the browser's confirm().
   await page.locator('[data-action="discard"]').click();

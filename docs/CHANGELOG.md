@@ -3,7 +3,25 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## Unreleased (M1, M2, M3, M3c, M4, M5)
+## Unreleased (M1, M2, M3, M3c, M4, M5, M6)
+
+**M6 — saving and publishing like the Mr Spa CMS.** Nothing to do on a site; new optional settings.
+
+- **Publish = two dialogs:** "Review changes" ("Review the changes to {name} before publishing.") — the changes by
+  section, "Changed: / Added: / Removed: {label}", before → after with the changed words marked, images as 40 × 28
+  thumbnails — then "Publish {name}" ("This will publish to {host}."). Publish reads "Publishing…" while it runs; the
+  outcome is the status, not a toast. The Drafts screen's Publish uses the same two dialogs.
+- **After Publish:** checks at 0, 10, 20, 30, 45 s, then every 60 s, for at most 20 minutes from the publish (it was
+  every 10 s for 15 minutes); the receipt stays until the change is live, so a reload checks again. The chip's tooltip
+  counts the time ("· 1m 5s").
+- **`publish: { typicalMinutes, buildCheck }`** in `cms.config.ts`: "Publishing… this usually takes 5–10 minutes";
+  with `buildCheck` (the GitHub check run that builds the site, e.g. "Workers Builds"; the token needs Checks: read)
+  a failed build says "The website build failed for this publish (commit …). The website still shows the previous
+  version." — Check again looks once more. `GET /api/cms/live-version?commit=<sha>` answers `build`.
+- **Unsaved edits are kept in this browser** (400 ms after the last edit, at once when the page goes away; 24 h;
+  removed on Save / Discard / Publish / sign-out). Opening the record again on the same website version asks "Restore
+  unsaved changes?" — Restore changes / Discard them.
+- No toast after discarding a draft on the Drafts screen.
 
 **M5 — images like the Mr Spa CMS.** Nothing to do on a site; the content does not change shape.
 
