@@ -37,7 +37,8 @@ export type ImageField = Base & { type: "image"; alt?: boolean; mobile?: boolean
 export type SelectField = Base & { type: "select"; options: readonly string[] };
 /** Content: [{ days: [1, 2, 3, 4, 5], label?, open: "09:00", close: "19:00" }, { days: [0], closed: true }] (0 = Sunday). */
 export type HoursField = Base & { type: "hours" };
-export type ObjectField = Base & { type: "object"; fields: Record<string, Field> };
+/** M3c: `flat` — in the page inspector its fields show as the section's own (no group around them), as in the Mr Spa CMS. */
+export type ObjectField = Base & { type: "object"; fields: Record<string, Field>; flat?: boolean };
 /** P12b: fixed = the site's code owns the shape — nobody (owner included) adds, removes or moves items; values inside stay editable. */
 export type ListField = Base & { type: "list"; of: Field; ordered?: boolean; min?: number; max?: number; itemLabel?: string; fixed?: boolean };
 export type ReferenceField = Base & { type: "reference"; to: string; multiple?: boolean; ordered?: boolean };
@@ -70,6 +71,10 @@ export type RuleContext = { file: (key: string) => unknown; items: (key: string)
 export type RuleProblem = { path: string; message: string; hint?: string; warning?: boolean };
 export type ContentRule = (value: Record<string, unknown>, content: RuleContext) => RuleProblem[] | undefined;
 
+/**
+ * A group of fields in the page inspector. `fields`: field keys, or (M3c) a path into one — an object's field ("hero.title")
+ * or an item of a fixed list ("services[0].card") — so one list can give a section per item, as the Mr Spa CMS does.
+ */
 export type Section = { key: string; label: string; fields: string[] };
 
 /** One file = one record (a page, the salon info). */

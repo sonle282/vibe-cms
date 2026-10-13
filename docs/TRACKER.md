@@ -2,7 +2,7 @@
 
 > Nguồn: [DESIGN.md](DESIGN.md) §I. Quy tắc: 1 task = 1 commit; mỗi task REPORT → DỪNG chờ review. Test của gói **không đọc
 > dữ liệu site khách**. Task có sửa repo site: đầu task `git status` sạch + pull nhánh production của site; có thay đổi
-> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-13 (M3, M3b xong · 3 track A → C → B, DESIGN §H.4–H.5; tiếp theo M3c rồi M4).
+> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-13 (M3c xong · 3 track A → C → B, DESIGN §H.4–H.5; tiếp theo M4).
 
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|
@@ -44,7 +44,7 @@
 | **M2** | **A ·** Vai trò Admin / Editor: ~~migration D1~~ (giữ mã lưu `owner`, §H.1), config `"admin"` (+ `"owner"` một cảnh báo), CLI `reset-admin-password` (bí danh cũ), chữ trên mọi màn; hộp Change password thay màn My account (giữ bắt đổi mật khẩu tạm) | 6–10 | ✅ Xong (2026-10-12) |
 | **M3** | **A ·** Sửa trang 2 cấp: danh sách section theo thứ tự trên trang (tóm tắt, chấm chưa lưu, tip ẩn được), cấp 2 (←, Esc, trượt 220 ms, nhớ section), field (nhãn = nút, help trên ô, hộp lỗi đầu trang), list (N of M, Banner 1, ↑ ↓ ×, hỏi trước khi xoá, chọn thẻ ↔ preview, ghi chú preview); bridge (chip trên / trong, viền section, chớp, chỉ cuộn khi khuất); bỏ bộ đếm ký tự mọi ô | 16–24 | ✅ Xong (2026-10-13) |
 | **M3b** | **A ·** Đo "y chang" (§H.4): script ở repo Innovate chạy **CMS chép** và **admin của gói** trên cùng nội dung, ở máy (D1 / KV local, người dùng thử tạo tại chỗ), chụp từng màn đặt cạnh nhau → ảnh kèm mỗi task về sau; không đụng production | 4–6 | ✅ Xong (2026-10-13; repo Innovate `scripts/cms-parity-shots.mjs` + báo cáo private: 4 chỗ sửa ngay trong M3, phần còn lại vào M5 / M7 / M11 / M12, M3c và config Innovate) |
-| M3c | **A ·** (Từ M3b) section trỏ vào item của **list cố định** (`services[0].card` …, như CMS Mr Spa chia mỗi dịch vụ thành nhiều section) + object lồng trong section hiện phẳng với nhãn ghép ("Title · First line") | 6–10 | ⏳ |
+| **M3c** | **A ·** (Từ M3b) section trỏ vào item của **list cố định** (`services[0].card` …, như CMS Mr Spa chia mỗi dịch vụ thành nhiều section) + object lồng trong section hiện phẳng với nhãn ghép ("Title · First line") | 6–10 | ✅ Xong (2026-10-13; object lồng: `flat: true` trong config thay cho nhãn ghép — người viết config đặt nhãn đầy đủ như Mr Spa) |
 | M4 | **A ·** `f.link` (Page · Web address · Phone · Email, Find a page > 8, "Opens: …", lỗi bằng lời thường, Save tắt khi link sai) + `f.phone` (`site.phone.country`) | 10–14 | ⏳ |
 | M5 | **A ·** Ảnh y chang: thẻ (Desktop / Mobile ghép `mobile`, ô trống nét đứt, hover Replace / Adjust / thả file, thả = tải lên có %, ⋯ Set as main / Copy / Remove trừ ảnh bắt buộc); bỏ ô địa chỉ / alt / ảnh phone dưới thẻ; sheet (ngữ cảnh, chip theo nhóm, Load more 40, lưới 5 cột, chân sheet, Undo); Adjust như Mr Spa (Shape + điểm lấy nét) thay giao diện Crop | 14–20 | ⏳ |
 | M6 | **A ·** Lưu / publish y chang: bản khôi phục cục bộ 24 h + "Restore unsaved changes?", 2 hộp thoại (Review changes theo section + `<mark>` + ảnh nhỏ → Publish {name}), tiến độ trong chip + biên nhận localStorage + lịch theo dõi 20 phút + build failed (`publish.buildCheck`), Live tải lại lặng lẽ, chữ Leave / Discard / 409; bỏ toast lưu / publish. Rồi release **v0.22.0** + Novelle | 14–20 | ⏳ |

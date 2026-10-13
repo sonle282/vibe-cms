@@ -684,7 +684,7 @@ export const startAdmin = (options: AdminOptions) => {
     const inspector: Inspector | undefined = preview ? createInspector({
       doc, form, fields, sections: sectionList, crumb: input.crumbs.at(-1)?.[0] ?? "Pages", title: titleText(), before: [banner],
       value: () => form.value(), saved: () => saved, session: sessionStore, local: storage ?? null, resource: resourceOf(),
-      onEnter: (section) => { preview?.bridge()?.showSection(section.fields.map((key) => keyPath(key)), section.label, section.key.startsWith("_") ? undefined : section.key); },
+      onEnter: (section) => { preview?.bridge()?.showSection(section.fields.map((key) => parsePathText(key)), section.label, section.key.startsWith("_") ? undefined : section.key); },
       onLeave: () => { preview?.bridge()?.clearSelection(); lastFocused = ""; },
     }) : undefined;
     /** Focus a field (or the closest one that has its own control), opening its section first (M3). */
