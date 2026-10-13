@@ -317,14 +317,22 @@ Markdown stays Markdown, in the post's own style (§C.6). The browser code ships
 
 ## Images (P10)
 
-Image fields have **Choose image…**: upload a photo or pick one already on the site (docs/DESIGN.md §C.5). The browser
-makes it at most 2400 px and WebP; the server checks the real type from the bytes and keeps it in the site's R2 bucket
-until a publish puts it into the same commit as the content that uses it. The site needs:
+An image field is the **image card** of the Mr Spa CMS (M5): the picture as it is, Desktop | Mobile when it has a phone
+version (`f.image({ mobile: true })`), on hover **Replace · Adjust · or drop an image here**, the line "name · W × H · KB
+Replace", and ⋯ = Set as main (an image of a list) · Copy image link · Remove image (not for a required image or an
+image of a list). `alt: true` adds an **Image description** under the card. **Replace** opens the image sheet: Library
+| Upload, search by file name, page or product, the chips **All · Pages · each collection · Not used · Not published
+yet**, 40 images at a time ("Load more"), Cancel · Use image; after a change "Image replaced" / "Image added" with Undo.
+A file dropped on the card is uploaded at once ("Uploading… 42%").
+
+The browser makes an upload at most 2400 px and WebP; the server checks the real type from the bytes and keeps it in the
+site's R2 bucket until a publish puts it into the same commit as the content that uses it. The site needs:
 
 - **R2 binding `CMS_MEDIA`** — the site's `<site>-media` bucket. Without it everything else works and the picker says
   uploading is not set up (images already in `public/` can still be chosen).
-- **Crop / resize** in the sheet makes a **new copy** (shape presets, move the crop, choose the width) — the original
-  is never changed. It is made in the browser; no Cloudflare `IMAGES` binding.
+- **Adjust** (on the card) makes a **new copy** for the image area — Shape Original / Square 1200 × 1200 / Landscape
+  1600 × 900 / Portrait 1200 × 1500, around a focus point — then offers it in the sheet. The original is never changed.
+  It is made in the browser; no Cloudflare `IMAGES` binding.
 - Optional `media: { dir: "public/assets/uploads", maxBytes: 10 * 1024 * 1024 }` in `cms.config.ts` (these are the
   defaults; `maxBytes` at most 25 MiB).
 

@@ -737,7 +737,7 @@ nào là tên / host của site thì lấy từ config.
 - Lỗi bằng lời thường; khi link sai: "Opens: … — until this is fixed" và tắt Save.
 
 **Ảnh**
-- Thẻ ảnh:
+- Thẻ ảnh (M5 ✅, theo spec đọc từ code Mr Spa):
   - Ảnh `contain` trên nền `#F5F5F7`.
   - Hover: Replace · Adjust (ảnh tải lên) · "or drop an image here".
   - **Thả file lên thẻ = tải lên** ("Uploading… N%").
@@ -754,7 +754,9 @@ nào là tên / host của site thì lấy từ config.
   - Sau khi dùng: toast "Image replaced" / "Image added" + Undo.
 - Adjust:
   - "Create a new copy for this image area…".
-  - Shape: Original / Square / Landscape / Portrait; bấm để đặt điểm lấy nét + 2 thanh trượt.
+  - Shape: Original / Square 1200 × 1200 / Landscape 1600 × 900 / Portrait 1200 × 1500; bấm để đặt điểm lấy nét + 2
+    thanh trượt (Horizontal / Vertical focus). Bản sao làm trong trình duyệt (canvas), tên `{ảnh}-{shape}`, rồi mở lại
+    sheet với bản sao được chọn sẵn.
   - Nút "Create adjusted copy". Bản gốc giữ nguyên (P12f giữ cơ chế, đổi giao diện).
 
 **Lưu / Publish**

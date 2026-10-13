@@ -3,7 +3,28 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## Unreleased (M1, M2, M3, M3c, M4)
+## Unreleased (M1, M2, M3, M3c, M4, M5)
+
+**M5 — images like the Mr Spa CMS.** Nothing to do on a site; the content does not change shape.
+
+- **Image card:** the picture as it is (contain, on #F5F5F7), Desktop | Mobile ("No mobile image — the desktop image is
+  used"), on hover Replace · Adjust · "or drop an image here"; the meta line "name · 1920 × 1280 · 193 KB · Replace"
+  (a long name is cut in the middle); ⋯ = Set as main (an image of a list that is not the first: moved to the front) ·
+  Copy image link · Remove image (none for a required image or an image of a list). An empty image is the dashed
+  "Choose image". The address boxes under the card are gone; `alt` is an **Image description** box under it.
+- **Drop a file on the card** = it is checked ("This file type is not supported…", "larger than 10 MB", empty), uploaded
+  with its progress ("Uploading… 42%") and used — "Image added" / "Image replaced" with Undo.
+- **Image sheet:** "Homepage › Showroom" over "Choose image for {area}"; Library | Upload; "Search by file name, page or
+  product"; "N images (found)"; chips **All · Pages · each collection · Not used · Not published yet**; 5 columns, the
+  current image first ("Current"), uploads not on the website yet marked "Not published yet", "Used on" under a tile
+  ("Salon info +1"); "Load more" (40 at a time); Cancel · Use image; arrows / Home / End / Enter, double-click, Esc.
+  An upload is selected in the Library (it is not used until Use image). `GET /api/cms/media` now also says where the
+  live content uses each image (`usage`).
+- **Adjust** replaces Crop / resize: the "Adjust image" dialog (Shape Original / Square / Landscape / Portrait, the
+  focus point — click the preview or the Horizontal / Vertical focus sliders — "Create adjusted copy"); the copy is a
+  new upload named `{image}-{shape}`, then offered first in the sheet. `cropRect` / `outputSize` / `CROP_PRESETS` /
+  `RESIZE_WIDTHS` are now `adjustRect` / `adjustSize` / `ADJUST_SHAPES`.
+- Upload errors in the Mr Spa CMS's words ("Too many uploads in a short time…", "The upload was interrupted…").
 
 **M4 — the Link and Phone fields of the Mr Spa CMS.** Nothing to do on a site; new in `cms.config.ts`:
 

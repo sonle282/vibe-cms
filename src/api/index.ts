@@ -41,6 +41,7 @@ import { recordPath, writeArrayItem, writeFile, writeMarkdownItem } from "../wri
 import { sameValue, type WriteResult } from "../writer/json.js";
 import { GitPublishError, type CommitAuthor, type FileContent, type GitPublisher } from "./github.js";
 import { MediaError, repoPathOf, uploadPathsIn, type MediaStore } from "../media/index.js";
+import { addUsage, imagesOfRecord, type ImageUsage } from "../media/usage.js";
 import { addressOfName, mapImageValues, nameOfAddress, uploadNamesIn, uploadTail, type ImageNames } from "../media/names.js";
 import type { Identify, Identity, RateLimiter } from "../auth/index.js";
 
@@ -532,10 +533,38 @@ export const createCmsApi = (deps: CmsApiDeps) => {
 
   // ---------------------------------------------------------------- media (P10)
 
-  const listMedia = async (request: Request) => {
+  /**
+   * M5: where the live content uses each image (by address), for the image sheet — group "Pages" for a file, the
+   * collection's name (the one it is a tab of, when `under`) for a record. Only what this person may open.
+   */
+  const imageUsage = async (user: Identity): Promise<ImageUsage> => {
+    const usage: ImageUsage = {};
+    for (const file of config.files) {
+      if (!mayOpen(user, file)) continue;
+      const record = await reader.file(file.key);
+      if (!record) continue;
+      const target: Target = { kind: "file", file, resource: `file:${file.key}`, label: file.label };
+      addUsage(usage, imagesOfRecord(file.fields, await toAddresses(target, record.data)), { label: file.label, group: "Pages" });
+    }
+    for (const collection of config.collections) {
+      if (!mayOpen(user, collection)) continue;
+      const parent = collection.under ? config.collections.find((entry) => entry.key === collection.under) : undefined;
+      for (const record of await reader.items(collection.key)) {
+        const parsed = parseResourceId(record.resource);
+        const id = parsed.kind === "item" ? parsed.id : "";
+        const target: Target = { kind: "item", collection, id, resource: record.resource, label: collection.itemLabel };
+        const data = await toAddresses(target, record.data);
+        const body = collection.store.kind === "markdown-dir" && data && typeof data === "object" && typeof (data as Record<string, unknown>).body === "string" ? String((data as Record<string, unknown>).body) : undefined;
+        addUsage(usage, imagesOfRecord(collection.fields, data, body), { label: recordLabel(collection, data, id), group: (parent ?? collection).label });
+      }
+    }
+    return usage;
+  };
+
+  const listMedia = async (request: Request, user: Identity) => {
     const cursor = new URL(request.url).searchParams.get("cursor") ?? undefined;
     const uploads = deps.media ? await deps.media.list({ cursor }) : { images: [], cursor: undefined };
-    return json({ uploads: uploads.images, cursor: uploads.cursor ?? null, site: cursor ? [] : deps.siteImages ?? [], uploadsEnabled: Boolean(deps.media), base: deps.media?.settings.base ?? null, maxBytes: deps.media?.settings.maxBytes ?? null });
+    return json({ uploads: uploads.images, cursor: uploads.cursor ?? null, site: cursor ? [] : deps.siteImages ?? [], ...(cursor ? {} : { usage: await imageUsage(user) }), uploadsEnabled: Boolean(deps.media), base: deps.media?.settings.base ?? null, maxBytes: deps.media?.settings.maxBytes ?? null });
   };
 
   const uploadMedia = async (request: Request, user: Identity) => {
@@ -713,7 +742,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     { pattern: /^\/history$/, methods: { GET: (request, user) => history(request, user) } },
     { pattern: /^\/history\/version$/, methods: { GET: (request, user) => historyVersion(request, user) } },
     { pattern: /^\/history\/restore$/, methods: { POST: (request, user) => historyRestore(request, user) } },
-    { pattern: /^\/media$/, methods: { GET: (request) => listMedia(request), POST: (request, user) => uploadMedia(request, user) } },
+    { pattern: /^\/media$/, methods: { GET: (request, user) => listMedia(request, user), POST: (request, user) => uploadMedia(request, user) } },
     { pattern: /^\/live-version$/, methods: { GET: async () => json({ liveVersion: await getLiveVersion(), branch: config.repo.branch }) } },
     { pattern: /^\/publish$/, methods: { POST: (request, user) => publish(request, user) } },
     { pattern: /^\/files\/([a-z][a-z0-9-]*)$/, methods: {

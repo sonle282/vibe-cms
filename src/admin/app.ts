@@ -10,7 +10,7 @@
 import type { Field } from "../config/index.js";
 import type { PickChoices } from "../check/picks.js";
 import { checkRecordValues } from "../check/values.js";
-import { createClient, humanMessage, type ApiFail, type Client, type Fetch } from "./api.js";
+import { createClient, humanMessage, xhrUpload, type ApiFail, type Client, type Fetch } from "./api.js";
 import type { AdminBoot, BootCollection, BootFile } from "./boot.js";
 import { clear, h, icon } from "./dom.js";
 import { confirmDialog, openDialog, type ConfirmOptions } from "./dialog.js";
@@ -19,10 +19,10 @@ import { installTooltips } from "./tooltip.js";
 import { summarizeChanges, type Change, type ReferenceLabels } from "./changes.js";
 import { createForm, type Form, type ReferenceTarget } from "./form.js";
 import { INVALID_LINK_REASON, LINK_VALIDITY } from "./link.js";
-import { ACCEPTED_TYPES, adjustImage, measureImage, openImagePicker, prepareImage, type Adjust, type LibraryImage, type Measure, type Prepare, type PreparedImage } from "./media.js";
+import { ACCEPTED_TYPES, adjustImage, imageFileProblem, measureImage, openAdjust, openImagePicker, prepareImage, type Adjust, type LibraryImage, type Measure, type Prepare, type PreparedImage, type Upload } from "./media.js";
 import { configBinds, fieldAt, type PreviewOwner } from "./bridge.js";
 import { createPreview, previewUrl, type Preview } from "./preview.js";
-import { createInspector, inspectorSections, type Inspector } from "./inspector.js";
+import { createInspector, inspectorSections, sectionOfPath, type Inspector } from "./inspector.js";
 import { openChangePassword, peopleScreen, type ScreenKit } from "./people.js";
 import { activityScreen } from "./activity.js";
 import { historyScreen, type HistoryTarget } from "./history.js";
@@ -87,7 +87,8 @@ export const startAdmin = (options: AdminOptions) => {
   const { root, boot } = options;
   const win = options.window ?? (root.ownerDocument.defaultView as Window);
   const doc = root.ownerDocument;
-  const api: Client = createClient(options.fetch ?? ((input, init) => win.fetch(input, init)));
+  // M5: uploads report their progress (XMLHttpRequest) unless a fetch is passed in (tests).
+  const api: Client = createClient(options.fetch ?? ((input, init) => win.fetch(input, init)), options.fetch ? undefined : xhrUpload(win));
   const ask = (message: string, choice?: ConfirmOptions) => Promise.resolve(options.confirm ? options.confirm(message, choice) : confirmDialog(doc, message, choice));
   /** U3: leaving with unsaved changes — "Keep editing" is the safe choice, "Discard changes" is red. */
   const askLeave = (count: number) => ask(leaveMessage(count), { cancel: "Keep editing", confirm: "Discard changes", danger: true });
@@ -102,16 +103,38 @@ export const startAdmin = (options: AdminOptions) => {
   // P12f: crop / resize in the browser (canvas); tests pass their own.
   const adjust = options.adjustImage ?? adjustImage(win);
   const measure = options.measureImage ?? measureImage(win);
-  const uploadImage = async (prepared: PreparedImage): Promise<{ ok: true; image: LibraryImage } | { ok: false; message: string }> => {
+  // M5: what the library knows about each image (file size, size, name), for the image cards.
+  const imageCache = new Map<string, LibraryImage>();
+  const rememberImages = (images: LibraryImage[]) => { for (const image of images) imageCache.set(image.src, image); };
+  const uploadImage: Upload = async (prepared, onProgress) => {
     const headers: Record<string, string> = { "x-file-name": encodeURIComponent(prepared.name) };
     if (prepared.width && prepared.height) { headers["x-image-width"] = String(prepared.width); headers["x-image-height"] = String(prepared.height); }
-    const result = await api.upload<{ image: LibraryImage & { reused?: boolean } }>("/api/cms/media", prepared.blob, headers);
+    const result = await api.upload<{ image: LibraryImage & { reused?: boolean } }>("/api/cms/media", prepared.blob, headers, onProgress);
     if (!result.ok) { if (result.status === 401 || result.error === "password_change_required") { dirtyGuard = false; win.location.assign("/admin"); } return { ok: false, message: result.message }; }
-    return { ok: true, image: { ...result.data.image, source: "upload" } };
+    const { reused, ...image } = result.data.image;
+    const uploaded: LibraryImage = { ...image, source: "upload" };
+    rememberImages([uploaded]);
+    return { ok: true, image: uploaded, ...(reused ? { reused: true } : {}) };
   };
-  const pickImage = (current: string, done: (image: { src: string }) => void, label?: string) => openImagePicker({
-    doc, api, media, prepare, current, onPick: done, adjust, measure, label, upload: uploadImage,
+  // M5 (Mr Spa): the sheet's area chips — Pages, then each collection on the rail.
+  const imageGroups = [...(boot.files.length ? ["Pages"] : []), ...boot.collections.filter((collection) => !collection.under).map((collection) => collection.label)];
+  const pickImage = (current: string, done: (image: { src: string }) => void, label?: string, more: { context?: string; select?: LibraryImage } = {}) => openImagePicker({
+    doc, api, media, prepare, current, onPick: done, label, upload: uploadImage, groups: imageGroups, onLoad: rememberImages,
+    ...(more.context ? { context: more.context } : {}), ...(more.select ? { select: more.select } : {}),
   });
+  /** M5: a file dropped on an image card — prepared like an upload in the sheet, then uploaded with its progress. */
+  const uploadFile = async (file: File, onProgress: (fraction: number) => void): Promise<{ ok: true; image: LibraryImage } | { ok: false; message: string }> => {
+    let prepared: PreparedImage;
+    try { prepared = await prepare(file); } catch (error) { return { ok: false, message: (error as Error).message }; }
+    if (prepared.blob.size > media.maxBytes) return { ok: false, message: imageFileProblem({ type: "image/webp", size: prepared.blob.size }, media.maxBytes) ?? "" };
+    return uploadImage(prepared, onProgress);
+  };
+  /** M5: Adjust (the Mr Spa CMS's dialog); the copy is then offered in the sheet. Needs uploads. */
+  const adjustAt = (src: string, created: (image: LibraryImage) => void) => {
+    openAdjust({ doc, image: imageCache.get(src) ?? { src, bytes: 0, source: "site" }, measure, adjust, upload: uploadImage, maxBytes: media.maxBytes, onCreated: created });
+  };
+  /** The site's own images and its uploads (same origin) can be adjusted in the browser. */
+  const canAdjust = (src: string) => src.startsWith("/") && !src.startsWith("//");
 
   // ---------------------------------------------------------------- shell
 
@@ -642,6 +665,14 @@ export const startAdmin = (options: AdminOptions) => {
       confirm: (text, choice) => ask(text, choice),
       onItem: (path) => { preview?.scrollTo(path); },
       reveal: (text) => { reveal(text); },
+      // M5: the image cards — drop a file to upload it, Adjust, file sizes; the sheet says where the image area is.
+      ...(media.uploads ? { uploadFile, maxBytes: media.maxBytes, adjustImage: adjustAt, canAdjust } : {}),
+      imageInfo: (src) => imageCache.get(src),
+      imageContext: (path) => {
+        if (input.kind !== "file") return `${input.collection.label} › ${titleText() || `New ${input.collection.itemLabel.toLowerCase()}`}`;
+        const section = sectionOfPath(sectionList, pathText(path));
+        return section && !section.key.startsWith("_") ? `${input.file.label} › ${section.label}` : input.file.label;
+      },
       // M4: Link fields offer the site's pages and say where a link goes; Phone fields follow site.phone.country.
       links: { pages: boot.site.pages ?? [], host: siteHost(), ...(boot.site.phone ? { country: boot.site.phone.country } : {}) },
       previewNotes: Boolean((input.kind === "file" ? input.file.preview : input.collection.preview) && options.preview !== false),
@@ -988,6 +1019,7 @@ export const startAdmin = (options: AdminOptions) => {
     if (!result.ok) return failed(result, crumbsFor);
     const uploadedSet = new Set(result.data.uploads.map((image) => image.src));
     let images: LibraryImage[] = [...result.data.uploads.map((image) => ({ ...image, source: "upload" as const })), ...result.data.site.filter((image) => !uploadedSet.has(image.src)).map((image) => ({ ...image, source: "site" as const }))];
+    rememberImages(images);
     let kind: "all" | "upload" | "site" = "all";
     let selected: LibraryImage | undefined;
     const nameOf = (image: LibraryImage) => image.name || decodeURIComponent(image.src.split("/").pop() || image.src);

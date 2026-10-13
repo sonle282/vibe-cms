@@ -72,7 +72,9 @@ test("form: every field of the demo's salon info renders with the right control,
   const expected = { name: "INPUT", phone: "INPUT", email: "INPUT", "address.street": "INPUT", tagline: "INPUT", "hero.title": "INPUT", "hero.text": "DIV", "seo.title": "INPUT", "seo.description": "TEXTAREA" };
   for (const [path, tag] of Object.entries(expected)) assert.equal(control(form, path)?.tagName, tag, path);
   assert.equal(at(form, "hours").querySelectorAll(".vc-hours-row").length, 3);
-  assert.equal(at(form, "hero.image").querySelectorAll("input").length, 2, "image: address + alt");
+  // M5 (Mr Spa): the image card, then only the image description (no address box under it).
+  assert.ok(at(form, "hero.image").querySelector(".vc-image-card .vc-image-thumb img"), "image: the card");
+  assert.deepEqual([...at(form, "hero.image").querySelectorAll("input")].map((input) => input.closest(".vc-subfield")?.querySelector("label").textContent), ["Image description"]);
   assert.deepEqual([...at(form, "highlights").querySelectorAll(".vc-chosen-label")].map((node) => node.textContent), ["Spa Pedicure", "Classic Manicure"]);
   assert.equal(at(form, "footerLinks[0].links[1].href").querySelector("input").value, "/team/");
   // M3 (Mr Spa): no counter; the input holds at most maxLength.
@@ -97,21 +99,18 @@ test("form: text, select, image, rich text, dotted keys — edits land at the ri
   type(window, control(form, "tagline"), "New tagline");
   type(window, control(form, "seo.title"), "Search title");
   edit(window, control(form, "hero.text"), "<p>Hi</p>");
-  const [src, alt] = at(form, "hero.image").querySelectorAll("input");
-  type(window, src, "/images/new.svg");
-  type(window, alt, "");
+  type(window, at(form, "hero.image").querySelector(".vc-image-alt input"), "");
   const value = form.value();
-  assert.deepEqual(value, { ...site, tagline: "New tagline", seo: { ...site.seo, title: "Search title" }, hero: { ...site.hero, text: "<p>Hi</p>", image: { src: "/images/new.svg", alt: "" } } });
+  assert.deepEqual(value, { ...site, tagline: "New tagline", seo: { ...site.seo, title: "Search title" }, hero: { ...site.hero, text: "<p>Hi</p>", image: { ...site.hero.image, alt: "" } } });
   assert.deepEqual(Object.keys(value), Object.keys(site));
   assert.ok(changes.includes("tagline") && changes.includes("seo.title"));
 
 
-  // An image written as a path stays a path; adding alt makes it { src, alt }.
-  const teamForm = createForm({ doc: document, fields: config.collections[1].fields, value: team[1], role: "owner", references: references() });
-  const [samSrc, samAlt] = at(teamForm, "photo").querySelectorAll("input");
-  type(window, samSrc, "/images/other.svg");
+  // An image written as a path stays a path (a new one is chosen in the sheet); adding alt makes it { src, alt }.
+  const teamForm = createForm({ doc: document, fields: config.collections[1].fields, value: team[1], role: "owner", references: references(), pickImage: (_current, done) => done({ src: "/images/other.svg" }) });
+  at(teamForm, "photo").querySelector(".vc-image-replace").click();
   assert.equal(teamForm.value().photo, "/images/other.svg");
-  type(window, samAlt, "Sam");
+  type(window, at(teamForm, "photo").querySelector(".vc-image-alt input"), "Sam");
   assert.deepEqual(teamForm.value().photo, { src: "/images/other.svg", alt: "Sam" });
   // A select / single reference that was missing stays missing when set back to empty.
   choose(window, control(teamForm, "specialty"), "nail-art");
@@ -568,14 +567,13 @@ test("P8c shell: unsafe HTML typed in rich text is removed on save; the form sho
 
 // ------------------------------------------------------------------ P10: images
 
-test("P10 shell: Choose image… opens the sheet (uploads + site images); uploading picks the new image; Remove empties it", async () => {
+test("P10 / M5 shell: the image card opens the sheet (Current, uploads, the website's images, chips, search); Upload selects the new image; Use image · Undo · Remove", async () => {
   const { createMediaStore, createMemoryBucket, mediaSettings } = await import("../dist/index.js");
-  const { prepareImage } = await import("../dist/admin/index.js");
   const { tinyPng } = await import("./helpers/images.mjs");
   const { window, document } = dom();
   const media = createMediaStore({ bucket: createMemoryBucket(), settings: mediaSettings(config.media), now: () => new Date("2026-03-05T10:00:00Z") });
   const user = { userId: "usr_owner", role: "owner" };
-  const api = createCmsApi({ config, source: createBundledSource(files), drafts: createMemoryDraftStore(), audit: createMemoryAuditLog(), identify: () => user, media, siteImages: [{ src: "/images/hero.svg", bytes: 300 }, { src: "/images/team-sam.svg", bytes: 200 }] });
+  const api = createCmsApi({ config, source: createBundledSource(files), drafts: createMemoryDraftStore(), audit: createMemoryAuditLog(), identify: () => user, media, siteImages: [{ src: "/images/hero.svg", bytes: 300 }, { src: "/images/team-sam.svg", bytes: 200 }, { src: "/images/spare.svg", bytes: 100 }] });
   const uploads = [];
   const fetch = async (url, init = {}) => {
     // happy-dom's Blob is not Node's: hand the API the bytes.
@@ -593,66 +591,99 @@ test("P10 shell: Choose image… opens the sheet (uploads + site images); upload
   await app.ready;
   await app.go("/admin/catalog/team/alex"); await settle(); await app.idle();
   const field = root.querySelector('[data-path="photo"]');
-  const [src, alt] = field.querySelectorAll("input");
-  assert.equal(src.value, "/images/team-alex.svg");
-  const button = (label) => [...field.querySelectorAll("button")].find((entry) => entry.getAttribute("aria-label") === label);
-  button("Choose the image for Photo").click();
+  const shown = () => field.querySelector(".vc-image-thumb img")?.getAttribute("src") ?? "";
+  const alt = field.querySelector(".vc-image-alt input");
+  assert.equal(shown(), "/images/team-alex.svg");
+  assert.equal(field.querySelector(".vc-image-name").textContent, "team-alex.svg");
+  assert.deepEqual([...field.querySelectorAll(".vc-image-overlay button")].map((button) => button.textContent), ["Replace", "Adjust"]);
+  assert.equal(field.querySelector(".vc-image-overlay-hint").textContent, "or drop an image here");
   const sheet = () => document.querySelector(".vc-sheet");
-  assert.ok(sheet(), "the sheet opens");
+  const tiles = () => [...sheet().querySelectorAll(".vc-sheet-tile")].map((tile) => tile.dataset.src);
+  const open = async () => { field.querySelector(".vc-image-replace").click(); for (let i = 0; i < 20 && !/^\d/.test(sheet()?.querySelector(".vc-sheet-count")?.textContent ?? ""); i += 1) await settle(); };
+  await open();
   assert.equal(sheet().getAttribute("role"), "dialog");
-  for (let i = 0; i < 20 && !sheet().querySelector(".vc-tile"); i += 1) await settle();
-  assert.deepEqual([...sheet().querySelectorAll(".vc-tile")].map((tile) => tile.dataset.src), ["/images/hero.svg", "/images/team-sam.svg"]);
-  // Search narrows the library.
+  assert.equal(sheet().querySelector(".vc-sheet-title").textContent, "Choose image for Photo");
+  assert.equal(sheet().querySelector(".vc-sheet-context").textContent, "Team › Alex Example");
+  assert.equal(sheet().querySelector("input[type=search]").placeholder, "Search by file name, page or product");
+  assert.deepEqual([...sheet().querySelectorAll(".vc-chip")].map((chip) => chip.textContent), ["All", "Pages", "Services", "Team", "Blog", "Not used", "Not published yet"]);
+  // Current first, then the website's images — those the content uses first.
+  assert.deepEqual(tiles(), ["/images/team-alex.svg", "/images/hero.svg", "/images/team-sam.svg", "/images/spare.svg"]);
+  assert.equal(sheet().querySelector(".vc-sheet-badge").textContent, "Current");
+  assert.equal(sheet().querySelector(".vc-sheet-count").textContent, "4 images");
+  assert.equal(sheet().querySelector('[data-src="/images/team-sam.svg"] .vc-sheet-meta').textContent, "200 B · Sam Sample");
+  // Chips: where the image is used; Not used.
+  const chip = (label) => [...sheet().querySelectorAll(".vc-chip")].find((entry) => entry.textContent === label);
+  chip("Pages").click();
+  assert.deepEqual(tiles(), ["/images/hero.svg"]);
+  assert.equal(sheet().querySelector(".vc-sheet-count").textContent, "1 image found");
+  chip("Not used").click();
+  assert.deepEqual(tiles(), ["/images/spare.svg"]);
+  chip("All").click();
+  // Search narrows the library (file name, address, where it is used).
   const search = sheet().querySelector("input[type=search]");
   type(window, search, "sam");
-  assert.deepEqual([...sheet().querySelectorAll(".vc-tile")].map((tile) => tile.dataset.src), ["/images/team-sam.svg"]);
-  // Upload a file: prepared, sent as raw bytes with its name and size, then picked.
+  assert.deepEqual(tiles(), ["/images/team-sam.svg"]);
+  type(window, search, "nothing-like-this");
+  assert.equal(sheet().querySelector(".vc-sheet-empty").textContent, 'No images match "nothing-like-this".');
+  type(window, search, "");
+  // Upload a file: prepared, sent as raw bytes with its name and size, then selected in the Library (not used yet).
+  [...sheet().querySelectorAll(".vc-sheet-tab")].find((tab) => tab.textContent === "Upload").click();
+  assert.equal(sheet().querySelector(".vc-sheet-search").hidden, true, "no search on the Upload tab");
+  assert.match(sheet().querySelector(".vc-sheet-drop").textContent, /Drop an image hereorChoose fileJPEG, PNG, AVIF or WebP, up to 10 MB\./);
   const input = sheet().querySelector("input[type=file]");
   const file = new window.File([tinyPng(4, 3)], "Chair Photo.png", { type: "image/png" });
-  Object.defineProperty(input, "files", { value: [file] });
+  Object.defineProperty(input, "files", { value: [file], configurable: true });
   input.dispatchEvent(new window.Event("change"));
-  for (let i = 0; i < 40 && sheet(); i += 1) await settle();
-  assert.equal(sheet(), null, "the sheet closes after the upload");
+  for (let i = 0; i < 40 && !/Uploaded/.test(sheet().querySelector(".vc-sheet-upload-status").textContent); i += 1) await settle();
+  assert.equal(sheet().querySelector(".vc-sheet-upload-status").textContent, "Uploaded. It is selected in the Library.");
   assert.deepEqual(prepared, ["Chair Photo.png"]);
   assert.equal(uploads.length, 1);
   assert.deepEqual([uploads[0]["x-file-name"], uploads[0]["x-image-width"], uploads[0]["x-image-height"]], ["chair.png", "4", "3"]);
-  assert.match(src.value, /^\/assets\/uploads\/2026\/03\/chair-[0-9a-f]{8}\.png$/);
-  const uploaded = src.value;
-  assert.equal((await (await fetch("/api/cms/media")).json()).uploads[0].src, uploaded);
-  // Pick a library image instead, then close with Escape without picking.
-  button("Choose the image for Photo").click();
-  for (let i = 0; i < 20 && !sheet().querySelector(".vc-tile"); i += 1) await settle();
-  assert.equal(sheet().querySelector(".vc-tile").dataset.src, uploaded, "newest upload first");
-  assert.ok(sheet().querySelector(".vc-tile").classList.contains("vc-tile-current"));
-  assert.match(sheet().querySelector(".vc-tile").textContent, /Uploaded/);
-  assert.equal(sheet().querySelector("h2").textContent, "Choose image for Photo");
-  // U3: a click selects (nothing changes yet), "Use image" uses it; the toast offers Undo.
+  const uploaded = tiles()[1];
+  assert.match(uploaded, /^\/assets\/uploads\/2026\/03\/chair-[0-9a-f]{8}\.png$/);
+  assert.equal(sheet().querySelector(`[data-src="${uploaded}"]`).getAttribute("aria-selected"), "true");
+  assert.equal(sheet().querySelector(`[data-src="${uploaded}"] .vc-sheet-badge`).textContent, "Not published yet");
+  assert.equal(document.activeElement, sheet().querySelector('[data-action="use-image"]'), "focus on Use image");
+  sheet().querySelector('[data-action="use-image"]').click();
+  assert.equal(sheet(), null);
+  assert.equal(shown(), uploaded);
+  assert.equal(alt.value, "Alex smiling", "alt kept");
+  // A click selects (nothing changes yet), "Use image" uses it; the toast offers Undo.
+  await open();
+  assert.equal(tiles()[0], uploaded, "the current image first");
   const use = sheet().querySelector('[data-action="use-image"]');
   assert.equal(use.disabled, true, "nothing selected yet");
-  sheet().querySelector('.vc-tile[data-src="/images/hero.svg"]').click();
-  assert.equal(src.value, uploaded, "selecting is not choosing");
-  assert.match(sheet().querySelector(".vc-sheet-chosen").textContent, /1 selected · hero\.svg/);
+  assert.equal(sheet().querySelector(".vc-sheet-selection").textContent, "No image selected");
+  sheet().querySelector('.vc-sheet-tile[data-src="/images/hero.svg"]').click();
+  assert.equal(shown(), uploaded, "selecting is not choosing");
+  assert.equal(sheet().querySelector(".vc-sheet-selection").textContent, "hero.svg · 300 B");
   use.click();
   assert.equal(sheet(), null);
-  assert.equal(src.value, "/images/hero.svg");
-  assert.equal(alt.value, "Alex smiling", "alt kept");
-  const toast = root.parentElement.querySelector(".vc-toast") ?? document.querySelector(".vc-toast");
+  assert.equal(shown(), "/images/hero.svg");
+  const toast = document.querySelector(".vc-toast");
   assert.match(toast.textContent, /^Image replacedUndo$/);
   toast.querySelector(".vc-toast-action").click();
-  assert.equal(src.value, uploaded, "Undo puts the previous image back");
-  // A double-click uses an image at once.
-  button("Choose the image for Photo").click();
-  for (let i = 0; i < 20 && !sheet().querySelector(".vc-tile"); i += 1) await settle();
-  sheet().querySelector('.vc-tile[data-src="/images/hero.svg"]').dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true }));
+  assert.equal(shown(), uploaded, "Undo puts the previous image back");
+  // A double-click uses an image at once; Enter on the grid uses the selected one; Escape closes without a change.
+  await open();
+  sheet().querySelector('.vc-sheet-tile[data-src="/images/hero.svg"]').dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true }));
   assert.equal(sheet(), null);
-  assert.equal(src.value, "/images/hero.svg");
-  button("Choose the image for Photo").click();
+  assert.equal(shown(), "/images/hero.svg");
+  await open();
+  const grid = sheet().querySelector(".vc-sheet-grid");
+  grid.dispatchEvent(new window.KeyboardEvent("keydown", { key: "End", bubbles: true }));
+  grid.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  assert.equal(shown(), "/images/spare.svg");
+  await open();
   document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
   assert.equal(sheet(), null);
-  assert.equal(src.value, "/images/hero.svg");
-  button("Remove the image for Photo").click();
-  assert.equal(src.value, "");
-  assert.equal(field.querySelector(".vc-thumb").hidden, true);
+  assert.equal(shown(), "/images/spare.svg");
+  // ⋯: Copy image link · Remove image; removed = the dashed "Choose image".
+  field.querySelector(".vc-image-more").click();
+  assert.deepEqual([...field.querySelectorAll(".vc-image-menu-item")].map((item) => item.textContent), ["Copy image link", "Remove image"]);
+  [...field.querySelectorAll(".vc-image-menu-item")].find((item) => item.textContent === "Remove image").click();
+  assert.equal(shown(), "");
+  assert.equal(field.querySelector(".vc-image-empty").textContent, "Choose image");
 });
 
 test("U4 Media: the library (uploads first, then the website's images), filters, the chosen image's details, Upload images", async () => {
@@ -701,12 +732,13 @@ test("P10 shell: without the bucket the sheet says uploading is not set up; an e
   assert.match(document.querySelector(".vc-sheet").textContent, /Uploading is not set up/);
   document.querySelector('.vc-sheet [aria-label="Close"]').click();
   assert.equal(document.querySelector(".vc-sheet"), null);
-  // Locked image fields: disabled inputs and no Choose / Remove.
+  // Locked image fields (Mr Spa): the picture cannot be replaced; ⋯ keeps only Copy image link.
   const locked = createForm({ doc: document, fields: { logo: f.image({ label: "Logo", locked: "admin" }) }, value: { logo: "/a.png" }, role: "editor", pickImage: () => assert.fail("not for a locked field") });
-  assert.equal(locked.element.querySelectorAll("button").length, 0);
+  assert.deepEqual([...locked.element.querySelectorAll("button:not([disabled])")].map((button) => button.getAttribute("aria-label") ?? button.textContent), ["More actions for Logo", "Copy image link"]);
+  assert.equal(locked.element.querySelector(".vc-image-replace"), null);
   const prepare = prepareImage(window);
-  await assert.rejects(prepare(new window.File(["GIF89a"], "a.gif", { type: "image/gif" })), /JPEG, PNG, WebP or AVIF/);
-  await assert.rejects(prepare(new window.File(["<svg/>"], "a.svg", { type: "image/svg+xml" })), /SVG and GIF are not accepted/);
+  await assert.rejects(prepare(new window.File(["GIF89a"], "a.gif", { type: "image/gif" })), /^Error: This file type is not supported\. Choose a JPEG, PNG, AVIF or WebP image\.$/);
+  await assert.rejects(prepare(new window.File(["<svg/>"], "a.svg", { type: "image/svg+xml" })), /This file type is not supported/);
   // A file the browser cannot decode is refused before uploading; with no createImageBitmap at all, it goes as it is
   // (the server still checks the bytes).
   const png = new window.File(["x"], "a.png", { type: "image/png" });
