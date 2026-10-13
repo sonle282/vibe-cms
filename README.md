@@ -373,6 +373,11 @@ site's R2 bucket until a publish puts it into the same commit as the content tha
 - Optional `media: { dir: "public/assets/uploads", maxBytes: 10 * 1024 * 1024 }` in `cms.config.ts` (these are the
   defaults; `maxBytes` at most 25 MiB).
 
+**Media (M11)** is the Mr Spa CMS's library: chips (All · Pages · each collection | Not used · Not published yet ·
+Archived), a detail panel with Rename (a display name), Copy link, Adjust, the facts and **Used on** (opens the
+field), **Remove image** (never published, used nowhere), **Archive** (published, used nowhere: no longer offered in
+the image sheet), and ⋯ **Remove unused images…** (never published, used nowhere, older than 30 days).
+
 ## Preview (P9)
 
 The canvas shows the real page with the draft on it, updated as you type — at the size of a laptop (1280 × 800), a

@@ -297,7 +297,8 @@ export const openImagePicker = (options: PickerOptions) => {
   const foot = h(doc, "footer", { class: "vc-sheet-foot" }, selection, error, h(doc, "button", { type: "button", class: "vc-sheet-cancel", onclick: close }, "Cancel"), useButton);
 
   const metaOf = (entry: Entry) => {
-    const places = entry.places.length ? `${entry.places[0].label}${entry.places.length > 1 ? ` +${entry.places.length - 1}` : ""}` : "";
+    const labels = [...new Set(entry.places.map((place) => place.label))];
+    const places = labels.length ? `${labels[0]}${labels.length > 1 ? ` +${labels.length - 1}` : ""}` : "";
     return [imageDetails(entry.width, entry.height, sheetBytes(entry.bytes)), places].filter(Boolean).join(" · ");
   };
   const matches = (entry: Entry, words: string[]) => {
@@ -336,7 +337,7 @@ export const openImagePicker = (options: PickerOptions) => {
           badge ? h(doc, "span", { class: `vc-sheet-badge${entry.current ? "" : " vc-sheet-badge-new"}` }, badge) : null,
           h(doc, "span", { class: "vc-sheet-check", "aria-hidden": "true" }, "✓")),
         h(doc, "span", { class: "vc-sheet-name", title: name }, name),
-        h(doc, "span", { class: "vc-sheet-meta", ...(entry.places.length ? { title: `Used on ${entry.places.map((place) => place.label).join(", ")}` } : {}) }, metaOf(entry)));
+        h(doc, "span", { class: "vc-sheet-meta", ...(entry.places.length ? { title: `Used on ${[...new Set(entry.places.map((place) => place.label))].join(", ")}` } : {}) }, metaOf(entry)));
       tile.addEventListener("click", () => select(entry, true));
       tile.addEventListener("dblclick", () => { select(entry); use(); });
       grid.append(tile);
@@ -471,7 +472,7 @@ export const openImagePicker = (options: PickerOptions) => {
   let usage: ImageUsage = {};
   const placesOf = (src: string) => usage[src] ?? [];
   void (async () => {
-    const result = await api.get<{ uploads: LibraryImage[]; site: LibraryImage[]; usage?: ImageUsage }>("/api/cms/media");
+    const result = await api.get<{ uploads: LibraryImage[]; site: LibraryImage[]; usage?: ImageUsage; notes?: Record<string, { displayName?: string; archivedAt?: string }> }>("/api/cms/media");
     loaded = true;
     if (!result.ok) { failed = true; error.hidden = false; error.textContent = "The image library could not be loaded."; render(); return; }
     usage = result.data.usage ?? {};
@@ -481,7 +482,10 @@ export const openImagePicker = (options: PickerOptions) => {
     const order = new Map(Object.keys(usage).map((src, index) => [src, index]));
     const site = result.data.site.filter((image) => !uploadSet.has(image.src)).map((image): Entry => ({ ...image, source: "site", places: placesOf(image.src), staged: false }))
       .sort((a, b) => (order.get(a.src) ?? Infinity) - (order.get(b.src) ?? Infinity) || (order.has(a.src) ? 0 : a.src.localeCompare(b.src)));
-    const library = [...uploads.filter((image) => image.staged), ...uploads.filter((image) => !image.staged), ...site];
+    // M11 (Mr Spa): an archived image cannot be chosen; a display name is the name people see.
+    const notes = result.data.notes ?? {};
+    const named = (image: Entry): Entry => (notes[image.src]?.displayName ? { ...image, name: notes[image.src].displayName } : image);
+    const library = [...uploads.filter((image) => image.staged), ...uploads.filter((image) => !image.staged), ...site].filter((image) => !notes[image.src]?.archivedAt).map(named);
     options.onLoad?.(library);
     const known = options.current ? library.find((image) => image.src === options.current) : undefined;
     const current: Entry[] = options.current ? [{ ...(known ?? { src: options.current, bytes: 0, source: "site" as const, places: placesOf(options.current), staged: false }), current: true }] : [];
