@@ -57,6 +57,16 @@ try {
   };
   // M4: a Link field — Web address, then the address (a page of the site would be picked from its list).
   const link = async (path, value) => { await field(path).getByRole("radio", { name: "Web address" }).click(); await field(path).locator("input.vc-link-text").fill(value); };
+  // M5 (Mr Spa): an image card — Replace (or Choose image) opens the sheet; a tile, then Use image.
+  const sheetFor = (label) => page.getByRole("dialog", { name: label ? `Choose image for ${label}` : "Choose an image" });
+  const shownImage = (path) => field(path).locator(".vc-image-thumb img").getAttribute("src");
+  const pickImage = async (path, label, src) => {
+    await field(path).locator(".vc-image-replace, .vc-image-empty").first().click();
+    const sheet = sheetFor(label);
+    await sheet.locator(`.vc-sheet-tile[data-src="${src}"]`).click();
+    await sheet.getByRole("button", { name: "Use image" }).click();
+    await sheet.waitFor({ state: "detached" });
+  };
   // M3: deleting a list item asks first (the CMS dialog, red Delete).
   const confirmDelete = async () => { const dialog = page.getByRole("alertdialog", { name: /^Delete / }); await dialog.getByRole("button", { name: "Delete", exact: true }).click(); await dialog.waitFor({ state: "detached" }); };
   // P8d: the visual editor — its editable area, a toolbar button, and its source view ("Edit HTML" / "Edit Markdown").
@@ -173,8 +183,8 @@ try {
   check("preview: links to other sites and forms do nothing", new URL(previewWindow().url()).pathname === "/" && await previewWindow().evaluate(() => window.__vibeCmsStayed === true));
   await section("home");
   await (await richSource("hero.text")).fill("<p>Everything here is <em>invented</em>.</p>");
-  await field("hero.image").getByLabel("Image address").fill("/images/team-sam.svg");
-  await field("hero.image").getByLabel("Alt text (describes the image)").fill("A blue square");
+  await pickImage("hero.image", "Picture", "/images/team-sam.svg");
+  await field("hero.image").getByLabel("Image description").fill("A blue square");
   await field("highlights").locator("select").selectOption("nail-art");
   await button("highlights", "Move Classic Manicure up").click();
   await button("highlights", "Remove Spa Pedicure").click();
@@ -305,8 +315,8 @@ try {
   // ---------------------------------------------------------------- owner: team (image, references)
   const team = data("src/data/team.json");
   await open("/admin/catalog/team/alex");
-  await field("photo").getByLabel("Image address").fill("/images/hero.svg");
-  await field("photo").getByLabel("Alt text (describes the image)").fill("Alex at work");
+  await pickImage("photo", "Photo", "/images/hero.svg");
+  await field("photo").getByLabel("Image description").fill("Alex at work");
   await input("specialty").selectOption("spa-pedicure");
   await button("services", "Remove Nail Art").click();
   await field("services").locator("select").selectOption("spa-pedicure");
@@ -321,36 +331,47 @@ try {
   // P10: Sam's photo through the image sheet — a large PNG chosen from the computer is made smaller and WebP in the
   // browser, uploaded to the local R2 bucket, picked, and served at its final address until it is published.
   await open("/admin/catalog/team/sam");
-  await field("photo").getByRole("button", { name: "Choose the image for Photo" }).click();
-  const sheet = page.getByRole("dialog", { name: "Choose image for Photo" });
-  await sheet.locator('.vc-tile[data-src="/images/team-alex.svg"]').waitFor();
-  check("image sheet: the site's own images are in the library", (await sheet.locator(".vc-tile").count()) === 3);
+  // M5 (Mr Spa): the sheet — where the image area is, Current first, the area chips; Upload selects the new image.
+  await field("photo").locator(".vc-image-replace").click();
+  const sheet = sheetFor("Photo");
+  await sheet.locator('.vc-sheet-tile[data-src="/images/team-alex.svg"]').waitFor();
+  check("image sheet (M5): Team › Sam, the current image first, chips, the site's own images", (await sheet.locator(".vc-sheet-tile").count()) === 3
+    && (await sheet.locator(".vc-sheet-context").textContent()) === "Team › Sam Sample"
+    && (await sheet.locator(".vc-sheet-tile").first().getAttribute("data-src")) === "/images/team-sam.svg" && (await sheet.locator(".vc-sheet-tile").first().locator(".vc-sheet-badge").textContent()) === "Current"
+    && assertEqual(await sheet.locator(".vc-chip").allTextContents(), ["All", "Pages", "Services", "Team", "Blog", "Not used", "Not published yet"]),
+  { tiles: await sheet.locator(".vc-sheet-tile").count(), context: await sheet.locator(".vc-sheet-context").textContent(), chips: await sheet.locator(".vc-chip").allTextContents() });
   await shot("p10-image-sheet");
+  await sheet.getByRole("tab", { name: "Upload" }).click();
   await sheet.locator("input[type=file]").setInputFiles({ name: "Sam at the desk.png", mimeType: "image/png", buffer: Buffer.from(tinyPng(2600, 1300)) });
-  await sheet.waitFor({ state: "detached", timeout: 20_000 });
-  let samPhoto = await field("photo").getByLabel("Image address").inputValue();
+  await sheet.locator(".vc-sheet-upload-status", { hasText: "Uploaded. It is selected in the Library." }).waitFor({ state: "attached", timeout: 20_000 });
+  check("upload (M5): the new image is selected in the Library, “Not published yet”, Use image focused", (await sheet.locator('.vc-sheet-tile[aria-selected="true"] .vc-sheet-badge').textContent()) === "Not published yet" && await sheet.getByRole("button", { name: "Use image" }).evaluate((button) => button === document.activeElement));
+  await sheet.getByRole("button", { name: "Use image" }).click();
+  await sheet.waitFor({ state: "detached" });
+  let samPhoto = await shownImage("photo");
   check("upload: picked at its final address (month folder, name, hash, .webp)", /^\/assets\/uploads\/20\d\d\/\d\d\/sam-at-the-desk-[0-9a-f]{8}\.webp$/.test(samPhoto), samPhoto);
   const library = await api("/api/cms/media");
   check("upload: resized in the browser to 2400 px wide, WebP", assertEqual(library.uploads.map((image) => [image.src, image.width, image.height]), [[samPhoto, 2400, 1200]]) && library.uploads[0].bytes < 2_000_000, library.uploads);
   const staged = await page.evaluate(async (url) => { const response = await fetch(url); const bytes = new Uint8Array(await response.arrayBuffer()); return { status: response.status, type: response.headers.get("content-type"), from: response.headers.get("x-vibe-cms-upload"), head: String.fromCharCode(...bytes.slice(0, 4), ...bytes.slice(8, 12)) }; }, samPhoto);
   check("upload: served from staging before it is published", assertEqual(staged, { status: 200, type: "image/webp", from: "staging", head: "RIFFWEBP" }), staged);
-  check("upload: the thumbnail shows it", (await field("photo").locator(".vc-thumb").getAttribute("src")) === samPhoto);
-  // P12f: crop the upload to a square — a NEW image made by the browser's canvas, uploaded and chosen; the original stays.
+  check("image card (M5): the upload's name · 2400 × 1200 · KB · Replace", (await field("photo").locator(".vc-image-name").getAttribute("title")) === "Sam at the desk.webp" && /^2400 × 1200 · \d+ KB$/.test(await field("photo").locator(".vc-image-details").textContent()) && await field("photo").locator(".vc-image-replace").isVisible(), { name: await field("photo").locator(".vc-image-name").getAttribute("title"), details: await field("photo").locator(".vc-image-details").textContent() });
+  // M5 (Mr Spa): Adjust — Square around the focus point; a NEW image made by the browser's canvas; the sheet then offers it.
   const originalPhoto = samPhoto;
-  await field("photo").getByRole("button", { name: "Choose the image for Photo" }).click();
-  const adjustSheet = page.getByRole("dialog", { name: "Choose image for Photo" });
-  // U3: select the image, then Crop / resize in the footer.
-  await adjustSheet.locator(`.vc-tile[data-src="${originalPhoto}"]`).click();
-  await adjustSheet.locator(".vc-sheet-adjust").click();
-  await adjustSheet.getByRole("button", { name: "Square" }).click();
-  check("crop: Square on a 2400 × 1200 photo makes 1200 × 1200, the original stays", /Makes a new image of 1200 × 1200 px\. The original stays as it is\./.test(await adjustSheet.locator(".vc-adjust").innerText()));
-  await adjustSheet.getByRole("button", { name: "Save as a new image" }).click();
-  await adjustSheet.waitFor({ state: "detached", timeout: 20_000 });
-  samPhoto = await field("photo").getByLabel("Image address").inputValue();
-  check("crop: the new copy is chosen, named after the original", /^\/assets\/uploads\/20\d\d\/\d\d\/sam-at-the-desk-1200x1200-[0-9a-f]{8}\.webp$/.test(samPhoto), samPhoto);
+  await field("photo").locator(".vc-image-frame").hover();
+  await field("photo").getByRole("button", { name: "Adjust Photo" }).click();
+  const adjustDialog = page.getByRole("alertdialog", { name: "Adjust image" });
+  check("adjust (M5): Shape, the focus point, the original stays", /Create a new copy for this image area\. Your original image will stay unchanged\.[\s\S]*Shape[\s\S]*Original[\s\S]*Square[\s\S]*Landscape[\s\S]*Portrait[\s\S]*Horizontal focus 50%[\s\S]*Vertical focus 50%/.test(await adjustDialog.innerText()), await adjustDialog.innerText());
+  await adjustDialog.getByLabel("Square").check();
+  await shot("m5-adjust");
+  await adjustDialog.getByRole("button", { name: "Create adjusted copy" }).click();
+  const copySheet = sheetFor("Photo");
+  await copySheet.locator('.vc-sheet-tile[aria-selected="true"]').waitFor({ timeout: 20_000 });
+  await copySheet.getByRole("button", { name: "Use image" }).click();
+  await copySheet.waitFor({ state: "detached" });
+  samPhoto = await shownImage("photo");
+  check("adjust: the new copy is offered and chosen, named after the original and the shape", /^\/assets\/uploads\/20\d\d\/\d\d\/sam-at-the-desk-square-[0-9a-f]{8}\.webp$/.test(samPhoto), samPhoto);
   const decoded = await page.evaluate(async (url) => { const bitmap = await createImageBitmap(await (await fetch(url)).blob()); return [bitmap.width, bitmap.height]; }, samPhoto);
   const libraryAfter = await api("/api/cms/media");
-  check("crop: the copy really is 1200 × 1200 (decoded); the original is still in the library at 2400 × 1200", assertEqual(decoded, [1200, 1200]) && libraryAfter.uploads.some((image) => image.src === originalPhoto && image.width === 2400 && image.height === 1200), { decoded, uploads: libraryAfter.uploads });
+  check("adjust: the copy really is 1200 × 1200 (decoded); the original is still in the library at 2400 × 1200", assertEqual(decoded, [1200, 1200]) && libraryAfter.uploads.some((image) => image.src === originalPhoto && image.width === 2400 && image.height === 1200), { decoded, uploads: libraryAfter.uploads });
   await shot("p10-picked");
   await input("specialty").selectOption("classic-manicure");
   await save();
@@ -361,7 +382,7 @@ try {
   await open("/admin/catalog/posts/welcome");
   await input("title").fill("Welcome!");
   await input("status").selectOption("draft");
-  await field("cover").getByLabel("Image address").fill("/images/team-sam.svg");
+  await pickImage("cover", "Cover image", "/images/team-sam.svg");
   await button("tags", "Delete Tag 1").click();
   await confirmDelete();
   await field("tags").getByRole("button", { name: "Add tag" }).click();
@@ -382,9 +403,12 @@ try {
   await page.keyboard.type("Mon to Fri"); await page.keyboard.press("Enter");
   await page.keyboard.type("Sat"); await page.keyboard.press("Enter"); await page.keyboard.press("Enter");
   await tool("body", "Insert an image").click();
-  const postSheet = page.getByRole("dialog", { name: "Choose an image" });
-  await postSheet.locator(".vc-tile").first().waitFor();
+  const postSheet = sheetFor();
+  await postSheet.locator(".vc-sheet-tile").first().waitFor();
+  await postSheet.getByRole("tab", { name: "Upload" }).click();
   await postSheet.locator("input[type=file]").setInputFiles({ name: "Post chair.png", mimeType: "image/png", buffer: Buffer.from(tinyPng(1600, 1200)) });
+  await postSheet.locator(".vc-sheet-upload-status", { hasText: "Uploaded." }).waitFor({ state: "attached", timeout: 20_000 });
+  await postSheet.getByRole("button", { name: "Use image" }).click();
   await postSheet.waitFor({ state: "detached", timeout: 20_000 });
   const postImage = rich("body").locator("img");
   const postImageSrc = await postImage.getAttribute("src");
@@ -409,8 +433,8 @@ try {
   check("editor: dragging the corner resizes the image, ratio kept, width written", Math.abs(postWidth - (before.width - 200)) <= 2 && Math.abs(after.width - postWidth) <= 1 && Math.abs(after.height / after.width - 0.75) < 0.01 && !(await postImage.getAttribute("height")), { before, after, postWidth });
   await shot("p8d-editor");
   await tool("body", "Insert an image").click();
-  const insertSheet = page.getByRole("dialog", { name: "Choose an image" });
-  await insertSheet.locator('.vc-tile[data-src="/images/hero.svg"]').click();
+  const insertSheet = sheetFor();
+  await insertSheet.locator('.vc-sheet-tile[data-src="/images/hero.svg"]').click();
   await insertSheet.getByRole("button", { name: "Use image" }).click();
   check("editor: a library image is inserted", (await rich("body").locator("img").count()) === 2);
   await field("body").getByRole("button", { name: "Remove image" }).click();

@@ -10,7 +10,9 @@ export { createClient, humanMessage, type ApiResult, type Client, type Fetch } f
 // M4: the Link field of the Mr Spa CMS.
 export { createLinkControl, INVALID_LINK_REASON, invalidLinks, LINK_VALIDITY, type LinkControl, type LinkControlOptions } from "./link.js";
 export { adminBoot, bootJson, linkPages, type AdminBoot, type BootSite, type BootCollection, type BootFile, type BootMedia, type BootUser } from "./boot.js";
-export { ACCEPTED_TYPES, adjustImage, CROP_PRESETS, cropRect, measureImage, openImagePicker, outputSize, prepareImage, RESIZE_WIDTHS, type Adjust, type CropRect, type LibraryImage, type Measure, type PickerOptions, type Prepare, type PreparedImage } from "./media.js";
+export { ACCEPTED_TYPES, adjustImage, adjustRect, adjustSize, ADJUST_SHAPES, cardBytes, imageDetails, imageFileProblem, imageName, measureImage, middleTruncate, openAdjust, openImagePicker, prepareImage, SHEET_PAGE, sheetBytes, type Adjust, type AdjustOptions, type CropRect, type LibraryImage, type Measure, type PickerOptions, type Prepare, type PreparedImage, type Upload } from "./media.js";
+// M5: the image card of the Mr Spa CMS.
+export { createImageCard, type ImageCard, type ImageCardOptions, type ImageSlot, type PickRequest } from "./image-card.js";
 // P8d. The Markdown converter (./markdown.js) is not exported here on purpose: the editor loads it only when needed.
 export { createRichEditor, type PickedImage, type RichEditor, type RichEditorOptions } from "./rich-editor.js";
 export { cleanRichDom, isEmptyRich, normalizeBlocks } from "./clean.js";
