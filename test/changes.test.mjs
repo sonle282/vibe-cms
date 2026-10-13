@@ -25,7 +25,7 @@ test("no change → nothing to say", () => {
   assert.deepEqual(summarizeChanges({ fields: config.files[0].fields, before: { tagline: "" }, after: {} }), [], "empty and missing are the same");
 });
 
-test("salon info: text, owner-only fields, objects, images, dotted keys — labelled as in the form", () => {
+test("salon info: text, admin-only fields, objects, images, dotted keys — labelled as in the form", () => {
   const after = clone(site);
   after.name = "Demo Salon & Spa";
   after.phone = "(555) 010-0001";
@@ -45,7 +45,7 @@ test("salon info: text, owner-only fields, objects, images, dotted keys — labe
     "Banner › Picture › alt text: A pastel drawing of a nail polish bottle → A blue square",
     "Search description: A made-up salon used to test Vibe CMS. → New description.",
   ].map((line) => line.replace("Everything is invented.", "Everything on this site is invented.")));
-  assert.deepEqual(changes.filter((change) => change.locked).map((change) => change.path), ["phone", "address.street"], "owner-only fields are marked");
+  assert.deepEqual(changes.filter((change) => change.locked).map((change) => change.path), ["phone", "address.street"], "admin-only fields are marked");
   assert.equal(changes.find((change) => change.label === "Search description").path, "seo.description");
 });
 

@@ -245,7 +245,10 @@ test("People: owner adds an editor (temporary password shown once), editor must 
   assert.ok(!JSON.stringify(list.body).includes("pbkdf2"));
   assert.deepEqual((await addPerson(h, cookie, "editor1", "editor")).body.error, "username_taken");
   assert.equal((await addPerson(h, cookie, "x", "editor")).body.error, "invalid_username");
-  assert.equal((await addPerson(h, cookie, "editor2", "admin")).body.error, "invalid_role");
+  assert.equal((await addPerson(h, cookie, "editor2", "manager")).body.error, "invalid_role");
+  // M2: the People screen says Admin; the API takes "admin" (and the stored code, "owner").
+  const admin = await addPerson(h, cookie, "admin2", "admin");
+  assert.equal(admin.body.user?.role, "owner", JSON.stringify(admin.body));
   assert.equal((await addPerson(h, cookie, "editor2", "editor", "short")).body.error, "invalid_password");
 });
 

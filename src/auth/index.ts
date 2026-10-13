@@ -19,6 +19,8 @@ import {
 export * from "./password.js";
 
 export type Identity = { userId: string; role: Role; mustChangePassword?: boolean };
+/** M2: the role a person picks — "admin" (stored as "owner", the code of the Admin role) or "editor"; "owner" still accepted. */
+const roleOf = (value: unknown): Role | undefined => (value === "admin" || value === "owner" ? "owner" : value === "editor" ? "editor" : undefined);
 /** undefined = sign-in not set up (503); null = not signed in (401). */
 export type Identify = (request: Request) => Identity | null | undefined | Promise<Identity | null | undefined>;
 
@@ -279,7 +281,7 @@ export const createCmsAuth = (deps: CmsAuthDeps) => {
   const people = async (request: Request, user: Identity, id?: string): Promise<Response> => {
     try {
       if (!ready()) throw new AuthError(503, "auth_not_configured", "Sign-in is not configured on this site.");
-      if (user.role !== "owner") throw new AuthError(403, "owner_only", "Only an owner can manage people.");
+      if (user.role !== "owner") throw new AuthError(403, "owner_only", "Only an admin can manage people.");
       const actor = { userId: user.userId, role: user.role };
       const log = (action: AuditEntry["action"], targetId: string, detail: Record<string, unknown>) => audit({ ...actor, action, stage: "people", resource: `user:${targetId}`, detail });
       if (!id) {
@@ -287,7 +289,7 @@ export const createCmsAuth = (deps: CmsAuthDeps) => {
         if (request.method !== "POST") throw new AuthError(405, "method_not_allowed", `${request.method} is not allowed here.`, { allow: "GET, POST" });
         const payload = await body(request);
         const username = input(() => validateUsername(payload.username));
-        const role = input(() => { if (payload.role !== "owner" && payload.role !== "editor") throw new InputError("invalid_role", "Role must be owner or editor."); return payload.role as Role; });
+        const role = input(() => { const wanted = roleOf(payload.role); if (!wanted) throw new InputError("invalid_role", "Role must be admin or editor."); return wanted; });
         const displayName = input(() => validateDisplayName(payload.displayName, username));
         const generated = payload.password === undefined || payload.password === "" ? temporaryPassword() : undefined;
         const password = input(() => validatePassword(generated ?? payload.password));
@@ -307,7 +309,7 @@ export const createCmsAuth = (deps: CmsAuthDeps) => {
       switch (payload.action) {
         case "disable": {
           if (target.id === user.userId) throw new AuthError(400, "cannot_disable_self", "You cannot disable your own account.");
-          if (await lastOwner()) throw new AuthError(400, "last_owner", "Keep at least one active owner.");
+          if (await lastOwner()) throw new AuthError(400, "last_owner", "Keep at least one active admin.");
           await db().prepare("UPDATE cms_users SET status = 'disabled', session_version = session_version + 1, updated_at = ? WHERE id = ?").bind(at, id).run();
           await log("user_disable", id, {});
           return json({ ok: true, user: publicUser((await byId(id))!) });
@@ -325,8 +327,10 @@ export const createCmsAuth = (deps: CmsAuthDeps) => {
           return json({ ok: true, user: publicUser((await byId(id))!), ...(generated ? { temporaryPassword: generated } : {}) });
         }
         case "set-role": {
-          if (payload.role !== "owner" && payload.role !== "editor") throw new AuthError(400, "invalid_role", "Role must be owner or editor.");
-          if (payload.role === "editor" && (await lastOwner())) throw new AuthError(400, "last_owner", "Keep at least one active owner.");
+          const wanted = roleOf(payload.role);
+          if (!wanted) throw new AuthError(400, "invalid_role", "Role must be admin or editor.");
+          payload.role = wanted;
+          if (wanted === "editor" && (await lastOwner())) throw new AuthError(400, "last_owner", "Keep at least one active admin.");
           await db().prepare("UPDATE cms_users SET role = ?, updated_at = ? WHERE id = ?").bind(payload.role, at, id).run();
           await log("user_role_change", id, { from: target.role, to: payload.role });
           return json({ ok: true, user: publicUser((await byId(id))!) });

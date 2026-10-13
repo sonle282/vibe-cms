@@ -1,9 +1,10 @@
 /**
  * P7: what the /admin page hands to the browser — the editable part of cms.config (labels, fields, sections) and who
  * is signed in. Nothing secret: no token, no binding, no password hash. Runs on the server (admin.astro) and is
- * typed for the browser side (app.ts). P12b: files / collections with access: "owner" are left out for editors.
+ * typed for the browser side (app.ts). P12b: files / collections with access: "admin" are left out for editors.
  */
 import type { CmsConfig, CollectionIcon, Field, Section } from "../config/index.js";
+import { isAdminOnly } from "../config/roles.js";
 import type { Role } from "../locks/index.js";
 import { mediaSettings } from "../media/index.js";
 
@@ -27,8 +28,8 @@ export const adminBoot = (config: CmsConfig, user: BootUser, options: { uploads?
   site: { name: config.site.name, url: config.site.url },
   user,
   media: { uploads: Boolean(options.uploads), base: mediaSettings(config.media).base, maxBytes: mediaSettings(config.media).maxBytes },
-  files: config.files.filter((file) => file.access !== "owner" || user.role === "owner").map((file) => ({ key: file.key, label: file.label, ...(file.preview ? { preview: file.preview } : {}), ...(file.sections ? { sections: file.sections } : {}), fields: file.fields })),
-  collections: config.collections.filter((collection) => collection.access !== "owner" || user.role === "owner").map((collection) => ({
+  files: config.files.filter((file) => !isAdminOnly(file.access) || user.role === "owner").map((file) => ({ key: file.key, label: file.label, ...(file.preview ? { preview: file.preview } : {}), ...(file.sections ? { sections: file.sections } : {}), fields: file.fields })),
+  collections: config.collections.filter((collection) => !isAdminOnly(collection.access) || user.role === "owner").map((collection) => ({
     key: collection.key, label: collection.label, itemLabel: collection.itemLabel, fields: collection.fields,
     ...(collection.preview ? { preview: collection.preview } : {}), ...(collection.status ? { status: collection.status } : {}),
     idField: collection.store.kind === "json-array" ? collection.store.idField : collection.store.slugField,

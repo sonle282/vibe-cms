@@ -9,6 +9,7 @@
  * is disabled as a whole, and an editor cannot remove a list item that holds owner-only values (DESIGN §C.1).
  */
 import type { Field, ImageField, ListField, ReferenceField, Section } from "../config/index.js";
+import { isAdminOnly } from "../config/roles.js";
 import type { Role } from "../locks/index.js";
 import { clear, h, icon, uid, type Child } from "./dom.js";
 import { createRichEditor, type RichEditor, type RichEditorOptions } from "./rich-editor.js";
@@ -61,8 +62,8 @@ export type Form = {
 };
 
 const DAYS: Array<[number, string, string]> = [[1, "Mon", "Monday"], [2, "Tue", "Tuesday"], [3, "Wed", "Wednesday"], [4, "Thu", "Thursday"], [5, "Fri", "Friday"], [6, "Sat", "Saturday"], [0, "Sun", "Sunday"]];
-export const LOCK_HELP = "Only the owner can change this.";
-export const OWNER_NOTE = "Editors see this but only an owner can change it.";
+export const LOCK_HELP = "Only an admin can change this.";
+export const OWNER_NOTE = "Editors see this but only an admin can change it.";
 
 export const createForm = (options: FormOptions): Form => {
   const { doc, role } = options;
@@ -102,7 +103,7 @@ export const createForm = (options: FormOptions): Form => {
     text,
     field.required ? h(doc, "span", { class: "vc-required", "aria-hidden": "true" }, " *") : null,
     field.required ? h(doc, "span", { class: "vc-sr-only" }, " (required)") : null,
-    locked || (owner && field.locked === "owner") ? h(doc, "span", { class: "vc-lock", title: LOCK_HELP }, icon(doc, "lock"), h(doc, "span", { class: "vc-sr-only" }, " (owner only)")) : null,
+    locked || (owner && isAdminOnly(field.locked)) ? h(doc, "span", { class: "vc-lock", title: LOCK_HELP }, icon(doc, "lock"), h(doc, "span", { class: "vc-sr-only" }, " (admin only)")) : null,
   ];
 
   type Wrap = { path: Path; field: Field; locked: boolean; reason?: string; group: boolean; control: HTMLElement; inputId?: string; hideLabel?: boolean; show?: (value: unknown) => void; extraHelp?: Child };
@@ -110,7 +111,7 @@ export const createForm = (options: FormOptions): Form => {
     const text = pathText(path);
     const helpId = uid("help");
     const errorId = uid("err");
-    const ownerNote = owner && field.locked === "owner" ? OWNER_NOTE : null;
+    const ownerNote = owner && isAdminOnly(field.locked) ? OWNER_NOTE : null;
     const notes = [field.help, locked ? LOCK_HELP : null, ownerNote, reason].filter(Boolean).join(" ");
     const help = notes || extraHelp ? h(doc, "p", { class: "vc-help", id: helpId }, notes, extraHelp ? " " : null, extraHelp) : null;
     const error = h(doc, "p", { class: "vc-error", id: errorId, hidden: true });
@@ -419,7 +420,7 @@ export const createForm = (options: FormOptions): Form => {
       values.forEach((value, index) => {
         const name = `${itemLabel} ${index + 1}`;
         const keepsLocked = !owner && holdsLockedValue(field.of, value);
-        const removeLabel = keepsLocked ? `Only the owner can delete ${name}: it holds owner-only values` : `Delete ${name}`;
+        const removeLabel = keepsLocked ? `Only an admin can delete ${name}: it holds admin-only values` : `Delete ${name}`;
         const actions = h(doc, "div", { class: "vc-item-actions" },
           field.ordered && !field.fixed ? button(`Move ${name} up`, "up", () => { const next = clone(values); [next[index - 1], next[index]] = [next[index], next[index - 1]]; write(next, { index: index - 1, action: "up" }); }, locked || index === 0) : null,
           field.ordered && !field.fixed ? button(`Move ${name} down`, "down", () => { const next = clone(values); [next[index + 1], next[index]] = [next[index], next[index + 1]]; write(next, { index: index + 1, action: "down" }); }, locked || index === values.length - 1) : null,
@@ -488,7 +489,7 @@ export const createForm = (options: FormOptions): Form => {
   // ---------------------------------------------------------------- dispatch
 
   function renderField(field: Field, path: Path, lockedAbove: boolean, extra: { hideLabel?: boolean; label?: string } = {}): HTMLElement {
-    const locked = lockedAbove || (field.locked === "owner" && !owner);
+    const locked = lockedAbove || (isAdminOnly(field.locked) && !owner);
     const reason = path.length === 1 ? options.readOnly?.[String(path[0])] : undefined;
     const disabled = locked || Boolean(reason);
     // P12d: a text field says which {words} the website fills in and the format it needs.

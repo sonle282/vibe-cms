@@ -16,7 +16,7 @@ import { createForm, summarizeChanges, describeChange } from "../dist/admin/inde
 const dirs = [];
 after(() => dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
 
-const item = f.tuple([f.text({ label: "Service", required: true }), f.text({ label: "Price", locked: "owner", pattern: "\\$\\d+(\\+)?", patternHint: "a price like $17 or $45+" })], { label: "Service and price" });
+const item = f.tuple([f.text({ label: "Service", required: true }), f.text({ label: "Price", locked: "admin", pattern: "\\$\\d+(\\+)?", patternHint: "a price like $17 or $45+" })], { label: "Service and price" });
 const menuFields = {
   categories: f.list(f.object({ label: "Category", fields: {
     id: f.text({ label: "Id" }),
@@ -26,7 +26,7 @@ const menuFields = {
   } }), { label: "Categories", itemLabel: "Category", fixed: true }),
 };
 const salonFields = {
-  phone: f.text({ label: "Phone", locked: "owner" }),
+  phone: f.text({ label: "Phone", locked: "admin" }),
   intro: f.text({ label: "Intro", multiline: true, tokens: ["phone", "city"] }),
   hours: f.list(f.object({ label: "Row", fields: { from: f.select({ label: "From", options: ["Monday", "Saturday", "Sunday"] }), opens: f.text({ label: "Opens", pattern: "([01]\\d|2[0-3]):[0-5]\\d", patternHint: "a time like 09:30" }) } }), { label: "Opening hours" }),
 };

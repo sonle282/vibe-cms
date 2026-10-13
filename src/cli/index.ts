@@ -31,14 +31,15 @@ export const HELP = `vibe-cms ${"<version>"} — run in the site's folder
   export --out <dir> [--local]      D1 rows → <dir>/<site>-cms.sql + .counts.json (R2 is counted, not copied).
   import --file <sql> [--local]     Into an empty, set-up CMS database; compares the rows with the counts file.
   update [version]                  Point package.json at that release (default: the latest), npm install.
-  reset-owner-password [--username <name>] [--local]
-      A temporary password for the owner, shown once; they change it at the next sign-in.
+  reset-admin-password [--username <name>] [--local]
+      A temporary password for an admin, shown once; they change it at the next sign-in. (Old name:
+      reset-owner-password.)
   import-legacy-users --from <old D1> [--from-config <file>] [--local] [--dry-run]
-      The people of the CMS the site ran before → this empty CMS database: same passwords, admin → owner.
+      The people of the CMS the site ran before → this empty CMS database: same passwords, admins stay admins.
 
 Common: --config <wrangler.jsonc> · --account <id> (default: the account wrangler is signed in to — npx wrangler login).`;
 
-const COMMANDS = ["setup", "migrate", "check", "export", "import", "update", "reset-owner-password", "import-legacy-users"] as const;
+const COMMANDS = ["setup", "migrate", "check", "export", "import", "update", "reset-admin-password", "reset-owner-password", "import-legacy-users"] as const;
 
 export const run = async (argv: string[], { root = process.cwd(), log = console.log as Log, error = console.error as Log } = {}) => {
   const [command, ...rest] = argv;
@@ -81,6 +82,8 @@ export const run = async (argv: string[], { root = process.cwd(), log = console.
         if (!values.from) throw new CliError("import-legacy-users needs --from <the old CMS's D1 name or binding>");
         importLegacyUsers({ root, from: values.from, fromConfig: values["from-config"], local, config: values.config, dryRun: values["dry-run"] ?? false, wrangler: wrangler(), log });
         return 0;
+      // M2: Admin is the role's name; reset-owner-password is its old name.
+      case "reset-admin-password":
       case "reset-owner-password":
         await resetOwnerPassword({ root, username: values.username, local, config: values.config, wrangler: wrangler(), log });
         return 0;

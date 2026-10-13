@@ -106,7 +106,7 @@ export const setup = ({ root, site: siteInput, account, local = false, config: c
     "",
     "Next (docs: README → Install, design §E.1 steps 6–8) — run these yourself, the CLI never handles secrets:",
     "  npx wrangler secret put VIBE_GITHUB_TOKEN        # fine-grained, this one repository, Contents read/write",
-    "  npx wrangler secret put CMS_BOOTSTRAP_USERNAME   # the first owner; delete both after the first sign-in",
+    "  npx wrangler secret put CMS_BOOTSTRAP_USERNAME   # the first admin; delete both after the first sign-in",
     "  npx wrangler secret put CMS_BOOTSTRAP_PASSWORD",
     "  npx vibe-cms check",
   ].join("\n"));

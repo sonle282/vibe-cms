@@ -6,8 +6,8 @@ import { checkPublishLocks, LockedFieldError, saveDraftChecked } from "../../dis
 
 const config = {
   configVersion: 1, site: { name: "S", url: "https://s.example" }, repo: { owner: "o", name: "r", branch: "main" },
-  files: [{ key: "site", label: "Salon info", path: "src/data/site.json", format: "json", fields: { phone: f.text({ label: "Phone", locked: "owner" }), tagline: f.text({ label: "Tagline" }) } }],
-  collections: [{ key: "services", label: "Services", itemLabel: "Service", store: { kind: "json-array", path: "src/data/services.json", idField: "id" }, fields: { name: f.text({ label: "Name" }), price: f.text({ label: "Price", locked: "owner" }) } }],
+  files: [{ key: "site", label: "Salon info", path: "src/data/site.json", format: "json", fields: { phone: f.text({ label: "Phone", locked: "admin" }), tagline: f.text({ label: "Tagline" }) } }],
+  collections: [{ key: "services", label: "Services", itemLabel: "Service", store: { kind: "json-array", path: "src/data/services.json", idField: "id" }, fields: { name: f.text({ label: "Name" }), price: f.text({ label: "Price", locked: "admin" }) } }],
 };
 
 export const runLocksScenario = async ({ drafts, audit }) => {

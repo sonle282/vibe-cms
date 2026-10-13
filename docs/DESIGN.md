@@ -11,7 +11,7 @@
 2. Gói là **Astro integration** `vibeCms()`: site thêm vào `astro.config` + 1 file `cms.config.ts` → gói gắn `/admin` và
    `/api/cms/*`. Đích triển khai duy nhất: **Cloudflare Workers** (static assets + `@astrojs/cloudflare`); trang public
    vẫn prerender, chỉ route CMS chạy on-demand.
-3. **Chỉ 2 vai trò: owner, editor** (từ M2 đổi tên thành **admin, editor** như Mr Spa, `"owner"` vẫn nhận — §H.1). Ô `locked: "owner"`: editor thấy nhưng không đổi được — **chặn ở server** (PUT nháp
+3. **Chỉ 2 vai trò: admin, editor** (M2: tên như Mr Spa; mã lưu trong D1 của Admin vẫn là `owner`, config nhận cả `"owner"` — §H.1). Ô `locked: "owner"`: editor thấy nhưng không đổi được — **chặn ở server** (PUT nháp
    + publish), audit `denied`, có test. Khoá mặc định cho mọi site: **giá, giờ mở cửa, SĐT, email, địa chỉ** (chốt
    2026-09-28).
 4. CMS publish = commit thẳng vào **nhánh production** khai trong `repo.branch` của site (mỗi publish là 1 deploy thật)
@@ -635,8 +635,11 @@ nào là tên / host của site thì lấy từ config.
    Các kiểu field mà site thật cần (giờ mở cửa, số, pick, toggle, tuple, reference) **giữ**, vẽ lại theo ngôn ngữ của
    Mr Spa. Những gì SonLe đã yêu cầu riêng trước đây (P8d: kéo đổi cỡ ảnh trong bài) giữ.
 2. **Vai trò = Admin / Editor** (như Mr Spa).
-   - Config nhận `access: "admin"` / `locked: "admin"`; `"owner"` vẫn chạy và có cảnh báo đổi tên.
-   - Migration D1 đổi `owner` → `admin`. Novelle tự chuyển khi `vibe-cms migrate`.
+   - Config nhận `access: "admin"` / `locked: "admin"`; `"owner"` vẫn chạy và có **một** cảnh báo đổi tên.
+   - **Sửa lúc làm M2 (2026-10-12, review sản phẩm):** D1 **không** migrate. `cms_users.role` có `CHECK (role IN
+     ('owner','editor'))` → đổi mã phải dựng lại bảng trên D1 đang chạy (Novelle, sau là Innovate) mà người dùng không
+     thấy mã này. Mã lưu của vai trò Admin giữ là `owner`; mọi chữ trên màn hình là Admin; API People nhận `"admin"`.
+     Đổi mã sau này vẫn làm được bằng một migration riêng nếu cần.
    - CLI có `reset-admin-password`; `reset-owner-password` là bí danh.
 3. **Lõi chung + plugin.**
    - Lõi có các khối dùng chung: Link, Phone, Menu nhiều cấp, Price, danh sách có thứ tự + panel, bố cục Record /

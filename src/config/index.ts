@@ -5,10 +5,14 @@
  * lists of records (services, products), what every field is, and which fields only the owner may change.
  */
 
-/** The only lock level: the field is shown to editors but only the owner may change it (checked on the server, P4). */
-export type Locked = "owner";
-/** P12b: a whole file / collection only owners see and change (editors get 403; it is not in their navigation). */
-export type Access = "owner";
+/**
+ * The only lock level: the field is shown to editors but only an admin may change it (checked on the server, P4).
+ * M2: "admin" (the Mr Spa CMS's name); "owner" is the old name and still works (the build warns once).
+ */
+export type Locked = "admin" | "owner";
+/** P12b: a whole file / collection only admins see and change (editors get 403; it is not in their navigation). */
+export type Access = "admin" | "owner";
+export { isAdminOnly } from "./roles.js";
 
 type Base = {
   label: string;
@@ -114,7 +118,7 @@ export type CmsConfig = {
   site: { name: string; url: string; timezone?: string };
   /** branch = the production branch the CMS commits to. */
   repo: { owner: string; name: string; branch: string };
-  roles?: readonly ["owner", "editor"];
+  roles?: readonly ["admin", "editor"] | readonly ["owner", "editor"];
   /** Extra folders that may hold content, added to the default src/data and src/content. */
   contentDirs?: string[];
   files: CmsFile[];
@@ -139,7 +143,7 @@ export const defineCmsConfig = (config: CmsConfig): CmsConfig => config;
 
 type Options<T extends Field> = Omit<T, "type">;
 
-/** Field builders: f.text({ label: "Phone", locked: "owner" }). */
+/** Field builders: f.text({ label: "Phone", locked: "admin" }). */
 export const f = {
   text: (options: Options<TextField>): TextField => ({ type: "text", ...options }),
   richText: (options: Options<RichTextField>): RichTextField => ({ type: "richText", ...options }),
@@ -149,7 +153,7 @@ export const f = {
   object: (options: Options<ObjectField>): ObjectField => ({ type: "object", ...options }),
   list: (of: Field, options: Omit<Options<ListField>, "of">): ListField => ({ type: "list", of, ...options }),
   reference: (options: Options<ReferenceField>): ReferenceField => ({ type: "reference", ...options }),
-  /** f.tuple([f.text({ label: "Service" }), f.text({ label: "Price", locked: "owner" })], { label: "Service and price" }) */
+  /** f.tuple([f.text({ label: "Service" }), f.text({ label: "Price", locked: "admin" })], { label: "Service and price" }) */
   tuple: (items: Field[], options: Omit<Options<TupleField>, "items">): TupleField => ({ type: "tuple", items, ...options }),
   /** f.pick({ label: "Price", choices: (content) => menuLines(content) }) — P12g */
   pick: (options: Options<PickField>): PickField => ({ type: "pick", ...options }),

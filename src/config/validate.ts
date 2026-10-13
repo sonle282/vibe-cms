@@ -79,7 +79,8 @@ export const pathProblem = (value: string, dirs: readonly string[]): string | un
   return undefined;
 };
 
-type Context = { errors: Problem[]; warnings: Problem[]; collectionKeys: Set<string> };
+/** oldAdminName: where the config still says "owner" (M2: one warning for all of them). */
+type Context = { errors: Problem[]; warnings: Problem[]; collectionKeys: Set<string>; oldAdminName: string[] };
 const err = (context: Context, path: string, message: string, hint?: string) => context.errors.push({ path, message, ...(hint ? { hint } : {}) });
 const warn = (context: Context, path: string, message: string, hint?: string) => context.warnings.push({ path, message, ...(hint ? { hint } : {}) });
 
@@ -90,9 +91,10 @@ const checkBoolean = (context: Context, field: Record<string, unknown>, name: st
 const checkRules = (context: Context, entry: Record<string, unknown>, at: string) => {
   if (entry.rules !== undefined && typeof entry.rules !== "function") err(context, `${at}.rules`, "must be a function (value, content) => problems", "rules: (value) => value.a && value.b ? [] : [{ path: \"a\", message: \"…\" }]");
 };
-/** P12b: access: "owner" — the whole file / collection is for owners only. */
+/** P12b: access: "admin" — the whole file / collection is for admins only ("owner": the old name, M2). */
 const checkAccess = (context: Context, entry: Record<string, unknown>, at: string) => {
-  if (entry.access !== undefined && entry.access !== "owner") err(context, `${at}.access`, `only "owner" is allowed (got ${show(entry.access)})`, 'write access: "owner" or remove it');
+  if (entry.access === "owner") context.oldAdminName.push(`${at}.access`);
+  else if (entry.access !== undefined && entry.access !== "admin") err(context, `${at}.access`, `only "admin" is allowed (got ${show(entry.access)})`, 'write access: "admin" or remove it');
 };
 const checkCount = (context: Context, field: Record<string, unknown>, name: string, at: string, min: number) => {
   const value = field[name];
@@ -109,7 +111,8 @@ export const checkField = (context: Context, field: unknown, at: string, depth: 
   if (field.help !== undefined && typeof field.help !== "string") err(context, `${at}.help`, "must be text");
   if (field.bind !== undefined && !filled(field.bind)) err(context, `${at}.bind`, "must be a CSS selector", 'e.g. bind: ".hero h1"');
   checkBoolean(context, field, "required", at);
-  if (field.locked !== undefined && field.locked !== "owner") err(context, `${at}.locked`, `only "owner" is allowed (got ${show(field.locked)})`, 'write locked: "owner" or remove it');
+  if (field.locked === "owner") context.oldAdminName.push(`${at}.locked`);
+  else if (field.locked !== undefined && field.locked !== "admin") err(context, `${at}.locked`, `only "admin" is allowed (got ${show(field.locked)})`, 'write locked: "admin" or remove it');
 
   switch (type) {
     case "text":
@@ -232,7 +235,7 @@ const checkPreview = (context: Context, value: unknown, at: string, placeholders
 };
 
 export const checkCmsConfig = (config: unknown): CheckResult => {
-  const context: Context = { errors: [], warnings: [], collectionKeys: new Set() };
+  const context: Context = { errors: [], warnings: [], collectionKeys: new Set(), oldAdminName: [] };
   if (!isRecord(config)) { err(context, "(default export)", "must be defineCmsConfig({ … })", "export default defineCmsConfig({ configVersion: 1, … })"); return context; }
   for (const key of Object.keys(config)) if (!TOP_LEVEL.includes(key)) err(context, key, "unknown setting", `allowed: ${TOP_LEVEL.join(", ")}`);
   if (config.configVersion !== 1) err(context, "configVersion", `must be 1 (got ${show(config.configVersion)})`);
@@ -260,7 +263,7 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     else { const problem = branchProblem(repo.branch); if (problem) err(context, "repo.branch", `${show(repo.branch)} is not a valid branch name: it ${problem}`); }
   }
 
-  if (config.roles !== undefined && !(Array.isArray(config.roles) && config.roles.length === 2 && config.roles[0] === "owner" && config.roles[1] === "editor")) err(context, "roles", `must be ["owner", "editor"] (got ${show(config.roles)})`, "the roles are fixed; remove the line or write it exactly");
+  if (config.roles !== undefined && !(Array.isArray(config.roles) && config.roles.length === 2 && (config.roles[0] === "admin" || config.roles[0] === "owner") && config.roles[1] === "editor")) err(context, "roles", `must be ["admin", "editor"] (got ${show(config.roles)})`, "the roles are fixed; remove the line or write it exactly");
 
   let dirs: string[] = [...DEFAULT_CONTENT_DIRS];
   if (config.contentDirs !== undefined) {
@@ -385,7 +388,9 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     });
     checkUniqueKeys(context, collections, "collections", keys);
   }
-  return context;
+  // M2: "owner" is the old name of the Admin level — it works; one warning names every place.
+  if (context.oldAdminName.length) warn(context, context.oldAdminName[0], `"owner" is the old name of "admin" (${context.oldAdminName.length} ${context.oldAdminName.length === 1 ? "place" : "places"}: ${context.oldAdminName.slice(0, 5).join(", ")}${context.oldAdminName.length > 5 ? ", …" : ""})`, 'write locked: "admin" / access: "admin" — it works the same');
+  return { errors: context.errors, warnings: context.warnings };
 };
 
 function checkSections(context: Context, entry: Record<string, unknown>, at: string) {

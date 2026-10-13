@@ -13,12 +13,12 @@ const config = {
   files: [{
     key: "site", label: "Salon info", path: "src/data/site.json", format: "json",
     fields: {
-      phone: f.text({ label: "Phone", locked: "owner" }),
-      email: f.text({ label: "Email", locked: "owner" }),
-      address: f.object({ label: "Address", locked: "owner", fields: { street: f.text({ label: "Street" }), city: f.text({ label: "City" }) } }),
-      hours: f.hours({ label: "Opening hours", locked: "owner" }),
+      phone: f.text({ label: "Phone", locked: "admin" }),
+      email: f.text({ label: "Email", locked: "admin" }),
+      address: f.object({ label: "Address", locked: "admin", fields: { street: f.text({ label: "Street" }), city: f.text({ label: "City" }) } }),
+      hours: f.hours({ label: "Opening hours", locked: "admin" }),
       tagline: f.text({ label: "Tagline" }),
-      "contact.whatsapp": f.text({ label: "WhatsApp", locked: "owner" }),
+      "contact.whatsapp": f.text({ label: "WhatsApp", locked: "admin" }),
       "contact.note": f.text({ label: "Note" }),
     },
   }],
@@ -26,13 +26,13 @@ const config = {
     key: "menu", label: "Menu", itemLabel: "Service", store: { kind: "json-array", path: "src/data/menu.json", idField: "id" },
     fields: {
       name: f.text({ label: "Name" }),
-      price: f.text({ label: "Price", locked: "owner" }),
+      price: f.text({ label: "Price", locked: "admin" }),
       groups: f.list(f.object({ label: "Group", fields: {
         title: f.text({ label: "Title" }),
         items: f.list(f.object({ label: "Item", fields: {
           name: f.text({ label: "Name" }),
-          price: f.text({ label: "Price", locked: "owner" }),
-          options: f.list(f.object({ label: "Option", fields: { label: f.text({ label: "Label" }), surcharge: f.text({ label: "Surcharge", locked: "owner" }) } }), { label: "Options" }),
+          price: f.text({ label: "Price", locked: "admin" }),
+          options: f.list(f.object({ label: "Option", fields: { label: f.text({ label: "Label" }), surcharge: f.text({ label: "Surcharge", locked: "admin" }) } }), { label: "Options" }),
         } }), { label: "Items", itemLabel: "Item" }),
       } }), { label: "Groups" }),
     },
@@ -50,6 +50,14 @@ const paths = (violations) => violations.map((entry) => `${entry.reason}:${entry
 
 // ------------------------------------------------------------------ rule 1: locked values do not change (any depth)
 
+test('M2: locked: "owner" (the old name of "admin") locks the same way', () => {
+  const old = structuredClone(config);
+  old.files[0].fields.phone = f.text({ label: "Phone", locked: "owner" });
+  const after = clone(site); after.phone = "(555) 999-0000";
+  assert.deepEqual(checkLocks({ config: old, role: "editor", target: { kind: "file", key: "site" }, before: site, after }).map((entry) => entry.message), ["Only an admin can change Phone"]);
+  assert.deepEqual(checkLocks({ config: old, role: "owner", target: { kind: "file", key: "site" }, before: site, after }), [], "an admin (stored as owner) may");
+});
+
 test("owner may change every locked field", () => {
   assert.deepEqual(file("owner", (s) => { s.phone = "1"; s.address.city = "X"; s.hours = []; s.contact.whatsapp = ""; }), []);
   assert.deepEqual(item("owner", (r) => { r.price = "$1"; r.groups[0].items[1].options[0].surcharge = "$0"; }), []);
@@ -58,7 +66,7 @@ test("editor: an unlocked field changes freely", () => { assert.deepEqual(file("
 test("editor: a locked text field → refused with its label", () => {
   const [violation, ...rest] = file("editor", (s) => { s.phone = "(555) 999-9999"; });
   assert.deepEqual(rest, []);
-  assert.deepEqual({ ...violation }, { path: "phone", field: "Phone", label: "Phone", reason: "changed", message: "Only the owner can change Phone" });
+  assert.deepEqual({ ...violation }, { path: "phone", field: "Phone", label: "Phone", reason: "changed", message: "Only an admin can change Phone" });
 });
 test("editor: empty values count as the same (\"\" ↔ missing ↔ null)", () => {
   const before = { ...clone(site), email: "" };
@@ -81,7 +89,7 @@ test("editor: 4 levels deep (groups → items → options → surcharge) → ref
   const [violation] = item("editor", (r) => { r.groups[0].items[0].options[1].surcharge = "$4"; });
   assert.equal(violation.path, "groups[0].items[0].options[1].surcharge");
   assert.equal(violation.field, "Groups › Items › Options › Surcharge");
-  assert.equal(violation.message, "Only the owner can change Groups › Items › Options › Surcharge");
+  assert.equal(violation.message, "Only an admin can change Groups › Items › Options › Surcharge");
 });
 test("editor: unlocked values at the same depths → allowed", () => {
   assert.deepEqual(item("editor", (r) => { r.groups[0].title = "Mains"; r.groups[0].items[1].name = "Premium"; r.groups[0].items[0].options[1].label = "Nail art"; }), []);
@@ -120,12 +128,12 @@ test("editor: a new record with its price empty → allowed; with a price → re
   priced.groups[0].items[0].options[0].surcharge = "$2";
   const violations = checkLocks({ config, role: "editor", target: { kind: "item", key: "menu" }, before: undefined, after: priced });
   assert.deepEqual(paths(violations), ["added:price", "added:groups[0].items[0].options[0].surcharge"]);
-  assert.equal(violations[0].message, "Only the owner can add a Service with Price filled in — leave Price empty for the owner");
+  assert.equal(violations[0].message, "Only an admin can add a Service with Price filled in — leave Price empty for an admin");
 });
 test("editor: a new list entry with an empty price → allowed; with a price → refused", () => {
   assert.deepEqual(item("editor", (r) => { r.groups[0].items.push({ name: "Mini", price: "", options: [] }); }), []);
   const [violation] = item("editor", (r) => { r.groups[0].items.push({ name: "Mini", price: "$5", options: [] }); });
-  assert.deepEqual([violation.reason, violation.path, violation.message], ["added", "groups[0].items[2].price", "Only the owner can add an Item with Groups › Items › Price filled in — leave Price empty for the owner"]);
+  assert.deepEqual([violation.reason, violation.path, violation.message], ["added", "groups[0].items[2].price", "Only an admin can add an Item with Groups › Items › Price filled in — leave Price empty for an admin"]);
 });
 test("editor: a new record in the collection (collection-level) follows the same rule", () => {
   const before = [record("a", "$30")];
@@ -142,7 +150,7 @@ test("editor: removing a record with a price → refused; without any locked val
   assert.deepEqual(checkLocks({ config, role: "editor", target: { kind: "item", key: "menu" }, before: bare, after: undefined }), []);
   const collection = checkLocks({ config, role: "editor", target: { kind: "collection", key: "menu" }, before: [withPrice, bare], after: [] });
   assert.ok(collection.every((entry) => entry.reason === "removed" && entry.path.startsWith('["a"]')), JSON.stringify(collection));
-  assert.equal(collection[0].message, "Only the owner can remove a Service that has Price");
+  assert.equal(collection[0].message, "Only an admin can remove a Service that has Price");
 });
 test("editor: removing a list entry with a price → refused; an entry with empty locked fields → allowed", () => {
   assert.deepEqual(paths(item("editor", (r) => { r.groups[0].items.splice(1, 1); })), ["removed:groups[0].items[1].price", "removed:groups[0].items[1].options[0].surcharge"]);
@@ -218,6 +226,6 @@ test("demo site: editor may not change phone, email, address, hours or a service
   const changed = { ...clone(current), phone: "1", email: "x@demo.example", address: { ...current.address, city: "X" }, hours: [], tagline: "New" };
   assert.deepEqual(checkLocks({ config: demo, role: "editor", target: { kind: "file", key: "site" }, before: current, after: changed }).map((entry) => entry.path), ["phone", "email", "address", "hours"]);
   const services = JSON.parse(readFileSync(join(demoRoot, "src/data/services.json"), "utf8"));
-  assert.deepEqual(checkLocks({ config: demo, role: "editor", target: { kind: "item", key: "services" }, before: services[0], after: { ...services[0], price: "$21" } }).map((entry) => entry.message), ["Only the owner can change Price"]);
+  assert.deepEqual(checkLocks({ config: demo, role: "editor", target: { kind: "item", key: "services" }, before: services[0], after: { ...services[0], price: "$21" } }).map((entry) => entry.message), ["Only an admin can change Price"]);
   assert.deepEqual(checkLocks({ config: demo, role: "editor", target: { kind: "collection", key: "services" }, before: services, after: [...services].reverse() }), []);
 });

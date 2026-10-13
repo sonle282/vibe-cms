@@ -12,7 +12,7 @@
 // P9: the preview next to the form shows the draft on the real page as it is typed (no reload, < 16 ms a key), links
 // the page and the form both ways, and shows a new service in its list.
 // Then the editor signs in: locked fields are shown but disabled, other fields save; they change their own password on
-// My account. Nothing remote; test values only.
+// the Change password dialog. Nothing remote; test values only.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -418,7 +418,7 @@ try {
   const reviewText = await page.locator(".vc-review-list").innerText();
   await shot("p8-review");
   check("review: 6 drafts, all ticked", (await page.locator(".vc-review-card").count()) === 6 && (await page.locator(".vc-pick:checked").count()) === 6);
-  for (const line of ["Salon name: Demo Salon → Demo Salon & Spa", "Phone (owner only): (555) 010-0000 → (555) 010-0001", "Featured services: removed Spa Pedicure", "Price (owner only): $35 → $40", "New service: Gel Removal", "Specialty: Nail Art → Spa Pedicure", "Status: published → draft", "Text: This post is invented. It exists so the CMS has a Markdown record to edit. → New body text. Opening hours Mon to Fri Sat", "Text › image: added /assets/uploads/"]) {
+  for (const line of ["Salon name: Demo Salon → Demo Salon & Spa", "Phone (admin only): (555) 010-0000 → (555) 010-0001", "Featured services: removed Spa Pedicure", "Price (admin only): $35 → $40", "New service: Gel Removal", "Specialty: Nail Art → Spa Pedicure", "Status: published → draft", "Text: This post is invented. It exists so the CMS has a Markdown record to edit. → New body text. Opening hours Mon to Fri Sat", "Text › image: added /assets/uploads/"]) {
     check(`review says “${line}”`, reviewText.replace(/\s+/g, " ").includes(line), reviewText.slice(0, 2500));
   }
   const head = github.head();
@@ -486,7 +486,7 @@ try {
   const lockedDisabled = await Promise.all(["phone", "email", "address.street", "address.city"].map((path) => input(path).isDisabled()));
   check("editor: phone, email, address are shown but disabled", lockedDisabled.every(Boolean) && (await input("phone").inputValue()) === siteBefore.phone, lockedDisabled);
   check("editor: hours disabled (days, times, add row)", await field("hours[0]").getByLabel("Monday").isDisabled() && await field("hours").getByRole("button", { name: "Add a row" }).isDisabled());
-  check("editor: the lock says why", (await field("phone").innerText()).includes("Only the owner can change this."));
+  check("editor: the lock says why", (await field("phone").innerText()).includes("Only an admin can change this."));
   check("editor: other fields are editable", !(await input("tagline").isDisabled()) && !(await input("hero.title").isDisabled()));
   await input("tagline").fill("Edited by the editor.");
   await save();
@@ -502,17 +502,19 @@ try {
   check("editor: a new service's price stays empty and disabled", await input("price").isDisabled() && (await input("price").inputValue()) === "");
   await save();
   check("editor adds a service with the price left for the owner (rule 2)", (await api("/api/cms/collections/services/items/editor-special")).draft?.content.name === "Editor Special");
-  check("editor: no People in the navigation", !(await page.locator(".vc-rail").innerText()).includes("People"));
-  // P8b: My account — the editor changes their own password and stays signed in.
+  check("editor: no Users in the navigation", !(await page.locator(".vc-rail").innerText()).includes("Users"));
+  // M2 (Mr Spa): account menu → Change password — a dialog; the editor changes their own password and stays signed in.
   await page.locator(".vc-avatar").click();
-  await page.locator(".vc-user-name").click();
-  await page.locator("form.vc-account").waitFor();
-  await page.getByLabel("Current password").fill(EDITOR_PASSWORD);
-  await page.getByLabel("New password", { exact: true }).fill("editor-e2e-password-3");
-  await page.getByLabel("New password again").fill("editor-e2e-password-3");
-  await page.getByRole("button", { name: "Change password" }).click();
-  await page.getByText("Password changed.").waitFor();
-  check("My account: the password change keeps this session", (await api("/api/auth/me")).user?.username === "editor1");
+  check("account menu: name, Editor, Change password, Sign out", /Editor\s+Change password\s+Sign out/.test(await page.locator(".vc-user .vc-menu").innerText()), await page.locator(".vc-user .vc-menu").innerText());
+  await page.getByRole("menuitem", { name: "Change password" }).click();
+  const passwordDialog = page.getByRole("alertdialog", { name: "Change your password" });
+  await passwordDialog.getByLabel("Current password").fill(EDITOR_PASSWORD);
+  await passwordDialog.getByLabel("New password", { exact: true }).fill("editor-e2e-password-3");
+  await passwordDialog.getByLabel("Confirm new password").fill("editor-e2e-password-3");
+  await passwordDialog.getByRole("button", { name: "Save password" }).click();
+  await passwordDialog.getByText("Password changed successfully.").waitFor();
+  await passwordDialog.waitFor({ state: "detached" });
+  check("Change password: saved, and this session stays signed in", (await api("/api/auth/me")).user?.username === "editor1");
 
   check("no script errors, no 5xx", problems.length === 0, problems);
   const failed = checks.filter((entry) => !entry.ok);

@@ -18,8 +18,8 @@ const withConfig = async (source, run) => {
 test("the demo site's config loads: 1 file, 3 collections, locked phone / email / address / hours + price", async () => {
   const config = await loadCmsConfig(demo);
   assert.deepEqual(countConfig(config), { files: 1, collections: 3 });
-  for (const name of ["phone", "email", "address", "hours"]) assert.equal(config.files[0].fields[name].locked, "owner", name);
-  assert.equal(config.collections[0].fields.price.locked, "owner");
+  for (const name of ["phone", "email", "address", "hours"]) assert.equal(config.files[0].fields[name].locked, "admin", name);
+  assert.equal(config.collections[0].fields.price.locked, "admin");
   assert.equal(config.repo.branch, "main");
 });
 
@@ -40,7 +40,7 @@ test("other mistakes are all listed at once", async () => {
   await withConfig(`export default { configVersion: 2, site: {}, repo: { owner: "o" }, files: [{ key: "a", label: "A", path: "a.yaml", fields: { x: { type: "colour", label: "X" }, y: { type: "text" } } }],
   collections: [{ key: "c", label: "C", store: { kind: "json-array" }, fields: { n: { type: "text", label: "N", locked: "editor" } } }] };`, async (file) => {
     await assert.rejects(loadCmsConfig(file), (error) => {
-      for (const part of ["configVersion: must be 1", "site.name: required", "site.url: must be a full http(s) address", "repo.name: required", "repo.branch: required", 'files[0].path: "a.yaml" must be inside "src/data/" or "src/content/"', 'files[0].fields.x.type: unknown field type "colour"', "files[0].fields.y.label: required", "collections[0].itemLabel: required", "collections[0].store.path: required", 'collections[0].store.idField: required for "json-array"', 'collections[0].fields.n.locked: only "owner" is allowed']) assert.ok(error.message.includes(part), `mentions ${part}\n${error.message}`);
+      for (const part of ["configVersion: must be 1", "site.name: required", "site.url: must be a full http(s) address", "repo.name: required", "repo.branch: required", 'files[0].path: "a.yaml" must be inside "src/data/" or "src/content/"', 'files[0].fields.x.type: unknown field type "colour"', "files[0].fields.y.label: required", "collections[0].itemLabel: required", "collections[0].store.path: required", 'collections[0].store.idField: required for "json-array"', 'collections[0].fields.n.locked: only "admin" is allowed']) assert.ok(error.message.includes(part), `mentions ${part}\n${error.message}`);
       return true;
     });
   });
@@ -54,7 +54,7 @@ test("field builders keep their options and type", () => {
   const list = f.list(f.text({ label: "Extra" }), { label: "Extras", ordered: true });
   assert.deepEqual(list, { type: "list", of: { type: "text", label: "Extra" }, label: "Extras", ordered: true });
   assert.deepEqual(f.reference({ label: "Category", to: "categories", multiple: true }), { type: "reference", label: "Category", to: "categories", multiple: true });
-  assert.deepEqual(f.hours({ label: "Hours", locked: "owner" }), { type: "hours", label: "Hours", locked: "owner" });
+  assert.deepEqual(f.hours({ label: "Hours", locked: "admin" }), { type: "hours", label: "Hours", locked: "admin" });
   const config = defineCmsConfig({ configVersion: 1, site: { name: "S", url: "https://s.example" }, repo: { owner: "o", name: "r", branch: "main" }, files: [], collections: [] });
   assert.deepEqual(countConfig(config), { files: 0, collections: 0 });
 });

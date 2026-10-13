@@ -50,8 +50,8 @@ test("values: readable paths, key order kept when setting, a re-order counts as 
   assert.equal(countChanges({ a: undefined }, { a: "" }), 0, "empty and missing are the same");
   assert.equal(slugify("Spa Pedicure — Deluxe!"), "spa-pedicure-deluxe");
   assert.equal(slugify("Gội đầu dưỡng sinh"), "goi-dau-duong-sinh");
-  assert.equal(holdsLockedValue(f.object({ label: "S", fields: { price: f.text({ label: "Price", locked: "owner" }), name: f.text({ label: "N" }) } }), { name: "x", price: "" }), false);
-  assert.equal(holdsLockedValue(f.object({ label: "S", fields: { price: f.text({ label: "Price", locked: "owner" }) } }), { price: "$5" }), true);
+  assert.equal(holdsLockedValue(f.object({ label: "S", fields: { price: f.text({ label: "Price", locked: "admin" }), name: f.text({ label: "N" }) } }), { name: "x", price: "" }), false);
+  assert.equal(holdsLockedValue(f.object({ label: "S", fields: { price: f.text({ label: "Price", locked: "admin" }) } }), { price: "$5" }), true);
 });
 
 test("boot data for the page: only the editable config + who is signed in, safe inside a script tag", () => {
@@ -187,16 +187,19 @@ test("form: an editor sees locked fields disabled (any depth) and cannot delete 
   assert.equal(control(editor, "tagline").disabled, false);
   assert.equal(at(editor, "footerLinks").querySelector(".vc-add").disabled, false);
 
-  const fields = { menu: f.list(f.object({ label: "Row", fields: { name: f.text({ label: "Name" }), price: f.text({ label: "Price", locked: "owner" }) } }), { label: "Menu", ordered: true, itemLabel: "Row" }) };
+  const fields = { menu: f.list(f.object({ label: "Row", fields: { name: f.text({ label: "Name" }), price: f.text({ label: "Price", locked: "admin" }) } }), { label: "Menu", ordered: true, itemLabel: "Row" }) };
   const value = { menu: [{ name: "Priced", price: "$5" }, { name: "Not priced yet" }] };
   const asEditor = createForm({ doc: document, fields, value, role: "editor" });
-  assert.equal(at(asEditor, "menu").querySelector('[aria-label^="Only the owner can delete Row 1"]').disabled, true);
+  assert.equal(at(asEditor, "menu").querySelector('[aria-label^="Only an admin can delete Row 1"]').disabled, true);
   assert.equal(at(asEditor, "menu").querySelector('[aria-label="Delete Row 2"]').disabled, false);
   assert.equal(at(asEditor, "menu").querySelector('[aria-label="Move Row 1 down"]').disabled, false, "re-ordering is allowed");
   assert.equal(control(asEditor, "menu[0].price").disabled, true);
   const asOwner = createForm({ doc: document, fields, value, role: "owner" });
   assert.equal(at(asOwner, "menu").querySelector('[aria-label="Delete Row 1"]').disabled, false);
-  assert.match(at(asOwner, "menu[0].price").textContent, /Editors see this but only an owner can change it/);
+  assert.match(at(asOwner, "menu[0].price").textContent, /Editors see this but only an admin can change it/);
+  // M2: an admin sees the lock too, on "admin" (and on the old name "owner").
+  assert.ok(at(asOwner, "menu[0].price").querySelector(".vc-lock"), "the lock icon for an admin");
+  assert.match(at(asOwner, "menu[0].price").textContent, /\(admin only\)/);
 });
 
 test("form: problems show next to their field (closest field for deep paths); others in a list at the top", () => {
@@ -438,7 +441,7 @@ test("P8 shell: review shows what each draft changes; publishing the ticked one 
     const siteCard = cards.find((card) => card.dataset.resource === "file:site");
     const spaCard = cards.find((card) => card.dataset.resource === "item:services:spa-pedicure");
     assert.match(siteCard.querySelector(".vc-changes").textContent, /Tagline: A made-up salon for testing Vibe CMS\. → Fresh tagline/);
-    assert.match(spaCard.textContent, /Price \(owner only\): \$35 → \$40/);
+    assert.match(spaCard.textContent, /Price \(admin only\): \$35 → \$40/);
     assert.equal(siteCard.querySelector(".vc-pick").checked, true, "the draft I came from is ticked");
     assert.equal(spaCard.querySelector(".vc-pick").checked, false, "the others are not");
     const button = h.root.querySelector('[data-action="publish-now"]');
@@ -693,7 +696,7 @@ test("P10 shell: without the bucket the sheet says uploading is not set up; an e
   document.querySelector('.vc-sheet [aria-label="Close"]').click();
   assert.equal(document.querySelector(".vc-sheet"), null);
   // Locked image fields: disabled inputs and no Choose / Remove.
-  const locked = createForm({ doc: document, fields: { logo: f.image({ label: "Logo", locked: "owner" }) }, value: { logo: "/a.png" }, role: "editor", pickImage: () => assert.fail("not for a locked field") });
+  const locked = createForm({ doc: document, fields: { logo: f.image({ label: "Logo", locked: "admin" }) }, value: { logo: "/a.png" }, role: "editor", pickImage: () => assert.fail("not for a locked field") });
   assert.equal(locked.element.querySelectorAll("button").length, 0);
   const prepare = prepareImage(window);
   await assert.rejects(prepare(new window.File(["GIF89a"], "a.gif", { type: "image/gif" })), /JPEG, PNG, WebP or AVIF/);

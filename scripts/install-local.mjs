@@ -1,7 +1,7 @@
 // P11: install the demo site FROM SCRATCH the way the README says — `npm i <release URL>`, `npx vibe-cms setup`, check,
 // build — with the package served as a GitHub-Release-shaped URL on 127.0.0.1 (npm pack of this checkout) and NO token:
 // an empty npm user config, no NODE_AUTH_TOKEN / NPM_TOKEN, no npm_* variables. Then on the built site in
-// `wrangler dev --local`: the first owner signs in (bootstrap), `vibe-cms reset-owner-password` gives a temporary password
+// `wrangler dev --local`: the first admin signs in (bootstrap), `vibe-cms reset-admin-password` gives a temporary password
 // that signs in (the old one no longer does), `export` / `import` into a fresh local D1 match row for row, and `update`
 // moves to a newer release (latest from a fake GitHub API) and prints its "Site action". Everything local; temp folders.
 import assert from "node:assert/strict";
@@ -99,7 +99,7 @@ try {
   const built = JSON.parse(readFileSync(join(site, "dist/server/wrangler.json"), "utf8"));
   assert.deepEqual([built.d1_databases?.[0]?.binding, built.kv_namespaces?.find((kv) => kv.binding === "SESSION")?.id, built.r2_buckets?.[0]?.bucket_name, built.ratelimits?.length, built.images], ["CMS_DB", "local-demo-session", "demo-media", 2, undefined], "the built Worker carries the bindings setup wrote (and no IMAGES)");
 
-  // 3. The built site: bootstrap owner → reset-owner-password → only the temporary password signs in.
+  // 3. The built site: bootstrap admin → reset-admin-password → only the temporary password signs in.
   const persist = join(site, ".wrangler/state");
   const OWNER = { username: "olivia", password: "bootstrap-password-123" };
   const dev = async () => { const server = await startWranglerDev({ cwd: site, config: "dist/server/wrangler.json", ready: "/api/cms/health", args: ["--persist-to", persist, "--var", `CMS_BOOTSTRAP_USERNAME:${OWNER.username}`, "--var", `CMS_BOOTSTRAP_PASSWORD:${OWNER.password}`] }); stops.push(server.stop); return server; };
@@ -112,7 +112,7 @@ try {
   assert.equal((await first.json()).mustChangePassword, true);
   running.stop();
 
-  const reset = ok(await vibe(["reset-owner-password", "--local"], site), "vibe-cms reset-owner-password");
+  const reset = ok(await vibe(["reset-admin-password", "--local"], site), "vibe-cms reset-admin-password");
   const temporary = /\n {2}(\S{20})\n/.exec(reset)?.[1];
   assert.ok(temporary, `a 20-character temporary password is printed:\n${reset}`);
   running = await dev();
@@ -169,7 +169,7 @@ INSERT INTO cms_auth_state VALUES ('bootstrap_completed', 'true', '2026-09-29T08
   assert.match(missing.stderr, /release v9\.9\.9 not found .* nothing changed/);
   assert.equal(readFileSync(join(site, "package.json"), "utf8"), before);
 
-  console.log(`Install (local) OK in ${Math.round((Date.now() - started) / 1000)} s: npm i <release URL> with no token → setup ×2 (second: no change) → check → build → bootstrap owner signs in → reset-owner-password (old password 401, temporary 200 + must change) → export / import ${Object.values(counts.tables).reduce((a, b) => a + b, 0)} rows match → import-legacy-users (old password signs in) → update ${pkg.version} → ${next} (latest, site action shown).`);
+  console.log(`Install (local) OK in ${Math.round((Date.now() - started) / 1000)} s: npm i <release URL> with no token → setup ×2 (second: no change) → check → build → bootstrap admin signs in → reset-admin-password (old password 401, temporary 200 + must change) → export / import ${Object.values(counts.tables).reduce((a, b) => a + b, 0)} rows match → import-legacy-users (old password signs in) → update ${pkg.version} → ${next} (latest, site action shown).`);
 } finally {
   stops.forEach((stop) => stop());
   server.close();
