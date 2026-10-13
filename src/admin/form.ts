@@ -69,6 +69,11 @@ export type FormOptions = {
   links?: { pages: readonly LinkPage[]; host: string; country?: string };
   /** M4: the page is on the canvas — a Link field says its destination is not visible there (as the Mr Spa CMS does). */
   previewNotes?: boolean;
+  /**
+   * M7: the area's on / off toggle (its path, "popup.enabled"), shown as the Mr Spa CMS's switch with what visitors see;
+   * `live` = whether it is on on the website now; `noun` = the area ("popup").
+   */
+  switchField?: { path: string; noun: string; live: boolean | undefined };
 };
 
 export type Form = {
@@ -97,6 +102,10 @@ export const topKeyOf = (fields: Record<string, Field>, entry: string) => {
   return Object.keys(fields).sort((a, b) => b.length - a.length).find((key) => entry.startsWith(`${key}.`) || entry.startsWith(`${key}[`));
 };
 export const OWNER_NOTE = "Editors see this but only an admin can change it.";
+/** M7: the Mr Spa CMS's four sentences under an area's switch — on / off in the draft, against the website. */
+export const switchStatus = (on: boolean, live: boolean, noun: string) => (on
+  ? (live ? `On — visitors see this ${noun}.` : "On after you publish — visitors don’t see it yet.")
+  : (live ? "Off after you publish — visitors still see it until then." : `Off — visitors don’t see a ${noun}.`));
 /** M4 (Mr Spa): under a Link field while the page is on the canvas. */
 export const LINK_PREVIEW_NOTE = "Link destination: not visible in the preview.";
 
@@ -275,6 +284,19 @@ export const createForm = (options: FormOptions): Form => {
       if (shown !== input.value) { input.value = shown; set(path, shown); }
     });
     return { control: input, id, show: (value: unknown) => { input.value = typeof value === "string" ? value : ""; } };
+  };
+
+  // M7 (Mr Spa): the area's switch — "Show on website" and one sentence on what visitors see, the draft against the website.
+  const switchInput = (field: Extract<Field, { type: "toggle" }>, path: Path, disabled: boolean, about: { noun: string; live: boolean | undefined }) => {
+    const id = uid("f");
+    const wasAbsent = getAt(state, path) === undefined;
+    const box = h(doc, "input", { id, type: "checkbox", role: "switch", class: "vc-switch-box", disabled, "aria-describedby": `${id}-status` });
+    const status = h(doc, "span", { id: `${id}-status` });
+    const say = () => { status.textContent = switchStatus(box.checked, about.live ?? box.checked, about.noun); };
+    box.checked = getAt(state, path) === true;
+    say();
+    box.addEventListener("change", () => { set(path, box.checked ? true : wasAbsent ? undefined : false); say(); });
+    return { control: h(doc, "label", { class: "vc-switch", for: id }, h(doc, "span", { class: "vc-switch-text" }, h(doc, "strong", {}, field.label), status), box), id, show: (value: unknown) => { box.checked = value === true; say(); } };
   };
 
   // P12g: toggle — a checkbox; unticking a value that was never set leaves it out again.
@@ -577,6 +599,10 @@ export const createForm = (options: FormOptions): Form => {
         return wrap({ ...common, group: false, control, inputId: id, show });
       }
       case "toggle": {
+        if (options.switchField && pathText(path) === options.switchField.path) {
+          const { control, show } = switchInput(field, path, disabled, options.switchField);
+          return wrap({ ...common, field: { ...shown, help: undefined }, group: false, control, show, hideLabel: true });
+        }
         const { control, show } = toggleInput(field, path, disabled);
         return wrap({ ...common, field: { ...shown, help: undefined }, group: false, control, show });
       }

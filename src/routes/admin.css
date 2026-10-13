@@ -778,3 +778,80 @@ label.vc-button[role="button"] { cursor: pointer; }
 .vc-review-value.is-before .vc-review-mark { background: var(--canvas); color: var(--text-secondary); text-decoration: line-through; }
 .vc-review-arrow { color: var(--text-disabled); }
 .vc-review-empty { margin: 0; color: var(--text-secondary); font-size: 13px; }
+
+/* ---------- M7: Pages of the Mr Spa CMS (two columns: Main pages | Across the whole site + the other groups) */
+.vc-body.vc-body-pages { padding: 28px 40px 40px; }
+.vc-body.vc-body-pages .vc-page-inner { max-width: none; }
+.vc-pages-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; }
+.vc-pages-search { position: relative; display: block; width: min(300px, 100%); }
+.vc-pages-search .vc-icon { position: absolute; top: 50%; left: 12px; width: 14px; height: 14px; color: var(--text-secondary); transform: translateY(-50%); pointer-events: none; }
+.vc-pages-search input { width: 100%; min-height: 36px; padding: 0 12px 0 32px; border: 1px solid var(--border-input); border-radius: var(--radius-10); background: var(--surface); color: var(--text); font: 400 14px/1 var(--font-ui); }
+.vc-pages-search input:focus { border-color: var(--accent); outline: 0; box-shadow: 0 0 0 3px var(--accent-ring); }
+.vc-pages-count { color: var(--text-secondary); font-size: 13px; }
+.vc-pages-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 28px; }
+.vc-pages-columns.is-single { grid-template-columns: minmax(0, 1fr); max-width: 760px; }
+.vc-pages-side { display: grid; gap: 28px; }
+.vc-pages-group[hidden], .vc-pages-list li[hidden], .vc-pages-empty[hidden] { display: none; }
+.vc-pages-group-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 10px; color: var(--text); font-size: 14px; font-weight: 600; }
+.vc-pages-group-title small { color: var(--text-secondary); font-size: 13px; font-weight: 400; }
+.vc-pages-list { overflow: hidden; margin: 0; padding: 0; border: 1px solid var(--hairline); border-radius: var(--radius-14); background: var(--surface); list-style: none; }
+.vc-pages-list li + li { border-top: 1px solid var(--hairline); }
+.vc-pages-row { display: flex; width: 100%; min-height: 60px; align-items: center; gap: 14px; padding: 10px 16px; color: var(--text); text-align: left; text-decoration: none; transition: background-color var(--motion-hover) ease; }
+.vc-pages-row:hover { background: var(--canvas); }
+.vc-pages-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.vc-pages-row-icon { display: grid; flex: 0 0 34px; width: 34px; height: 34px; place-items: center; border-radius: var(--radius-8); background: var(--canvas); color: var(--text-secondary); }
+.vc-pages-row-icon .vc-icon { width: 16px; height: 16px; }
+.vc-pages-row-text { display: grid; flex: 1 1 auto; min-width: 0; gap: 1px; }
+.vc-pages-row-text strong { overflow: hidden; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.vc-pages-row-text span { overflow: hidden; color: var(--text-secondary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.vc-pages-row-status { display: grid; flex: 0 0 auto; justify-items: end; }
+.vc-pages-row-chevron { display: grid; flex: 0 0 16px; color: var(--text-secondary); }
+.vc-pages-row-chevron .vc-icon { width: 16px; height: 16px; }
+.vc-pages-empty { color: var(--text-secondary); font-size: 14px; }
+.vc-content-status { display: inline-flex; height: 24px; align-items: center; gap: 6px; padding: 0 10px; border-radius: 12px; background: var(--success-bg); color: var(--success); font-size: 12px; font-weight: 500; line-height: 1; white-space: nowrap; }
+.vc-content-status.is-off { background: var(--surface-off); color: var(--text-off); }
+.vc-list-status-note { display: block; margin-top: 4px; color: var(--warning); font-size: 12px; white-space: nowrap; }
+@media (max-width: 1100px) { .vc-pages-columns { grid-template-columns: minmax(0, 1fr); } .vc-body.vc-body-pages { padding: 24px; } }
+@media (prefers-reduced-motion: reduce) { .vc-pages-row, .vc-switch-box, .vc-switch-box::after { transition: none; } }
+
+/* ---------- M7: an area in the inspector ("Across the whole site"), and its switch */
+.vc-area-description { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+.vc-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: var(--radius-12); background: var(--canvas); cursor: pointer; }
+.vc-switch-text { display: grid; gap: 2px; }
+.vc-switch-text strong { color: var(--text); font-size: 14px; font-weight: 500; }
+.vc-switch-text span { color: var(--text-secondary); font-size: 12px; font-weight: 400; }
+.vc-switch-box { position: relative; flex: 0 0 44px; width: 44px; height: 26px; margin: 0; border-radius: 14px; background: var(--border-input); appearance: none; -webkit-appearance: none; cursor: pointer; transition: background-color var(--motion-hover); }
+.vc-switch-box::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgba(0, 0, 0, .2); transition: transform var(--motion-hover); }
+.vc-switch-box:checked { background: var(--success); }
+.vc-switch-box:checked::after { transform: translateX(18px); }
+.vc-switch-box:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vc-switch-box:disabled { cursor: not-allowed; opacity: .6; }
+
+/* ---------- M7: Search & sharing of the Mr Spa CMS (the cards, the Google and share previews) */
+.vc-body.vc-body-seo { padding: 28px 32px 48px; }
+.vc-body.vc-body-seo .vc-page-inner { max-width: 1300px; margin: 0; }
+.vc-seo-columns { display: grid; grid-template-columns: minmax(0, 560px) minmax(0, 1fr); align-items: start; gap: 28px; }
+.vc-seo-form .vc-form { display: grid; gap: 20px; }
+.vc-seo-form .vc-section { display: grid; gap: 8px; margin: 0; padding: 22px 20px; border: 1px solid var(--hairline); border-radius: var(--radius-14); background: var(--surface); }
+.vc-seo-form .vc-section-title, .vc-seo-preview h2 { margin: 0; color: var(--text); font-size: 16px; font-weight: 600; }
+.vc-seo-card-help { margin: 0 0 8px; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
+.vc-seo-form .vc-label { display: flex; justify-content: space-between; gap: 8px; }
+.vc-seo-count { color: var(--text-secondary); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.vc-seo-count[data-state="long"] { color: var(--warning); }
+.vc-seo-preview { position: sticky; top: 0; display: grid; gap: 12px; }
+.vc-seo-google { display: grid; gap: 4px; padding: 16px 18px; border: 1px solid var(--hairline); border-radius: var(--radius-14); background: var(--surface); }
+.vc-seo-google-site { color: var(--text); font-size: 12px; }
+.vc-seo-google-title { color: var(--accent-strong); font-size: 18px; }
+.vc-seo-google-description, .vc-seo-share-text span { color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.vc-seo-share { display: grid; max-width: 440px; overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--radius-14); background: var(--canvas); }
+.vc-seo-share-image { display: block; width: 100%; aspect-ratio: 1200 / 630; object-fit: cover; background: var(--surface); }
+.vc-seo-share-image[hidden] { display: none; }
+.vc-seo-share-text { display: grid; gap: 2px; padding: 10px 14px 12px; }
+.vc-seo-share-text strong { color: var(--text); font-size: 15px; }
+.vc-seo-share-text .vc-seo-share-site { font-size: 12px; letter-spacing: .04em; }
+@media (max-width: 1100px) { .vc-seo-columns { grid-template-columns: minmax(0, 1fr); } .vc-seo-preview { position: static; } }
+/* The sharing image (Mr Spa: a 180 px picture beside its file line, the field's own name for screen readers only). */
+.vc-seo-form [data-section="sharing"] .vc-field-image > .vc-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.vc-seo-form [data-section="sharing"] .vc-image-card:not(.is-empty) { grid-template-columns: 180px minmax(0, 1fr); align-items: center; gap: 14px; }
+.vc-seo-form [data-section="sharing"] .vc-image-card:not(.is-empty) .vc-image-frame { height: 96px; aspect-ratio: auto !important; border: 0; border-radius: var(--radius-12); }
+.vc-seo-form [data-section="sharing"] .vc-image-card:not(.is-empty) .vc-image-meta { flex-wrap: wrap; margin: 0; padding: 0; border: 0; }

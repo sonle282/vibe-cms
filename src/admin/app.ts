@@ -12,7 +12,7 @@ import type { PickChoices } from "../check/picks.js";
 import { checkRecordValues } from "../check/values.js";
 import { createClient, humanMessage, xhrUpload, type ApiFail, type Client, type Fetch } from "./api.js";
 import type { AdminBoot, BootCollection, BootFile } from "./boot.js";
-import { clear, h, icon } from "./dom.js";
+import { clear, h, icon, uid } from "./dom.js";
 import { confirmDialog, openDialog, type ConfirmOptions } from "./dialog.js";
 import { createToast } from "./toast.js";
 import { installTooltips } from "./tooltip.js";
@@ -84,7 +84,7 @@ type FileView = { resource: string; label: string; content: unknown; version: st
 /** P12g: pick values in plain words in the review ("packages/the-essential-reset" → "The Essential Reset"). */
 const choiceLabelsOf = (choices: PickChoices | undefined) => Object.fromEntries(Object.values(choices ?? {}).flat().map((choice) => [choice.value, choice.label]));
 type ListView = { key: string; label: string; itemLabel: string; items: Array<{ id: string; resource: string; label: string; version: string | null; hasDraft: boolean; isNew?: boolean; image?: string }> };
-type ContentView = { files: Array<{ key: string; label: string; hasDraft: boolean }>; collections: Array<{ key: string; label: string; itemLabel: string; count: number; drafts: number }> };
+type ContentView = { files: Array<{ key: string; label: string; hasDraft: boolean; off?: boolean }>; collections: Array<{ key: string; label: string; itemLabel: string; count: number; drafts: number }> };
 
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 
@@ -402,35 +402,117 @@ export const startAdmin = (options: AdminOptions) => {
 
   // ---------------------------------------------------------------- overview
 
+  /**
+   * M7: Pages, as in the Mr Spa CMS — "Main pages" on the left; "Across the whole site" (the areas) and the other
+   * groups on the right (one column at 1100 px and less). A row: its name, its address (an area: what it holds), Live /
+   * Off (what the website shows), "Unpublished changes" while a draft is saved. "Find a page" hides what does not match.
+   */
   const overview = async (stillHere: () => boolean) => {
     const result = await api.get<ContentView>("/api/cms/content");
     if (!stillHere()) return;
     if (!result.ok) return failed(result, [["Pages"]]);
-    const pill = (draft: boolean) => h(doc, "span", { class: `vc-pill ${draft ? "vc-pill-draft" : "vc-pill-live"}` }, draft ? "Draft saved" : "Live");
-    const host = siteHost();
-    const pages = result.data.files.map((file) => {
-      const path = boot.files.find((entry) => entry.key === file.key)?.preview;
-      const where = path && !path.includes("{") ? `${host}${path}` : "Shown across the website";
-      return { file, where, row: h(doc, "li", {}, h(doc, "a", { class: "vc-row", href: adminHref.file(file.key) },
-        h(doc, "span", { class: "vc-row-icon", "aria-hidden": "true" }, icon(doc, "file")),
-        h(doc, "span", { class: "vc-row-text" }, h(doc, "span", { class: "vc-row-title" }, file.label), h(doc, "span", { class: "vc-row-sub" }, where)),
-        pill(file.hasDraft), h(doc, "span", { class: "vc-row-chevron", "aria-hidden": "true" }, icon(doc, "chevron")))) };
+    const MAIN = "Main pages";
+    const AREAS = "Across the whole site";
+    const rows = result.data.files.map((file) => {
+      const config = boot.files.find((entry) => entry.key === file.key);
+      const path = config?.preview && !config.preview.includes("{") ? config.preview.split(/[?#]/)[0] || "/" : "";
+      const second = config?.area ? config.description ?? "" : path || config?.description || "";
+      const group = config?.area ? AREAS : config?.group ?? MAIN;
+      const li = h(doc, "li", {}, h(doc, "a", { class: "vc-pages-row", href: adminHref.file(file.key), "data-kind": config?.area ? "area" : "page" },
+        h(doc, "span", { class: "vc-pages-row-icon", "aria-hidden": "true" }, icon(doc, "file")),
+        h(doc, "span", { class: "vc-pages-row-text" }, h(doc, "strong", {}, file.label), h(doc, "span", {}, second)),
+        h(doc, "span", { class: "vc-pages-row-status" },
+          h(doc, "span", { class: `vc-content-status${file.off ? " is-off" : ""}` }, file.off ? "Off" : "Live"),
+          file.hasDraft ? h(doc, "span", { class: "vc-list-status-note" }, "Unpublished changes") : null),
+        h(doc, "span", { class: "vc-pages-row-chevron", "aria-hidden": "true" }, icon(doc, "chevron"))));
+      return { group, text: `${file.label} ${second}`.toLowerCase(), li, area: Boolean(config?.area) };
     });
-    const list = h(doc, "ul", { class: "vc-rows" });
-    const count = h(doc, "p", { class: "vc-count", "aria-live": "polite" });
-    const search = searchBox("Find a page");
-    const render = () => {
-      const query = search.value.trim().toLowerCase();
-      const shown = pages.filter((page) => !query || page.file.label.toLowerCase().includes(query) || page.where.toLowerCase().includes(query));
-      clear(list);
-      list.append(...shown.map((page) => page.row));
-      if (!shown.length) list.append(h(doc, "li", { class: "vc-rows-empty" }, `No page matches “${search.value.trim()}”.`));
-      count.textContent = query ? `${shown.length} of ${plural(pages.length, "page")}` : plural(pages.length, "page");
+    // Groups in the order the config first names them; Main pages on the left, the areas first on the right.
+    const names = [...new Set(rows.map((row) => row.group))];
+    const groupBox = (name: string) => {
+      const id = uid("pages");
+      const list = h(doc, "ul", { class: "vc-pages-list" }, rows.filter((row) => row.group === name).map((row) => row.li));
+      return h(doc, "section", { class: "vc-pages-group", "aria-labelledby": id, "data-group": name },
+        h(doc, "h2", { class: "vc-pages-group-title", id }, name, name === AREAS ? h(doc, "small", {}, "Changes here show on every page") : null), list);
     };
-    search.addEventListener("input", render);
+    const side = [...(names.includes(AREAS) ? [AREAS] : []), ...names.filter((name) => name !== MAIN && name !== AREAS)];
+    const groups = [...(names.includes(MAIN) ? [groupBox(MAIN)] : []), ...side.map(groupBox)];
+    const columns = h(doc, "div", { class: `vc-pages-columns${names.includes(MAIN) && side.length ? "" : " is-single"}` },
+      ...(names.includes(MAIN) ? [groups[0]] : []),
+      side.length ? h(doc, "div", { class: "vc-pages-side" }, ...groups.slice(names.includes(MAIN) ? 1 : 0)) : null);
+    const empty = h(doc, "p", { class: "vc-pages-empty", hidden: true }, "No page matches that name.");
+    const pageCount = rows.filter((row) => !row.area).length;
+    const areaCount = rows.length - pageCount;
+    const count = h(doc, "span", { class: "vc-pages-count" }, areaCount ? `${plural(pageCount, "page")} · ${plural(areaCount, "site-wide area")}` : plural(pageCount, "page"));
+    const search = h(doc, "input", { type: "search", placeholder: "Find a page", autocomplete: "off", "aria-label": "Find a page" });
+    search.addEventListener("input", () => {
+      const term = search.value.trim().toLowerCase();
+      let shown = 0;
+      for (const row of rows) { const match = !term || row.text.includes(term); row.li.hidden = !match; if (match) shown += 1; }
+      for (const group of groups) group.hidden = ![...group.querySelectorAll("li")].some((li) => !li.hidden);
+      empty.hidden = shown > 0;
+    });
+    body.classList.add("vc-body-pages");
+    show({ title: "Pages", crumbs: [["Pages"]], leave: () => body.classList.remove("vc-body-pages") }, [quietHeading("Pages"),
+      h(doc, "div", { class: "vc-pages-toolbar" }, h(doc, "label", { class: "vc-pages-search" }, icon(doc, "search"), h(doc, "span", { class: "vc-sr-only" }, "Find a page"), search), count),
+      columns, empty]);
+  };
+
+  // ---------------------------------------------------------------- M7: Search & sharing (the Mr Spa CMS's screen)
+
+  /** Its two cards as form sections: Search results (site name, title, description, the rest) · Sharing image. */
+  const seoSectionsOf = (file: BootFile) => {
+    const seo = file.seo!;
+    const topOf = (name: string) => Object.keys(file.fields).find((key) => name === key || name.startsWith(`${key}.`)) ?? name;
+    const image = seo.image ? [seo.image] : [];
+    const first = [seo.siteName, seo.title, seo.description].filter((name): name is string => Boolean(name));
+    const used = new Set([...first, ...image].map(topOf));
+    const rest = Object.keys(file.fields).filter((key) => !used.has(key));
+    return [{ key: "results", label: "Search results", fields: [...first, ...rest] }, ...(image.length ? [{ key: "sharing", label: "Sharing image", fields: image }] : [])];
+  };
+  /** The form in its cards, the description's "N / 160", and the Google + share previews, kept up to date. */
+  const seoScreen = (file: BootFile, form: Form) => {
+    const seo = file.seo!;
+    const host = siteHost();
+    const at = (name: string | undefined) => (name ? form.element.querySelector<HTMLElement>(`[data-path="${name}"]`) : null);
+    const help = (key: string, text: string) => { const title = form.element.querySelector(`[data-section="${key}"] .vc-section-title`); title?.after(h(doc, "p", { class: "vc-seo-card-help" }, text)); };
+    help("results", "Used on every page that does not set its own.");
+    help("sharing", "Shown when someone shares a link on Facebook, Messenger or iMessage.");
+    const counter = h(doc, "span", { class: "vc-seo-count", "aria-live": "polite" });
+    at(seo.description)?.querySelector(".vc-label")?.append(counter);
+    const googleTitle = h(doc, "span", { class: "vc-seo-google-title" });
+    const googleText = h(doc, "span", { class: "vc-seo-google-description" });
+    const shareImage = h(doc, "img", { class: "vc-seo-share-image", alt: "", hidden: true });
+    const shareTitle = h(doc, "strong", {});
+    const shareText = h(doc, "span", {});
+    const render = () => {
+      const value = form.value();
+      const text = (name: string | undefined) => { const found = name ? getAt(value, keyPath(name)) : undefined; return typeof found === "string" ? found : ""; };
+      const description = text(seo.description);
+      const title = text(seo.title);
+      counter.textContent = `${description.length} / 160`;
+      if (description.length > 160) counter.dataset.state = "long"; else delete counter.dataset.state;
+      googleTitle.textContent = title || "Page title";
+      googleText.textContent = description || "Page description";
+      shareTitle.textContent = title || "Page title";
+      shareText.textContent = description;
+      const image = seo.image ? getAt(value, keyPath(seo.image)) : undefined;
+      const src = typeof image === "string" ? image : image && typeof image === "object" ? String((image as { src?: unknown }).src ?? "") : "";
+      shareImage.hidden = !src;
+      if (src && shareImage.getAttribute("src") !== src) shareImage.setAttribute("src", src);
+    };
+    form.element.addEventListener("input", render);
+    form.element.addEventListener("change", render);
+    // The image card changes without an input event: look again after a click in the form.
+    form.element.addEventListener("click", () => setTimeout(render, 0));
     render();
-    show({ title: "Pages", crumbs: [["Pages"]] }, [quietHeading("Pages"), h(doc, "div", { class: "vc-toolbar" }, search, count), list,
-      h(doc, "p", { class: "vc-help vc-rows-note" }, "Saving makes a draft; the website changes only when a draft is published.")]);
+    return h(doc, "div", { class: "vc-seo-columns" },
+      h(doc, "div", { class: "vc-seo-form" }, form.element),
+      h(doc, "aside", { class: "vc-seo-preview", "aria-labelledby": "vc-seo-preview-title" },
+        h(doc, "h2", { id: "vc-seo-preview-title" }, "Preview"),
+        h(doc, "div", { class: "vc-seo-google", "aria-label": "In Google" }, h(doc, "span", { class: "vc-seo-google-site" }, host), googleTitle, googleText),
+        h(doc, "div", { class: "vc-seo-share", "aria-label": "When shared" }, shareImage, h(doc, "div", { class: "vc-seo-share-text" }, h(doc, "span", { class: "vc-seo-share-site" }, host.toUpperCase()), shareTitle, shareText)),
+        h(doc, "p", { class: "vc-seo-card-help" }, "Social apps can take a few days to show a new image.")));
   };
 
   // ---------------------------------------------------------------- collection list
@@ -677,8 +759,10 @@ export const startAdmin = (options: AdminOptions) => {
       syncMore();
     };
 
+    const seoLayout = input.kind === "file" && input.file.layout === "seo" && Boolean(input.file.seo);
+    const seoSections = seoLayout && input.kind === "file" ? seoSectionsOf(input.file) : undefined;
     const form: Form = createForm({
-      doc, fields, sections: input.kind === "file" ? input.file.sections : undefined, value: start, role: user.role, references, readOnly, pickImage, choices: view?.choices, notify: (text, action) => say(text, "info", action),
+      doc, fields, value: start, role: user.role, references, readOnly, pickImage, choices: view?.choices, notify: (text, action) => say(text, "info", action),
       markdown: collection?.markdown && !("body" in collection.fields) ? ["body"] : [],
       // M3 (Mr Spa): deleting a list item asks first; a click on an item's card shows it on the page; the validation
       // summary's buttons go to their field (opening its section).
@@ -695,7 +779,10 @@ export const startAdmin = (options: AdminOptions) => {
       },
       // M4: Link fields offer the site's pages and say where a link goes; Phone fields follow site.phone.country.
       links: { pages: boot.site.pages ?? [], host: siteHost(), ...(boot.site.phone ? { country: boot.site.phone.country } : {}) },
-      previewNotes: Boolean((input.kind === "file" ? input.file.preview : input.collection.preview) && options.preview !== false),
+      previewNotes: Boolean((input.kind === "file" ? input.file.preview : input.collection.preview) && options.preview !== false && !seoLayout),
+      // M7: an area's on / off toggle is the Mr Spa CMS's switch, against what the website shows now.
+      ...(input.kind === "file" && input.file.toggle ? { switchField: { path: input.file.toggle, noun: input.file.label.toLowerCase(), live: live === undefined || live === null ? undefined : getAt(live, keyPath(input.file.toggle)) === true } } : {}),
+      sections: seoLayout ? seoSections : input.kind === "file" ? input.file.sections : undefined,
       onChange: (value, path) => {
         if (collection && isNew && path.length === 1 && path[0] === collection.idField && !autoId) idTouched = true;
         if (collection && isNew && !idTouched && path[0] !== collection.idField) {
@@ -717,7 +804,8 @@ export const startAdmin = (options: AdminOptions) => {
 
     // P9: the page in the canvas, showing this draft as it is typed.
     const owner = (): PreviewOwner => (input.kind === "file" ? `file:${input.file.key}` : `item:${input.collection.key}:${input.id ?? (String(form.value()[input.collection.idField] ?? "") || "new")}`);
-    const pattern = input.kind === "file" ? input.file.preview : input.collection.preview;
+    // M7: Search & sharing is a screen of its own (no page on the canvas).
+    const pattern = seoLayout ? undefined : input.kind === "file" ? input.file.preview : input.collection.preview;
     let preview: Preview | undefined;
     let suppressScroll = false;
     let lastFocused = "";
@@ -740,14 +828,21 @@ export const startAdmin = (options: AdminOptions) => {
           suppressScroll = false;
         },
         // M3: the rows of the inspector follow the order of the page.
-        onReady: (bridge) => inspector?.setOrder(bridge.order()),
+        onReady: (bridge) => {
+          inspector?.setOrder(bridge.order());
+          // M7 (Mr Spa): an area is framed in teal on the page while it is edited.
+          if (input.kind === "file" && input.file.area && input.file.outline) bridge.showArea(input.file.outline);
+        },
       });
     }
     // M3: with the page on the canvas, the form sits in the Mr Spa inspector — sections at level 1, one at level 2.
     const sectionList = inspectorSections(fields, input.kind === "file" ? input.file.sections : undefined, titleText() || input.crumbs.at(-1)?.[0] || "");
     const sessionStore = (() => { try { return win.sessionStorage; } catch { return null; } })();
     const inspector: Inspector | undefined = preview ? createInspector({
-      doc, form, fields, sections: sectionList, crumb: input.crumbs.at(-1)?.[0] ?? "Pages", title: titleText(), before: [banner],
+      doc, form, fields, sections: sectionList, title: titleText(),
+      // M7 (Mr Spa): an area says where it is ("Across the whole site") and what it holds ("…. Applies site-wide.").
+      crumb: input.kind === "file" && input.file.area ? "Across the whole site" : input.crumbs.at(-1)?.[0] ?? "Pages",
+      before: [...(input.kind === "file" && input.file.area && input.file.description ? [h(doc, "p", { class: "vc-area-description" }, `${input.file.description.replace(/\.$/, "")}. Applies site-wide.`)] : []), banner],
       value: () => form.value(), saved: () => saved, session: sessionStore, local: storage ?? null, resource: resourceOf(),
       onEnter: (section) => { preview?.bridge()?.showSection(section.fields.map((key) => parsePathText(key)), section.label, section.key.startsWith("_") ? undefined : section.key); },
       onLeave: () => { preview?.bridge()?.clearSelection(); lastFocused = ""; },
@@ -892,14 +987,17 @@ export const startAdmin = (options: AdminOptions) => {
     actions.append(save, publish);
     if (stale) showBanner("The website changed after this draft was started (someone published). Publishing this draft is refused until you discard it and make your change again on the current content.");
     const crumbsFor: Array<[string, string?]> = [...input.crumbs, [titleText() || "…"]];
-    const content = inspector ? [inspector.element] : [title, fieldsRequiredNote(fields), banner, form.element];
+    // M7 (Mr Spa): Search & sharing has its title in the top bar only.
+    if (seoLayout) title.classList.add("vc-sr-only");
+    const content = inspector ? [inspector.element] : seoLayout && input.kind === "file" ? [title, banner, seoScreen(input.file, form)] : [title, fieldsRequiredNote(fields), banner, form.element];
+    if (seoLayout) body.classList.add("vc-body-seo");
     const split = preview ? h(doc, "div", { class: "vc-editor-split vc-preview-on" }, h(doc, "div", { class: "vc-editor-main" }, ...content), preview.element) : undefined;
     if (preview) {
       body.classList.add("vc-body-wide");
       // U2: the device switch in the middle of the top bar.
       topCenter.append(preview.devices);
     }
-    show({ title: titleText(), crumbs: crumbsFor, dirty, save: doSave, refreshState: refresh, resource: resourceOf(), leave: () => { recovery?.stop(); if (flushRecovery === recovery?.flush) flushRecovery = undefined; if (dirty()) forgetRecovery(storage, resourceOf()); preview?.destroy(); inspector?.destroy(); body.classList.remove("vc-body-wide"); } }, split ? [split] : content);
+    show({ title: titleText(), crumbs: crumbsFor, dirty, save: doSave, refreshState: refresh, resource: resourceOf(), leave: () => { body.classList.remove("vc-body-seo"); recovery?.stop(); if (flushRecovery === recovery?.flush) flushRecovery = undefined; if (dirty()) forgetRecovery(storage, resourceOf()); preview?.destroy(); inspector?.destroy(); body.classList.remove("vc-body-wide"); } }, split ? [split] : content);
     preview?.start();
     refresh();
     // M4: a Link field turning invalid / valid turns Save off / on.

@@ -51,6 +51,27 @@ export default defineCmsConfig({
         "seo.description": f.text({ label: "Search description", multiline: true, maxLength: 160, help: "One or two sentences shown by search engines." }),
       },
     },
+    // M7 (the Mr Spa CMS's Pages): an area of every page with its on / off switch and its frame on the page, and the
+    // Search & sharing screen.
+    {
+      key: "notice", label: "Notice", path: "src/data/notice.json", format: "json", preview: "/",
+      area: true, description: "A short message at the top of every page", outline: "[data-site-notice]", toggle: "enabled",
+      fields: {
+        enabled: f.toggle({ label: "Show on website" }),
+        text: f.text({ label: "Message", required: true, maxLength: 120 }),
+      },
+    },
+    {
+      key: "seo", label: "Search & sharing", path: "src/data/seo.json", format: "json",
+      area: true, description: "How the site looks in Google and when shared", layout: "seo",
+      seo: { siteName: "siteName", title: "title", description: "description", image: "image" },
+      fields: {
+        siteName: f.text({ label: "Site name", help: "The business name the website shows." }),
+        title: f.text({ label: "Default page title", help: "Used when a page has no search title of its own." }),
+        description: f.text({ label: "Default description", multiline: true, help: "Used when a page has no description of its own. Longer descriptions (120–160 characters) usually show better in Google." }),
+        image: f.image({ label: "Social sharing image" }),
+      },
+    },
   ],
   collections: [
     {

@@ -32,7 +32,7 @@ try {
   const health = await fetch(`${base}/api/cms/health`);
   const body = await health.json();
   assert.equal(health.status, 200);
-  assert.deepEqual(body, { ok: true, package: pkg.name, version: pkg.version, site: "Demo Salon", files: 1, collections: 3, sources: 5 });
+  assert.deepEqual(body, { ok: true, package: pkg.name, version: pkg.version, site: "Demo Salon", files: 3, collections: 3, sources: 7 });
 
   // The CMS API is closed until sign-in exists (P6) — even with the dev variable set, because this is a production build.
   for (const [method, path] of [["GET", "/api/cms/content"], ["GET", "/api/cms/files/site"], ["POST", "/api/cms/publish"]]) {

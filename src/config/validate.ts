@@ -350,7 +350,8 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     config.files.forEach((entry, index) => {
       const at = `files[${index}]`;
       if (!isRecord(entry)) { err(context, at, "must be an object", '{ key, label, path, format: "json", fields }'); return; }
-      for (const key of Object.keys(entry)) if (!["key", "label", "path", "format", "preview", "sections", "access", "rules", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, path, format, preview, sections, access, rules, fields");
+      const FILE_SETTINGS = ["key", "label", "path", "format", "preview", "sections", "access", "rules", "fields", "group", "area", "description", "outline", "toggle", "layout", "seo"];
+      for (const key of Object.keys(entry)) if (!FILE_SETTINGS.includes(key)) err(context, `${at}.${key}`, "unknown setting", `allowed: ${FILE_SETTINGS.join(", ")}`);
       checkRules(context, entry, at);
       checkAccess(context, entry, at);
       if (!filled(entry.key)) err(context, `${at}.key`, "required — a short id", 'e.g. "site"');
@@ -362,6 +363,7 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
       checkPreview(context, entry.preview, `${at}.preview`, []);
       checkFields(context, entry.fields, `${at}.fields`);
       checkSections(context, entry, at);
+      checkPageSettings(context, entry, at);
     });
     checkUniqueKeys(context, config.files, "files", keys);
   }
@@ -426,6 +428,39 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
   if (context.oldAdminName.length) warn(context, context.oldAdminName[0], `"owner" is the old name of "admin" (${context.oldAdminName.length} ${context.oldAdminName.length === 1 ? "place" : "places"}: ${context.oldAdminName.slice(0, 5).join(", ")}${context.oldAdminName.length > 5 ? ", …" : ""})`, 'write locked: "admin" / access: "admin" — it works the same');
   return { errors: context.errors, warnings: context.warnings };
 };
+
+/** M7: the type of the field at a key or a path into objects ("popup.enabled", "seo.title"), or undefined. */
+const fieldTypeAt = (fields: unknown, name: string): string | undefined => {
+  if (!isRecord(fields) || typeof name !== "string" || !name) return undefined;
+  if (isRecord(fields[name])) return String((fields[name] as Record<string, unknown>).type);
+  const parts = name.split(".");
+  for (let end = parts.length - 1; end > 0; end -= 1) {
+    const field = fields[parts.slice(0, end).join(".")];
+    if (isRecord(field) && field.type === "object") return fieldTypeAt(field.fields, parts.slice(end).join("."));
+  }
+  return undefined;
+};
+
+/** M7: group / area / description / outline / toggle / layout "seo" of a file (the Mr Spa CMS's Pages and areas). */
+function checkPageSettings(context: Context, entry: Record<string, unknown>, at: string) {
+  if (entry.group !== undefined && !filled(entry.group)) err(context, `${at}.group`, "must be the name of a group on Pages", 'e.g. group: "Policies"');
+  checkBoolean(context, entry, "area", at);
+  if (entry.description !== undefined && !filled(entry.description)) err(context, `${at}.description`, "must be a short line about it", 'e.g. description: "Logo, phone number and menu"');
+  if (entry.area === true && entry.description === undefined) warn(context, `${at}.description`, "an area is listed under “Across the whole site” with a line about it", 'e.g. description: "Contact details, links and social"');
+  if (entry.area === true && entry.group !== undefined) err(context, `${at}.group`, "an area is always under “Across the whole site”", "remove group, or area");
+  if (entry.outline !== undefined && !filled(entry.outline)) err(context, `${at}.outline`, "must be a CSS selector of the area on the page", 'e.g. outline: "header"');
+  if (entry.toggle !== undefined && fieldTypeAt(entry.fields, String(entry.toggle)) !== "toggle") err(context, `${at}.toggle`, `${show(entry.toggle)} is not a toggle field of this file`, 'e.g. toggle: "enabled" with enabled: f.toggle({ label: "Show on website" })');
+  if (entry.layout !== undefined && entry.layout !== "seo") err(context, `${at}.layout`, `unknown layout ${show(entry.layout)}`, 'only "seo" (Search & sharing)');
+  if (entry.layout === "seo") {
+    const seo = entry.seo;
+    if (!isRecord(seo)) { err(context, `${at}.seo`, "required with layout \"seo\" — which fields are the title and the description", '{ title: "title", description: "description", siteName: "siteName", image: "image" }'); return; }
+    for (const key of Object.keys(seo)) if (!["title", "description", "siteName", "image"].includes(key)) err(context, `${at}.seo.${key}`, "unknown setting", "seo has title, description, siteName and image");
+    for (const [key, type] of [["title", "text"], ["description", "text"], ["siteName", "text"], ["image", "image"]] as const) {
+      if (seo[key] === undefined) { if (key === "title" || key === "description") err(context, `${at}.seo.${key}`, "required — the field it is", `e.g. ${key}: "${key}"`); continue; }
+      if (fieldTypeAt(entry.fields, String(seo[key])) !== type) err(context, `${at}.seo.${key}`, `${show(seo[key])} is not a ${type} field of this file`);
+    }
+  } else if (entry.seo !== undefined) err(context, `${at}.seo`, "is only for layout \"seo\"", 'add layout: "seo", or remove seo');
+}
 
 /**
  * M3c: where a section entry that is not a field key points: the field key it starts with, or why it cannot be

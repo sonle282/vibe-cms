@@ -2,6 +2,7 @@
 // The demo's pages carry data-cms-* attributes so the CMS preview (P9) knows which field each element shows. They
 // change nothing for visitors. The salon name in the header has none: cms.config binds it by selector (`bind`).
 import site from "../data/site.json";
+import notice from "../data/notice.json";
 const { title } = Astro.props as { title: string };
 ---
 <!doctype html>
@@ -12,6 +13,7 @@ const { title } = Astro.props as { title: string };
     <title>{title} · {site.name}</title>
   </head>
   <body style="font: 16px/1.5 system-ui, sans-serif; margin: 40px;">
+    {notice.enabled && <aside data-site-notice><p data-cms-field="notice.text">{notice.text}</p></aside>}
     <header>
       <a href="/" class="brand"><strong>{site.name}</strong></a>
       <nav><a href="/">Home</a> · <a href="/services/">Services</a> · <a href="/team/">Team</a> · <a href="https://example.com/">Elsewhere</a></nav>
