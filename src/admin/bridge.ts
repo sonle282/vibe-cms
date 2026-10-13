@@ -20,6 +20,9 @@
  * the preview selects it and opens it in the form; focusing a field in the form scrolls the preview to it. Outlines:
  * the selected field (2 px, with a "Section · Field" chip), its section (1 px, light), the field under the pointer
  * (dashed). Links to other sites and form submissions do nothing in the preview.
+ * M3, as the Mr Spa CMS: the chip sits above the outline when there is room, otherwise just inside it; the preview
+ * scrolls only when the field is out of sight, and the outline flashes once (never with reduced motion); choosing a
+ * section shows only that section's outline with its name; `order()` gives the bound fields in page order.
  */
 import type { Field } from "../config/index.js";
 import { formatHours } from "./changes.js";
@@ -58,8 +61,12 @@ export type BridgeOptions = {
 export type Bridge = {
   /** The form changed at `path` (the whole value is given); `owner` when a new record's id changed. */
   update: (value: Record<string, unknown>, path: Path, owner?: PreviewOwner) => void;
-  /** Show where a field is (scroll + outline), without reporting a selection back. Returns false if not on the page. */
+  /** Show where a field is (scroll if out of sight + outline + one flash), without reporting a selection back. False if not on the page. */
   scrollTo: (path: Path) => boolean;
+  /** M3: outline a whole section (the fields' common box, its data-cms-section element first) with its name. */
+  showSection: (paths: Path[], label: string, key?: string) => boolean;
+  /** M3: the paths the page shows, in page order (the inspector lists sections in that order). */
+  order: () => Path[];
   clearSelection: () => void;
   /** How many places on the page show the record being edited. */
   count: () => number;
@@ -306,21 +313,35 @@ export const attachBridge = (options: BridgeOptions): Bridge => {
   const sectionBox = box("1px solid rgba(0, 113, 227, 0.35)");
   const hoverBox = box("1px dashed rgba(0, 113, 227, 0.7)");
   const selectedBox = box("2px solid #0071e3");
+  // The Mr Spa CMS's chip: 12 px, white on the accent, radius 6; above the outline, or just inside when there is no room.
+  const CHIP_HEIGHT = 22;
   const chip = page.createElement("span");
-  Object.assign(chip.style, { position: "absolute", left: "-2px", bottom: "100%", padding: "2px 6px", font: "500 11px/1.4 system-ui, sans-serif", color: "#fff", background: "#0071e3", borderRadius: "3px 3px 0 0", whiteSpace: "nowrap" });
-  selectedBox.append(chip);
+  Object.assign(chip.style, { position: "fixed", display: "none", padding: "3px 8px", font: "500 12px/16px system-ui, -apple-system, sans-serif", color: "#fff", background: "#0071e3", borderRadius: "6px", whiteSpace: "nowrap", pointerEvents: "none" });
+  layer.append(chip);
   page.body?.append(layer);
   cleanups.push(() => layer.remove());
 
   let selected: Element | undefined;
   let hovered: Element | undefined;
   let sectionElement: Element | undefined;
+  /** The outline the chip names: the selected field, or (a section chosen alone) the section. */
+  let named: "field" | "section" = "field";
+  const PAD = 2;
   const show = (target: HTMLElement, element: Element | undefined) => {
-    if (!element || !element.isConnected || (element as HTMLElement).hidden) { target.style.display = "none"; return; }
+    if (!element || !element.isConnected || (element as HTMLElement).hidden) { target.style.display = "none"; return undefined; }
     const rect = element.getBoundingClientRect();
-    Object.assign(target.style, { display: "block", left: `${rect.left - 3}px`, top: `${rect.top - 3}px`, width: `${rect.width + 6}px`, height: `${rect.height + 6}px` });
+    Object.assign(target.style, { display: "block", left: `${rect.left - PAD}px`, top: `${rect.top - PAD}px`, width: `${rect.width + PAD * 2}px`, height: `${rect.height + PAD * 2}px` });
+    return rect;
   };
-  function place() { show(selectedBox, selected); show(hoverBox, hovered && hovered !== selected ? hovered : undefined); show(sectionBox, sectionElement); }
+  function place() {
+    const field = show(selectedBox, selected);
+    show(hoverBox, hovered && hovered !== selected ? hovered : undefined);
+    const section = show(sectionBox, sectionElement);
+    const rect = named === "section" ? section : field;
+    if (!rect || !chip.textContent) { chip.style.display = "none"; return; }
+    const above = rect.top - PAD - CHIP_HEIGHT - 2 >= 0;
+    Object.assign(chip.style, { display: "block", left: `${Math.max(0, rect.left - PAD)}px`, top: `${above ? rect.top - PAD - CHIP_HEIGHT - 2 : rect.top}px` });
+  }
   let frameRequest = 0;
   const schedule = () => { if (!frameRequest) frameRequest = frame.requestAnimationFrame?.(() => { frameRequest = 0; place(); }) ?? 0; };
   listen(frame, "scroll" as keyof DocumentEventMap, schedule);
@@ -332,12 +353,33 @@ export const attachBridge = (options: BridgeOptions): Bridge => {
   };
   const selectElement = (element: Element, target: { owner: PreviewOwner; path: Path }) => {
     selected = element;
+    named = "field";
     chip.textContent = options.describe(target.owner, target.path);
     const section = sectionFor(target, element);
     sectionElement = section && section !== element ? section : undefined;
     place();
   };
-  const clearSelection = () => { selected = undefined; sectionElement = undefined; place(); };
+  const clearSelection = () => { selected = undefined; sectionElement = undefined; chip.textContent = ""; place(); };
+  const reduceMotion = () => Boolean(frame.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+  /** Scroll only when the element is not already in sight (Mr Spa: a field on screen does not move the page). */
+  const bringIntoView = (element: Element) => {
+    const rect = element.getBoundingClientRect();
+    const height = frame.innerHeight || page.documentElement?.clientHeight || 0;
+    if (rect.top >= 0 && rect.bottom <= height) return false;
+    element.scrollIntoView?.({ block: "center", behavior: reduceMotion() ? "auto" : "smooth" });
+    return true;
+  };
+  /** One flash of the outline after the form moved the preview (box-shadow pulse, 1100 ms). */
+  const flash = (target: HTMLElement) => {
+    if (reduceMotion() || typeof target.animate !== "function") return;
+    target.animate([{ boxShadow: "0 0 0 0 rgba(0, 113, 227, 0.55)" }, { boxShadow: "0 0 0 10px rgba(0, 113, 227, 0)" }], { duration: 1100, easing: "ease-out" });
+  };
+  /** The common box of some elements, as close as the page marks it (a data-cms-section, else the nearest <section>). */
+  const commonBox = (elements: Element[]) => {
+    let box: Element | null = elements[0] ?? null;
+    while (box && !elements.every((element) => box!.contains(element))) box = box.parentElement;
+    return box ? box.closest("section") ?? box : undefined;
+  };
 
   // ---------------------------------------------------------------- pointer in the preview
 
@@ -395,10 +437,30 @@ export const attachBridge = (options: BridgeOptions): Bridge => {
     scrollTo: (path) => {
       const binding = bindings.find((entry) => startsWith(entry.path, path) && !(entry.element as HTMLElement).hidden) ?? bindings.find((entry) => startsWith(path, entry.path) && !(entry.element as HTMLElement).hidden);
       if (!binding) { clearSelection(); return false; }
-      const reduce = frame.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-      binding.element.scrollIntoView?.({ block: "center", behavior: reduce ? "auto" : "smooth" });
+      bringIntoView(binding.element);
       selectElement(binding.element, binding);
+      flash(selectedBox);
       return true;
+    },
+    showSection: (paths, label, key) => {
+      const shown = bindings.filter((entry) => !(entry.element as HTMLElement).hidden && paths.some((path) => startsWith(entry.path, path)));
+      const marked = key ? page.querySelector(`[data-cms-section="${key}"]`) : null;
+      const element = marked ?? commonBox(shown.map((entry) => entry.element));
+      if (!element) { clearSelection(); return false; }
+      selected = undefined;
+      sectionElement = element;
+      named = "section";
+      chip.textContent = label;
+      // Mr Spa: opening a section scrolls to its first shown field (when out of sight).
+      bringIntoView(shown[0]?.element ?? element);
+      place();
+      flash(sectionBox);
+      return true;
+    },
+    order: () => {
+      const visible = bindings.filter((entry) => !(entry.element as HTMLElement).hidden);
+      visible.sort((a, b) => (a.element === b.element ? 0 : a.element.compareDocumentPosition(b.element) & 4 ? -1 : 1));
+      return visible.map((entry) => entry.path);
     },
     clearSelection,
     count: () => bindings.length,

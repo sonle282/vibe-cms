@@ -228,8 +228,11 @@ body.vc-page:has(.vc-app) { overflow: hidden; }
 
 /* ---------- form */
 .vc-form { display: grid; gap: 20px; }
-.vc-form-errors { padding: 12px 16px; border-radius: var(--radius-12); background: var(--danger-bg); color: var(--danger); }
-.vc-form-errors ul { margin: 0; padding-left: 18px; }
+/* M3 (Mr Spa): the validation summary — "N validation errors", one button per problem. */
+.vc-form-errors { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--danger-border); border-radius: var(--radius-8); background: var(--danger-bg); color: var(--danger-strong); }
+.vc-form-errors strong { font-size: var(--text-12); }
+.vc-form-errors ul { display: grid; gap: 4px; margin: 0; padding-left: 18px; }
+.vc-error-link { color: var(--danger-strong); font: 400 var(--text-12)/1.4 var(--font-ui); text-align: left; text-decoration: underline; }
 .vc-section { display: grid; gap: 18px; padding: 20px; background: var(--surface); border-radius: var(--radius-14); border: 1px solid var(--hairline); box-shadow: var(--shadow-card); }
 .vc-section-title { font-size: 16px; margin: 0; }
 .vc-form > .vc-field { padding: 16px 20px; background: var(--surface); border-radius: var(--radius-14); border: 1px solid var(--hairline); box-shadow: var(--shadow-card); }
@@ -240,9 +243,6 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
 .vc-lock { display: inline-flex; margin-left: 6px; color: var(--text-secondary); }
 .vc-locked .vc-input { background: var(--surface-off); color: var(--text-secondary); }
 .vc-invalid .vc-input { border-color: var(--danger-fill); box-shadow: 0 0 0 3px var(--danger-bg); }
-.vc-with-counter { position: relative; }
-.vc-counter { display: block; text-align: right; font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
-.vc-counter.vc-over { color: var(--danger); }
 .vc-object { display: grid; gap: 14px; padding: 12px 14px; border-left: 2px solid var(--hairline); }
 .vc-subfield { display: grid; gap: 4px; }
 .vc-sublabel { display: grid; gap: 4px; font-size: 12px; color: var(--text-secondary); }
@@ -250,11 +250,19 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
 .vc-image-parts { display: grid; gap: 10px; }
 .vc-list { display: grid; gap: 8px; }
 .vc-items { display: grid; gap: 8px; }
-.vc-item { padding: 10px 12px 12px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-12); }
-.vc-item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.vc-item-title { font-weight: 600; font-size: 13px; } .vc-item-summary { color: var(--text-secondary); font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vc-item-head .vc-item-actions { margin-left: auto; }
-.vc-item-actions { display: flex; gap: 2px; }
+/* M3: a list item is the Mr Spa CMS's card — "Banner 1" over its own words, ↑ ↓ × on the right; the one being edited is blue. */
+.vc-item { display: grid; gap: 10px; padding: 10px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-8); }
+.vc-item:focus-within, .vc-item.vc-item-active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-ring); }
+.vc-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.vc-item-heading { display: grid; min-width: 0; gap: 1px; }
+.vc-item-title { color: var(--text-secondary); font-size: var(--text-12); font-weight: 600; }
+.vc-item-summary { overflow: hidden; color: var(--text); font-size: var(--text-13); font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.vc-item-actions { display: inline-flex; flex: 0 0 auto; gap: 3px; }
+.vc-glyph { min-width: 28px; min-height: 28px; padding: 0; border: 1px solid var(--border-input); border-radius: var(--radius-5); background: var(--surface); color: var(--text-secondary); font: 400 var(--text-14)/1 var(--font-ui); cursor: pointer; }
+.vc-glyph:hover:not(:disabled), .vc-glyph:focus-visible { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 0 2px var(--accent-ring); }
+.vc-glyph:disabled { cursor: not-allowed; opacity: .4; }
+.vc-list-count { margin: 0; }
+.vc-list .vc-add { width: 100%; }
 .vc-item-inline { display: flex; align-items: center; gap: 8px; padding: 6px 8px; }
 .vc-item-inline > .vc-field { flex: 1; min-width: 0; }
 .vc-item .vc-object { padding: 0; border: 0; }
@@ -473,6 +481,52 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
 
 /* M1: the one tooltip (Mr Spa): after 400 ms on hover, at once on keyboard focus; to the right of the rail. */
 .vc-tooltip { position: fixed; z-index: 2147483000; top: 0; left: 0; max-width: 240px; padding: 6px 8px; border-radius: var(--radius-6); background: var(--text); color: #fff; font: 500 var(--text-12)/1.35 var(--font-ui); pointer-events: none; white-space: normal; }
+
+/* M3: the page inspector (Mr Spa) — a sticky head (← · crumb · title), level 1 = the sections, level 2 = one section. */
+.vc-preview-on .vc-editor-main:has(.vc-inspector) { padding-top: 0; }
+.vc-inspector-head { position: sticky; z-index: 6; top: 0; display: flex; min-height: 64px; align-items: center; gap: 8px; margin: 0 -20px 16px; padding: 12px 20px; border-bottom: 1px solid var(--hairline); background: var(--surface); }
+.vc-inspector-back { flex: 0 0 36px; margin-left: -8px; }
+.vc-inspector-heading { display: grid; min-width: 0; gap: 2px; }
+.vc-inspector-crumb { color: var(--text-secondary); font-size: var(--text-12); line-height: 1.3; }
+.vc-preview-on .vc-editor-main .vc-inspector-title { margin: 0; overflow-wrap: anywhere; font-size: var(--text-16); font-weight: 600; line-height: 1.3; }
+.vc-inspector .vc-banner { margin-bottom: 12px; }
+.vc-tip { display: flex; min-width: 0; align-items: center; gap: 6px; margin: 0 0 12px; color: var(--text-secondary); font-size: var(--text-12); line-height: 20px; }
+.vc-tip-text { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vc-tip-hide { display: inline-flex; width: 20px; height: 20px; flex: 0 0 20px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: var(--radius-full); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--text-14); line-height: 1; cursor: pointer; }
+.vc-tip-hide:hover { background: var(--surface-off); color: var(--text); }
+.vc-sections { display: grid; margin: 0 0 16px; padding: 0; overflow: hidden; list-style: none; border: 1px solid var(--hairline); border-radius: var(--radius-12); }
+.vc-sections li + li { border-top: 1px solid var(--hairline); }
+.vc-section-row { display: flex; width: 100%; min-height: 56px; align-items: center; gap: 10px; padding: 10px 14px; border: 0; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.vc-section-row:hover { background: var(--surface-off); }
+.vc-section-row:focus-visible { outline: var(--focus-ring); outline-offset: -2px; }
+.vc-section-text { display: grid; min-width: 0; flex: 1 1 auto; gap: 2px; }
+.vc-section-text strong { font-size: var(--text-14); font-weight: 500; }
+.vc-section-summary { overflow: hidden; color: var(--text-secondary); font-size: var(--text-12); text-overflow: ellipsis; white-space: nowrap; }
+.vc-section-dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: var(--radius-full); background: var(--warning-dot); }
+.vc-section-chevron { flex: 0 0 auto; color: var(--text-secondary); font-size: var(--text-18); line-height: 1; }
+/* Level 2: no section heading (the head names it); a field = its label (a small dot), its help, then the input. */
+.vc-inspector .vc-section-title { display: none; }
+.vc-inspector .vc-section { padding: 0; border: 0; box-shadow: none; background: transparent; }
+.vc-inspector .vc-form { gap: 18px; }
+.vc-inspector .vc-field { display: flex; flex-direction: column; }
+.vc-inspector .vc-field > .vc-label { order: 0; } .vc-inspector .vc-field > .vc-help { order: 1; margin: 0 0 6px; } .vc-inspector .vc-field > * { order: 2; } .vc-inspector .vc-field > .vc-error { order: 3; }
+.vc-inspector .vc-section > .vc-field > .vc-label, .vc-inspector .vc-form > .vc-field > .vc-label { gap: 6px; font-size: var(--text-13); font-weight: 500; }
+.vc-inspector .vc-section > .vc-field > .vc-label::before, .vc-inspector .vc-form > .vc-field > .vc-label::before { content: ""; width: 5px; height: 5px; flex: 0 0 5px; border-radius: 50%; background: #cbd5e1; }
+/* M3b: no required stars in the inspector (Mr Spa); a section that is one object lists its fields flat. */
+.vc-inspector .vc-required { display: none; }
+.vc-inspector .vc-sole > .vc-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.vc-inspector .vc-sole > .vc-object { gap: 18px; padding: 0; border: 0; }
+.vc-inspector .vc-sole > .vc-object > .vc-field > .vc-label { gap: 6px; font-size: var(--text-13); font-weight: 500; }
+.vc-inspector .vc-sole > .vc-object > .vc-field > .vc-label::before { content: ""; width: 5px; height: 5px; flex: 0 0 5px; border-radius: 50%; background: #cbd5e1; }
+.vc-inspector .vc-sole > .vc-object > .vc-field { display: flex; flex-direction: column; }
+.vc-inspector .vc-field-active > .vc-label { color: var(--accent); }
+.vc-inspector .vc-field-active > .vc-label::before { background: var(--accent) !important; }
+@media (prefers-reduced-motion: no-preference) {
+  .vc-inspector-body.vc-entering { animation: vc-inspector-enter var(--motion-sheet) var(--ease-sheet); }
+  .vc-inspector-body.vc-leaving { animation: vc-inspector-leave var(--motion-sheet) var(--ease-sheet); }
+}
+@keyframes vc-inspector-enter { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes vc-inspector-leave { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
 
 /* M2: "Change your password" (Mr Spa): the fields in the dialog, a status line. */
 .vc-password-form { display: grid; gap: 14px; }

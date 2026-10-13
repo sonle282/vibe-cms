@@ -839,7 +839,7 @@ của Mr Spa** (SonLe 2026-10-12); site thứ 4 đã có: **Modern Nails Lounge*
 
 | Track | Task | Kết quả | Release |
 |---|---|---|---|
-| **A — lõi chung → Innovate** | M2, M3, **M3b**, M4, M5, M6 → M7, M11, M12 | Innovate chuyển sang gói (P17), gỡ bản chép (P18) — **bản chép đầu tiên biến mất** | v0.22.0 sau M6 (+ Novelle); v0.23.0 sau M12 |
+| **A — lõi chung → Innovate** | M2, M3, **M3b**, M3c, M4, M5, M6 → M7, M11, M12 | Innovate chuyển sang gói (P17), gỡ bản chép (P18) — **bản chép đầu tiên biến mất** | v0.22.0 sau M6 (+ Novelle); v0.23.0 sau M12 |
 | **C — cài mới → Modern** | M15 (`vibe-cms init`) → P23–P25 | Modern có CMS từ con số 0 bằng các bước trong README; đo thời gian | v0.24.0 |
 | **B — phần riêng Mr Spa** | M8, M9, M10, M13, M14 → P19–P22 | Mr Spa chạy trên gói, gỡ CMS cũ — **hết bản chép** | v0.25.0 |
 

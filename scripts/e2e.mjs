@@ -48,6 +48,15 @@ try {
   const field = (path) => page.locator(`[data-path=${JSON.stringify(path)}]`);
   const input = (path) => field(path).locator("input, textarea, select").first();
   const button = (path, name) => field(path).getByRole("button", { name, exact: true });
+  // M3 (Mr Spa): the inspector shows one section at a time — open it from its row (going back first if another is open).
+  const section = async (key) => {
+    if (await page.locator(`.vc-form > [data-section="${key}"]:not([hidden])`).count()) return;
+    if (await page.locator(".vc-inspector-back:not([hidden])").count()) await page.locator(".vc-inspector-back").click();
+    await page.locator(`[data-section-key="${key}"]`).click();
+    await page.locator(`.vc-form > [data-section="${key}"]:not([hidden])`).waitFor();
+  };
+  // M3: deleting a list item asks first (the CMS dialog, red Delete).
+  const confirmDelete = async () => { const dialog = page.getByRole("alertdialog", { name: /^Delete / }); await dialog.getByRole("button", { name: "Delete", exact: true }).click(); await dialog.waitFor({ state: "detached" }); };
   // P8d: the visual editor — its editable area, a toolbar button, and its source view ("Edit HTML" / "Edit Markdown").
   const rich = (path) => field(path).locator(".vc-rich-area");
   const tool = (path, name) => field(path).locator(".vc-rich-toolbar").getByRole("button", { name, exact: true });
@@ -64,7 +73,7 @@ try {
   // E2E_SCREENSHOTS=<folder>: keep pictures of the image sheet, the review and published screens (local look only; CI leaves it unset).
   const shot = async (name) => { if (process.env.E2E_SCREENSHOTS) await page.screenshot({ path: join(process.env.E2E_SCREENSHOTS, `${name}.png`) }); };
   const api = (path) => page.evaluate(async (url) => (await fetch(url)).json(), path);
-  const open = async (path) => { await page.goto(`${base}${path}`); await page.locator(".vc-form, .vc-table, .vc-rows, .vc-empty-state").first().waitFor(); };
+  const open = async (path) => { await page.goto(`${base}${path}`); await page.locator(".vc-inspector, .vc-form, .vc-table, .vc-rows, .vc-empty-state").first().waitFor(); };
   const save = async () => {
     await page.getByRole("button", { name: "Save draft" }).click();
     // M1 (Mr Spa): a record already on the website says only its changes are not live yet.
@@ -94,7 +103,7 @@ try {
   check("small screen: Open on a laptop, the editor hidden", await page.locator(".vc-small-screen").isVisible() && !(await page.locator(".vc-rail").isVisible()) && /Open on a laptop/.test(await page.locator(".vc-small-screen").innerText()));
   await page.setViewportSize({ width: 1280, height: 900 });
   // M1 (Mr Spa): /admin opens the first page's editor, at its own address.
-  await page.locator(".vc-form").waitFor();
+  await page.locator(".vc-inspector").waitFor();
   check("/admin opens the first page's editor (M1)", new URL(page.url()).pathname === "/admin/pages/site", page.url());
   await open("/admin/pages");
   const navText = await page.locator(".vc-rail").innerText();
@@ -117,7 +126,17 @@ try {
   check("shell (U2): rail 64, top bar 56, inspector 360, devices in the top bar, Geist", frame.rail === 64 && frame.top === 56 && frame.inspector === 360 && frame.devices && /Geist/.test(frame.font), frame);
   await previewWindow().evaluate(() => { window.__vibeCmsStayed = true; });
   check("salon info: nothing changed yet", (await saveState()) === "No changes" && await page.getByRole("button", { name: "Save draft" }).isDisabled());
+  // M3 (Mr Spa): level 1 — the tip and one row per section, in the order the page shows them, each with what it holds.
+  const levelOne = await page.locator(".vc-section-row").evaluateAll((rows) => rows.map((row) => row.querySelector("strong").textContent));
+  check("inspector level 1: Pages / Salon info, the tip, the sections in page order", (await page.locator(".vc-inspector-crumb").textContent()) === "Pages" && (await page.locator(".vc-inspector-title").textContent()) === "Salon info" && /Click any part of the page, or pick a section below\./.test(await page.locator(".vc-tip").innerText()) && assertEqual(levelOne, ["Homepage", "Contact & hours", "Footer & search"]), levelOne);
+  await shot("m3-inspector-sections");
+  await section("home");
+  check("inspector level 2: ← Close section, Salon info / Homepage, only its fields", (await page.locator(".vc-inspector-crumb").textContent()) === "Salon info" && (await page.locator(".vc-inspector-title").textContent()) === "Homepage" && await page.getByRole("button", { name: "Close section" }).isVisible() && !(await field("phone").isVisible()));
+  const sectionChip = await preview.locator("[data-vibe-cms-preview] span").textContent();
+  check("preview: opening a section outlines it with its name", sectionChip === "Homepage", sectionChip);
+  await shot("m3-inspector-section");
   await input("name").fill("Demo Salon & Spa");
+  await section("contact");
   await input("phone").fill("(555) 010-0001");
   await input("email").fill("hi@demo.example");
   await input("address.street").fill("2 Example Street");
@@ -130,6 +149,7 @@ try {
   await field("hours[2]").getByLabel("Closes").fill("16:00");
   await field("hours").getByRole("button", { name: "Move Row 3 up" }).click();
   // Typed key by key: every key shows on the page, without reloading it, each well under a frame (16 ms).
+  await section("home");
   await input("tagline").fill("");
   await input("tagline").pressSequentially("Invented, and proud of it.");
   await input("hero.title").fill("Hello from Demo Salon");
@@ -138,6 +158,7 @@ try {
   check("preview: the page is never reloaded while typing", await previewWindow().evaluate(() => window.__vibeCmsStayed === true));
   check("preview: each key applied in under 16 ms", paneData.updates >= 26 && paneData.maxMs < 16, paneData);
   // From the form to the page: focusing a field outlines it, with its section and name.
+  await section("contact");
   await input("address.street").focus();
   await page.waitForTimeout(300);
   check("preview: focusing a field outlines it on the page with “Section · Field”", (await preview.locator("[data-vibe-cms-preview] span").textContent()) === "Contact & hours · Address › Street");
@@ -148,18 +169,21 @@ try {
   await preview.locator("form button").click();
   await page.waitForTimeout(300);
   check("preview: links to other sites and forms do nothing", new URL(previewWindow().url()).pathname === "/" && await previewWindow().evaluate(() => window.__vibeCmsStayed === true));
+  await section("home");
   await (await richSource("hero.text")).fill("<p>Everything here is <em>invented</em>.</p>");
   await field("hero.image").getByLabel("Image address").fill("/images/team-sam.svg");
   await field("hero.image").getByLabel("Alt text (describes the image)").fill("A blue square");
   await field("highlights").locator("select").selectOption("nail-art");
   await button("highlights", "Move Classic Manicure up").click();
   await button("highlights", "Remove Spa Pedicure").click();
+  await section("footer");
   await input("footerLinks[0].title").fill("Visit us");
   await field("footerLinks[0].links").getByRole("button", { name: "Add link" }).click();
   await input("footerLinks[0].links[2].label").fill("Blog");
   await input("footerLinks[0].links[2].href").fill("/blog/");
   await button("footerLinks[0].links", "Move Link 3 up").click();
   await button("footerLinks[0].links", "Delete Link 1").click();
+  await confirmDelete();
   await field("footerLinks").getByRole("button", { name: "Add group" }).click();
   await input("footerLinks[1].title").fill("Legal");
   await field("footerLinks[1].links").getByRole("button", { name: "Add link" }).click();
@@ -168,6 +192,7 @@ try {
   await input("seo.title").fill("Demo Salon");
   await input("seo.description").fill("Invented salon.\nSecond line.");
   // P12g: the banner price points to a package of the same file (pick, choices from the content) + a toggle.
+  await section("home");
   check("pick: the choices are the packages of this file, by name and price", assertEqual(await field("fromPrice.of").locator("option").allTextContents(), ["Choose…", "Express visit · $30", "Deluxe visit · $75"]));
   await input("packages[1].name").fill("Deluxe hour");
   await field("fromPrice.of").locator("select").selectOption("deluxe");
@@ -198,7 +223,8 @@ try {
   check("salon info: every field edited in the form is in the saved draft (P5 API)", JSON.stringify(siteDraft.draft?.content) && assertEqual(siteDraft.draft.content, siteExpected), { draft: siteDraft.draft?.content, expected: siteExpected });
   check("salon info: unchanged keys keep their order", JSON.stringify(Object.keys(siteDraft.draft.content)) === JSON.stringify(Object.keys(siteBefore)) && JSON.stringify(Object.keys(siteDraft.draft.content.hours[2])) === JSON.stringify(Object.keys(siteBefore.hours[1])));
   await page.reload();
-  await page.locator(".vc-form").waitFor();
+  await page.locator(".vc-inspector").waitFor();
+  await section("home");
   check("reopening shows the draft", (await input("tagline").inputValue()) === "Invented, and proud of it." && (await saveState()) === "Draft saved · not live yet");
 
   // ---------------------------------------------------------------- owner: a service (text, locked price, select, ordered list)
@@ -217,6 +243,7 @@ try {
   await field("extras").getByRole("button", { name: "Add extra" }).click();
   await input("extras[2]").fill("Foot mask");
   await button("extras", "Delete Extra 2").click();
+  await confirmDelete();
   await input("description").fill("Warm soak and massage.");
   await previewReady();
   check("preview: the service is shown in the services list as edited", (await preview.locator('[data-cms-item="services:spa-pedicure"]').innerText()) === "Spa Pedicure Deluxe — $40 (+ Paraffin, Foot mask)", await preview.locator('[data-cms-item="services:spa-pedicure"]').innerText());
@@ -224,7 +251,7 @@ try {
   // Clicking content of another record on the page opens that record (here: the footer, from the salon info).
   await preview.locator("footer h2").first().click();
   await page.waitForURL(/\/admin\/pages\/site$/);
-  await page.locator(".vc-form").waitFor();
+  await page.locator(".vc-inspector").waitFor();
   // The field is focused after the form renders (it may be a moment after .vc-form appears): wait for it, up to 5 s.
   const focusedFooter = await page.waitForFunction(() => document.activeElement?.closest("[data-path]")?.getAttribute("data-path") === "footerLinks[0].title", null, { timeout: 5_000 }).then(() => true, () => false);
   check("preview: clicking the footer opens the salon info at that field", focusedFooter, await page.evaluate(() => document.activeElement?.closest("[data-path]")?.getAttribute("data-path") ?? document.activeElement?.tagName));
@@ -314,6 +341,7 @@ try {
   await input("status").selectOption("draft");
   await field("cover").getByLabel("Image address").fill("/images/team-sam.svg");
   await button("tags", "Delete Tag 1").click();
+  await confirmDelete();
   await field("tags").getByRole("button", { name: "Add tag" }).click();
   await input("tags[1]").fill("update");
   // P8d: the Markdown body in the visual editor — typed text, bold, a heading, a list, an uploaded image with alt text
@@ -483,10 +511,12 @@ try {
   // ---------------------------------------------------------------- editor: locked fields shown, not editable
   await signIn("editor1", created.temporaryPassword, EDITOR_PASSWORD);
   await open("/admin/pages/site");
+  await section("contact");
   const lockedDisabled = await Promise.all(["phone", "email", "address.street", "address.city"].map((path) => input(path).isDisabled()));
   check("editor: phone, email, address are shown but disabled", lockedDisabled.every(Boolean) && (await input("phone").inputValue()) === siteBefore.phone, lockedDisabled);
   check("editor: hours disabled (days, times, add row)", await field("hours[0]").getByLabel("Monday").isDisabled() && await field("hours").getByRole("button", { name: "Add a row" }).isDisabled());
   check("editor: the lock says why", (await field("phone").innerText()).includes("Only an admin can change this."));
+  await section("home");
   check("editor: other fields are editable", !(await input("tagline").isDisabled()) && !(await input("hero.title").isDisabled()));
   await input("tagline").fill("Edited by the editor.");
   await save();

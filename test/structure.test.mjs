@@ -202,14 +202,14 @@ const apiFetch = async (h, request) => {
   return new Response(JSON.stringify(result.body), { status: result.status, headers: { "content-type": "application/json" } });
 };
 
-test("admin: a fixed list has no add / remove / move buttons and says why; values stay editable", () => {
+test("admin: a fixed list has no add / remove / move buttons and no count (Mr Spa); values stay editable", () => {
   const window = new Window({ url: "http://localhost/admin", settings: { disableIframePageLoading: true } });
   const form = createForm({ doc: window.document, fields: config.files[0].fields, sections: config.files[0].sections, value: site, role: "owner", references: {} });
   const footer = form.element.querySelector('[data-path="footerLinks"]');
   const labels = [...footer.querySelectorAll("button")].map((button) => button.getAttribute("aria-label") ?? button.textContent.trim());
   assert.ok(!labels.some((label) => /^(Add group|Delete Group|Move Group)/.test(label)), `no group controls: ${labels.join(" | ")}`);
   assert.ok(labels.some((label) => /Add link/i.test(label)), "the links inside a group can still be added");
-  assert.match(footer.querySelector(".vc-note").textContent, /A fixed list/);
+  assert.equal(footer.querySelector(".vc-list-count").hidden, true, "a fixed set has no count");
   assert.ok(form.element.querySelector('[data-path="footerLinks[0].title"] input'), "the group's title is editable");
 });
 

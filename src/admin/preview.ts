@@ -38,6 +38,8 @@ export type PreviewOptions = {
   referenceLabel?: BridgeOptions["referenceLabel"];
   loadMarkdown?: BridgeOptions["loadMarkdown"];
   onSelect: (selection: PreviewSelection) => void;
+  /** M3: the page is shown and its fields are known (after every load of the page). */
+  onReady?: (bridge: Bridge) => void;
   /** Where the chosen device is remembered (localStorage by default; null = nowhere). */
   storage?: Pick<Storage, "getItem" | "setItem"> | null;
 };
@@ -133,6 +135,7 @@ export const createPreview = (options: PreviewOptions): Preview => {
     element.dataset.places = String(bridge.count());
     say("ready", "");
     fit();
+    options.onReady?.(bridge);
   };
   frame.addEventListener("load", attach);
 

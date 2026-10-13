@@ -75,7 +75,9 @@ test("form: every field of the demo's salon info renders with the right control,
   assert.equal(at(form, "hero.image").querySelectorAll("input").length, 2, "image: address + alt");
   assert.deepEqual([...at(form, "highlights").querySelectorAll(".vc-chosen-label")].map((node) => node.textContent), ["Spa Pedicure", "Classic Manicure"]);
   assert.equal(at(form, "footerLinks[0].links[1].href").querySelector("input").value, "/team/");
-  assert.equal(at(form, "name").querySelector(".vc-counter").textContent, "10 / 60");
+  // M3 (Mr Spa): no counter; the input holds at most maxLength.
+  assert.equal(at(form, "name").querySelector(".vc-counter"), null);
+  assert.equal(control(form, "name").getAttribute("maxlength"), "60");
   assert.match(at(form, "name").querySelector("label").textContent, /Salon name \* \(required\)/);
   for (const input of form.element.querySelectorAll("input, textarea, select")) assert.ok(input.id ? form.element.querySelector(`label[for="${input.id}"]`) || input.getAttribute("aria-label") : input.getAttribute("aria-label"), `every input has a label (${input.outerHTML.slice(0, 80)})`);
 });
@@ -102,8 +104,7 @@ test("form: text, select, image, rich text, dotted keys — edits land at the ri
   assert.deepEqual(value, { ...site, tagline: "New tagline", seo: { ...site.seo, title: "Search title" }, hero: { ...site.hero, text: "<p>Hi</p>", image: { src: "/images/new.svg", alt: "" } } });
   assert.deepEqual(Object.keys(value), Object.keys(site));
   assert.ok(changes.includes("tagline") && changes.includes("seo.title"));
-  type(window, control(form, "name"), "x".repeat(61));
-  assert.ok(at(form, "name").querySelector(".vc-counter").classList.contains("vc-over"), "over maxLength shows");
+
 
   // An image written as a path stays a path; adding alt makes it { src, alt }.
   const teamForm = createForm({ doc: document, fields: config.collections[1].fields, value: team[1], role: "owner", references: references() });
@@ -199,7 +200,10 @@ test("form: an editor sees locked fields disabled (any depth) and cannot delete 
   assert.match(at(asOwner, "menu[0].price").textContent, /Editors see this but only an admin can change it/);
   // M2: an admin sees the lock too, on "admin" (and on the old name "owner").
   assert.ok(at(asOwner, "menu[0].price").querySelector(".vc-lock"), "the lock icon for an admin");
-  assert.match(at(asOwner, "menu[0].price").textContent, /\(admin only\)/);
+  assert.match(at(asOwner, "menu[0].price").textContent, /\(admin only/);
+  // M3b: for an admin the note is the lock's tooltip, not a line under the field.
+  assert.equal(at(asOwner, "menu[0].price").querySelector(".vc-lock").dataset.tooltip, "Editors see this but only an admin can change it.");
+  assert.doesNotMatch(at(asOwner, "menu[0].price").querySelector(".vc-help")?.textContent ?? "", /Editors see this/);
 });
 
 test("form: problems show next to their field (closest field for deep paths); others in a list at the top", () => {

@@ -1,6 +1,6 @@
 /**
  * P7: the editing form, generated from a file's / collection's fields in cms.config — every field type: text (single /
- * multiline, maxLength counter), richText (P8d: the visual editor, src/admin/rich-editor.ts), image (address + alt + mobile), select, hours, object, list (ordered, min /
+ * multiline, maxLength), richText (P8d: the visual editor, src/admin/rich-editor.ts), image (address + alt + mobile), select, hours, object, list (ordered, min /
  * max, nested), reference (one / many, ordered), dotted keys ("seo.title"), sections.
  *
  * The form edits a copy of the content: keys it does not know (and keys nobody touched) stay exactly as they were, so
@@ -43,6 +43,12 @@ export type FormOptions = {
   markdown?: string[];
   /** P8d tests: how the visual editor loads its Markdown converter. */
   loadMarkdown?: RichEditorOptions["loadMarkdown"];
+  /** M3: ask before deleting a list item ("Delete banner\n\nDelete banner 2?"); without it, items go at once. */
+  confirm?: (message: string, options?: { confirm?: string; danger?: boolean }) => boolean | Promise<boolean>;
+  /** M3: a list item's card was clicked (outside its controls): show it on the page. */
+  onItem?: (path: Path) => void;
+  /** M3: go to a field (the validation summary's buttons); focus by default. */
+  reveal?: (path: string) => void;
 };
 
 export type Form = {
@@ -71,7 +77,7 @@ export const createForm = (options: FormOptions): Form => {
   const state: Record<string, unknown> = isRecord(options.value) ? clone(options.value) : {};
   const references = options.references ?? {};
   /** path text → the field's wrapper, error line and a way to show a new value. */
-  const registry = new Map<string, { wrapper: HTMLElement; error: HTMLElement; inputs: () => HTMLElement[]; show?: (value: unknown) => void }>();
+  const registry = new Map<string, { wrapper: HTMLElement; error: HTMLElement; inputs: () => HTMLElement[]; show?: (value: unknown) => void; label: string }>();
   const changed = (path: Path) => options.onChange?.(clone(state), path);
   // P16a: ids made from a name while the item is new — by the source field's place, what to fill and whether it still follows.
   const following = new Map<string, { target: Path; show: (value: unknown) => void; on: boolean }>();
@@ -103,7 +109,8 @@ export const createForm = (options: FormOptions): Form => {
     text,
     field.required ? h(doc, "span", { class: "vc-required", "aria-hidden": "true" }, " *") : null,
     field.required ? h(doc, "span", { class: "vc-sr-only" }, " (required)") : null,
-    locked || (owner && isAdminOnly(field.locked)) ? h(doc, "span", { class: "vc-lock", title: LOCK_HELP }, icon(doc, "lock"), h(doc, "span", { class: "vc-sr-only" }, " (admin only)")) : null,
+    // M3b: an admin sees the lock with its note as the tooltip (not a line under every locked field).
+    locked || (owner && isAdminOnly(field.locked)) ? h(doc, "span", { class: "vc-lock", "data-tooltip": locked ? LOCK_HELP : OWNER_NOTE }, icon(doc, "lock"), h(doc, "span", { class: "vc-sr-only" }, locked ? " (admin only)" : ` (admin only: ${OWNER_NOTE})`)) : null,
   ];
 
   type Wrap = { path: Path; field: Field; locked: boolean; reason?: string; group: boolean; control: HTMLElement; inputId?: string; hideLabel?: boolean; show?: (value: unknown) => void; extraHelp?: Child };
@@ -111,8 +118,7 @@ export const createForm = (options: FormOptions): Form => {
     const text = pathText(path);
     const helpId = uid("help");
     const errorId = uid("err");
-    const ownerNote = owner && isAdminOnly(field.locked) ? OWNER_NOTE : null;
-    const notes = [field.help, locked ? LOCK_HELP : null, ownerNote, reason].filter(Boolean).join(" ");
+    const notes = [field.help, locked ? LOCK_HELP : null, reason].filter(Boolean).join(" ");
     const help = notes || extraHelp ? h(doc, "p", { class: "vc-help", id: helpId }, notes, extraHelp ? " " : null, extraHelp) : null;
     const error = h(doc, "p", { class: "vc-error", id: errorId, hidden: true });
     const label = group
@@ -123,7 +129,7 @@ export const createForm = (options: FormOptions): Form => {
     // The visible main control first (a visual editor's area or its source box), then everything else.
     const inputs = () => [...new Set([...wrapper.querySelectorAll<HTMLElement>("[data-vc-primary]:not([hidden])"), ...wrapper.querySelectorAll<HTMLElement>("input, select, textarea")])];
     for (const input of inputs()) if (!input.getAttribute("aria-describedby")) input.setAttribute("aria-describedby", described);
-    registry.set(text, { wrapper, error, inputs, show });
+    registry.set(text, { wrapper, error, inputs, show, label: field.label });
     return wrapper;
   };
 
@@ -157,16 +163,14 @@ export const createForm = (options: FormOptions): Form => {
       ? h(doc, "textarea", { id, rows: 3, class: "vc-input", disabled, spellcheck: "true" })
       : h(doc, "input", { id, type: "text", class: "vc-input", disabled, autocomplete: "off" });
     input.value = typeof current === "string" ? current : current === undefined || current === null ? "" : String(current);
-    const max = field.maxLength;
-    const counter = max ? h(doc, "span", { class: "vc-counter", "aria-live": "polite" }) : null;
-    const count = () => { if (counter && max) { counter.textContent = `${input.value.length} / ${max}`; counter.classList.toggle("vc-over", input.value.length > max); } };
-    count();
-    const show = (value: unknown) => { input.value = typeof value === "string" ? value : ""; count(); };
+    // M3: no counter (the Mr Spa CMS has one only on the search description); the input holds at most maxLength.
+    if (field.maxLength) input.setAttribute("maxlength", String(field.maxLength));
+    const show = (value: unknown) => { input.value = typeof value === "string" ? value : ""; };
     // P16a: while this id is empty (a new item), it follows the field it is made from; typing in it stops that.
     const follow = field.from && !input.value ? { target: path, show, on: true } : undefined;
     if (follow && field.from) following.set(pathText([...path.slice(0, -1), ...keyPath(field.from)]), follow);
-    input.addEventListener("input", () => { if (follow) follow.on = false; count(); set(path, input.value === "" && wasAbsent ? undefined : input.value); });
-    return { control: counter ? h(doc, "div", { class: "vc-with-counter" }, input, counter) : input, id, show };
+    input.addEventListener("input", () => { if (follow) follow.on = false; set(path, input.value === "" && wasAbsent ? undefined : input.value); });
+    return { control: input, id, show };
   };
 
   const selectInput = (field: Extract<Field, { type: "select" }>, path: Path, disabled: boolean) => {
@@ -377,8 +381,8 @@ export const createForm = (options: FormOptions): Form => {
             button(`Delete ${name}`, "remove", () => { const next = clone(rows()); next.splice(index, 1); writeRows(next, true); }, disabled)));
         const error = h(doc, "p", { class: "vc-error", hidden: true });
         element.append(error);
-        registry.set(pathText(rowPath), { wrapper: element, error, inputs: () => [...element.querySelectorAll<HTMLElement>("input")] });
-        for (const key of ["days", "open", "close", "label", "closed"]) registry.set(pathText([...rowPath, key]), { wrapper: element, error, inputs: () => [...element.querySelectorAll<HTMLElement>("input")] });
+        registry.set(pathText(rowPath), { wrapper: element, error, inputs: () => [...element.querySelectorAll<HTMLElement>("input")], label: name });
+        for (const key of ["days", "open", "close", "label", "closed"]) registry.set(pathText([...rowPath, key]), { wrapper: element, error, inputs: () => [...element.querySelectorAll<HTMLElement>("input")], label: name });
         rowsBox.append(element);
       });
     };
@@ -398,13 +402,18 @@ export const createForm = (options: FormOptions): Form => {
     return "";
   };
 
+  /** M3: the ↑ ↓ × text buttons of a list item (the Mr Spa CMS's repeatable editor). */
+  const glyph = (label: string, name: string, text: string, onClick: () => void, disabled: boolean) =>
+    h(doc, "button", { type: "button", class: `vc-glyph vc-${name}`, "aria-label": label, "data-tooltip": label, disabled, onclick: (event: Event) => { event.preventDefault(); event.stopPropagation(); onClick(); } }, text);
+
   const listInput = (field: ListField, path: Path, locked: boolean) => {
     const items = h(doc, "div", { class: "vc-items" });
-    const note = h(doc, "p", { class: "vc-note" });
+    const note = h(doc, "p", { class: "vc-note vc-list-count" });
     const itemLabel = field.itemLabel ?? field.of.label;
     const list = () => (Array.isArray(getAt(state, path)) ? (getAt(state, path) as unknown[]) : []);
     const primitive = !["object", "list", "hours", "image", "tuple"].includes(field.of.type) && !(field.of.type === "reference" && field.of.multiple);
-    const add = h(doc, "button", { type: "button", class: "vc-button vc-add" }, icon(doc, "plus"), ` Add ${itemLabel.toLowerCase()}`);
+    // Mr Spa: "Add banner".
+    const add = h(doc, "button", { type: "button", class: "vc-button vc-add" }, `Add ${itemLabel.toLowerCase()}`);
     const write = (next: unknown[], focus?: { index: number; action: string }) => {
       set(path, next);
       render();
@@ -421,20 +430,33 @@ export const createForm = (options: FormOptions): Form => {
         const name = `${itemLabel} ${index + 1}`;
         const keepsLocked = !owner && holdsLockedValue(field.of, value);
         const removeLabel = keepsLocked ? `Only an admin can delete ${name}: it holds admin-only values` : `Delete ${name}`;
+        const remove = async () => {
+          // Mr Spa: "Delete banner" / "Delete banner 2?" / Delete (red).
+          const noun = itemLabel.toLowerCase();
+          if (options.confirm && !(await options.confirm(`Delete ${noun}\n\nDelete ${noun} ${index + 1}?`, { confirm: "Delete", danger: true }))) return;
+          const next = clone(list()); next.splice(index, 1);
+          write(next, next.length ? { index: Math.min(index, next.length - 1), action: "remove" } : undefined);
+          if (!next.length) add.focus();
+        };
         const actions = h(doc, "div", { class: "vc-item-actions" },
-          field.ordered && !field.fixed ? button(`Move ${name} up`, "up", () => { const next = clone(values); [next[index - 1], next[index]] = [next[index], next[index - 1]]; write(next, { index: index - 1, action: "up" }); }, locked || index === 0) : null,
-          field.ordered && !field.fixed ? button(`Move ${name} down`, "down", () => { const next = clone(values); [next[index + 1], next[index]] = [next[index], next[index + 1]]; write(next, { index: index + 1, action: "down" }); }, locked || index === values.length - 1) : null,
-          field.fixed ? null : button(removeLabel, "remove", () => { const next = clone(values); next.splice(index, 1); write(next, next.length ? { index: Math.min(index, next.length - 1), action: "remove" } : undefined); if (!next.length) add.focus(); }, locked || keepsLocked || values.length <= (field.min ?? 0)));
-        // The card already says "Group 2": the item's own label is for screen readers only.
+          field.ordered && !field.fixed ? glyph(`Move ${name} up`, "up", "↑", () => { const next = clone(values); [next[index - 1], next[index]] = [next[index], next[index - 1]]; write(next, { index: index - 1, action: "up" }); }, locked || index === 0) : null,
+          field.ordered && !field.fixed ? glyph(`Move ${name} down`, "down", "↓", () => { const next = clone(values); [next[index + 1], next[index]] = [next[index], next[index + 1]]; write(next, { index: index + 1, action: "down" }); }, locked || index === values.length - 1) : null,
+          field.fixed ? null : glyph(removeLabel, "remove", "×", () => { void remove(); }, locked || keepsLocked || values.length <= (field.min ?? 0)));
+        // The card already says "Banner 2": the item's own label is for screen readers only.
         const body = renderField(field.of, [...path, index], locked, { hideLabel: true, label: name });
         const summary = summaryOf(field.of, value);
-        items.append(primitive
-          ? h(doc, "div", { class: "vc-item vc-item-inline", role: "group", "aria-label": name }, body, actions)
-          : h(doc, "div", { class: "vc-item", role: "group", "aria-label": summary ? `${name}: ${summary}` : name },
-            h(doc, "div", { class: "vc-item-head" }, h(doc, "span", { class: "vc-item-title" }, name), summary ? h(doc, "span", { class: "vc-item-summary" }, summary) : null, actions), body));
+        const card = primitive
+          ? h(doc, "div", { class: "vc-item vc-item-inline", role: "group", "aria-label": name, "data-item": pathText([...path, index]) }, body, actions)
+          : h(doc, "div", { class: "vc-item", role: "group", "aria-label": summary ? `${name}: ${summary}` : name, "data-item": pathText([...path, index]) },
+            // Mr Spa: "Banner 1" over the item's own words, or "Untitled".
+            h(doc, "div", { class: "vc-item-head" }, h(doc, "span", { class: "vc-item-heading" }, h(doc, "span", { class: "vc-item-title" }, name), h(doc, "span", { class: "vc-item-summary" }, summary || "Untitled")), actions), body);
+        // A click on the card (not on one of its controls) shows the item on the page.
+        card.addEventListener("click", (event) => { const target = event.target as Element | null; if (target?.closest?.("input, select, textarea, button, a, [contenteditable]")) return; options.onItem?.([...path, index]); });
+        items.append(card);
       });
       const count = values.length;
-      note.textContent = field.fixed ? "A fixed list: change the items here — adding, removing or moving them is done in the website's code." : field.max ? `${count} of ${field.max} allowed.` : count ? "" : `No ${itemLabel.toLowerCase()} yet.`;
+      // Mr Spa: "2 of 3 allowed." (a fixed set has no count).
+      note.textContent = !field.fixed && field.max ? `${count} of ${field.max} allowed.` : "";
       note.hidden = !note.textContent;
       add.disabled = locked || (field.max !== undefined && count >= field.max);
     };
@@ -557,15 +579,24 @@ export const createForm = (options: FormOptions): Form => {
   if (sections.length) {
     const placed = new Set(sections.flatMap((section) => section.fields));
     const rest = Object.keys(options.fields).filter((key) => !placed.has(key));
-    const groups = [...sections, ...(rest.length ? [{ key: "_other", label: "More", fields: rest }] : [])];
+    const groups = [...sections, ...(rest.length ? [{ key: "_other", label: "Other", fields: rest }] : [])];
     for (const section of groups) {
       const headingId = uid("s");
       const box = h(doc, "section", { class: "vc-section", "aria-labelledby": headingId, "data-section": section.key }, h(doc, "h2", { id: headingId, class: "vc-section-title" }, section.label));
       // Keep the config's field order inside a section, as the section lists them.
       for (const key of section.fields) if (key in options.fields) renderFields({ [key]: options.fields[key] }, [], false, box);
+      markSole(box);
       element.append(box);
     }
-  } else renderFields(options.fields, [], false, element);
+  } else { renderFields(options.fields, [], false, element); markSole(element); }
+
+  /** M3b: a section that is one object shows that object's fields as its own (the Mr Spa CMS lists them flat). */
+  function markSole(box: HTMLElement) {
+    const children = [...box.children].filter((child) => child.classList.contains("vc-field"));
+    if (children.length === 1 && children[0].classList.contains("vc-field-object")) children[0].classList.add("vc-sole");
+  }
+
+  function focusPath(path: string) { const target = registry.get(path)?.inputs().find((input) => !(input as HTMLInputElement).disabled); target?.focus(); return Boolean(target); }
 
   const clearErrors = () => {
     general.hidden = true;
@@ -601,12 +632,23 @@ export const createForm = (options: FormOptions): Form => {
         entry.wrapper.classList.add("vc-invalid");
         for (const input of entry.inputs()) input.setAttribute("aria-invalid", "true");
       }
-      if (loose.length) {
+      // M3 (Mr Spa): the summary at the top — "1 validation error" / "N validation errors", one button per problem
+      // ("Label: message") that goes to its field; a problem with no field on screen is named by its path.
+      if (problems.length) {
         general.hidden = false;
-        general.append(h(doc, "ul", {}, loose.map((problem) => h(doc, "li", {}, problem.path ? `${problem.path}: ${problem.message}` : problem.message))));
+        const entries = problems.map((problem) => {
+          let key = problem.path;
+          while (key && !registry.has(key)) key = /^(.*?)(\.[^.[\]]+|\[[^\]]*\])$/.exec(key)?.[1] ?? "";
+          const entry = key ? registry.get(key) : undefined;
+          const text = `${entry?.label ?? problem.path}: ${problem.message}`.replace(/^: /, "");
+          return h(doc, "li", {}, entry
+            ? h(doc, "button", { type: "button", class: "vc-link-button vc-error-link", onclick: () => { if (options.reveal) options.reveal(key); else focusPath(key); } }, text)
+            : text);
+        });
+        general.append(h(doc, "strong", {}, problems.length === 1 ? "1 validation error" : `${problems.length} validation errors`), h(doc, "ul", {}, entries));
       }
       return placed;
     },
-    focus: (path) => { const target = registry.get(path)?.inputs().find((input) => !(input as HTMLInputElement).disabled); target?.focus(); return Boolean(target); },
+    focus: (path) => focusPath(path),
   };
 };
