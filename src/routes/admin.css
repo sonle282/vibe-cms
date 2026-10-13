@@ -512,6 +512,13 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
 .vc-inspector .vc-field > .vc-label { order: 0; } .vc-inspector .vc-field > .vc-help { order: 1; margin: 0 0 6px; } .vc-inspector .vc-field > * { order: 2; } .vc-inspector .vc-field > .vc-error { order: 3; }
 .vc-inspector .vc-section > .vc-field > .vc-label, .vc-inspector .vc-form > .vc-field > .vc-label { gap: 6px; font-size: var(--text-13); font-weight: 500; }
 .vc-inspector .vc-section > .vc-field > .vc-label::before, .vc-inspector .vc-form > .vc-field > .vc-label::before { content: ""; width: 5px; height: 5px; flex: 0 0 5px; border-radius: 50%; background: #cbd5e1; }
+/* M3b: no required stars in the inspector (Mr Spa); a section that is one object lists its fields flat. */
+.vc-inspector .vc-required { display: none; }
+.vc-inspector .vc-sole > .vc-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.vc-inspector .vc-sole > .vc-object { gap: 18px; padding: 0; border: 0; }
+.vc-inspector .vc-sole > .vc-object > .vc-field > .vc-label { gap: 6px; font-size: var(--text-13); font-weight: 500; }
+.vc-inspector .vc-sole > .vc-object > .vc-field > .vc-label::before { content: ""; width: 5px; height: 5px; flex: 0 0 5px; border-radius: 50%; background: #cbd5e1; }
+.vc-inspector .vc-sole > .vc-object > .vc-field { display: flex; flex-direction: column; }
 .vc-inspector .vc-field-active > .vc-label { color: var(--accent); }
 .vc-inspector .vc-field-active > .vc-label::before { background: var(--accent) !important; }
 @media (prefers-reduced-motion: no-preference) {

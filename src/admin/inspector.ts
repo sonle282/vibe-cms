@@ -151,8 +151,11 @@ export const createInspector = (options: InspectorOptions): Inspector => {
     const shown = current();
     const nextLevel = shown ? 2 : 1;
     back.hidden = !shown || single;
-    crumb.textContent = shown && !single ? title : options.crumb;
-    heading.textContent = shown && !single ? shown.label : title;
+    // Mr Spa: a section open (also the only one of its page) = crumb the page, title the section; a page that declares
+    // no sections at all is just itself.
+    const whole = !shown || shown.key === "_all";
+    crumb.textContent = whole ? options.crumb : title;
+    heading.textContent = whole ? title : shown.label;
     levelOne.hidden = Boolean(shown);
     // Every section stays in the form; only the open one shows (all of them when there is a single one).
     for (const box of form.element.querySelectorAll<HTMLElement>(":scope > [data-section]")) box.hidden = !shown || (!single && box.dataset.section !== shown.key);

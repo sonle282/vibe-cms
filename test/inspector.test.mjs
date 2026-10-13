@@ -150,3 +150,16 @@ test("inspector: a validation problem opens its section; a record without sectio
   assert.deepEqual(h.head(), ["Services", "Spa Pedicure", true]);
   assert.equal(h.q(".vc-sections").closest(".vc-inspector-sections").hidden, true);
 });
+
+test("M3b: a section that is one object lists that object's fields flat; one declared section = crumb the page, title the section", async () => {
+  const { window } = new Window();
+  const fields = { hero: f.object({ label: "Top of the homepage", fields: { title: f.text({ label: "Heading" }), image: f.image({ label: "Photo" }) } }) };
+  const form = createForm({ doc: window.document, fields, sections: [{ key: "hero", label: "Hero", fields: ["hero"] }], value: { hero: { title: "Hi" } }, role: "owner" });
+  assert.ok(form.element.querySelector('[data-path="hero"]').classList.contains("vc-sole"));
+  const plain = createForm({ doc: window.document, fields: { ...fields, note: f.text({ label: "Note" }) }, value: {}, role: "owner" });
+  assert.equal(plain.element.querySelector(".vc-sole"), null, "with other fields beside it, the object stays a group");
+  const { createInspector } = await import("../dist/admin/index.js");
+  const inspector = createInspector({ doc: window.document, form, fields, sections: inspectorSections(fields, [{ key: "hero", label: "Hero", fields: ["hero"] }], "Home"), crumb: "Pages", title: "Home", value: () => form.value(), saved: () => ({}), resource: "file:home" });
+  assert.deepEqual([inspector.element.querySelector(".vc-inspector-crumb").textContent, inspector.element.querySelector(".vc-inspector-title").textContent, inspector.element.querySelector(".vc-inspector-back").hidden], ["Home", "Hero", true]);
+  inspector.destroy();
+});

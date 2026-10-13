@@ -109,7 +109,8 @@ export const createForm = (options: FormOptions): Form => {
     text,
     field.required ? h(doc, "span", { class: "vc-required", "aria-hidden": "true" }, " *") : null,
     field.required ? h(doc, "span", { class: "vc-sr-only" }, " (required)") : null,
-    locked || (owner && isAdminOnly(field.locked)) ? h(doc, "span", { class: "vc-lock", title: LOCK_HELP }, icon(doc, "lock"), h(doc, "span", { class: "vc-sr-only" }, " (admin only)")) : null,
+    // M3b: an admin sees the lock with its note as the tooltip (not a line under every locked field).
+    locked || (owner && isAdminOnly(field.locked)) ? h(doc, "span", { class: "vc-lock", "data-tooltip": locked ? LOCK_HELP : OWNER_NOTE }, icon(doc, "lock"), h(doc, "span", { class: "vc-sr-only" }, locked ? " (admin only)" : ` (admin only: ${OWNER_NOTE})`)) : null,
   ];
 
   type Wrap = { path: Path; field: Field; locked: boolean; reason?: string; group: boolean; control: HTMLElement; inputId?: string; hideLabel?: boolean; show?: (value: unknown) => void; extraHelp?: Child };
@@ -117,8 +118,7 @@ export const createForm = (options: FormOptions): Form => {
     const text = pathText(path);
     const helpId = uid("help");
     const errorId = uid("err");
-    const ownerNote = owner && isAdminOnly(field.locked) ? OWNER_NOTE : null;
-    const notes = [field.help, locked ? LOCK_HELP : null, ownerNote, reason].filter(Boolean).join(" ");
+    const notes = [field.help, locked ? LOCK_HELP : null, reason].filter(Boolean).join(" ");
     const help = notes || extraHelp ? h(doc, "p", { class: "vc-help", id: helpId }, notes, extraHelp ? " " : null, extraHelp) : null;
     const error = h(doc, "p", { class: "vc-error", id: errorId, hidden: true });
     const label = group
@@ -585,9 +585,16 @@ export const createForm = (options: FormOptions): Form => {
       const box = h(doc, "section", { class: "vc-section", "aria-labelledby": headingId, "data-section": section.key }, h(doc, "h2", { id: headingId, class: "vc-section-title" }, section.label));
       // Keep the config's field order inside a section, as the section lists them.
       for (const key of section.fields) if (key in options.fields) renderFields({ [key]: options.fields[key] }, [], false, box);
+      markSole(box);
       element.append(box);
     }
-  } else renderFields(options.fields, [], false, element);
+  } else { renderFields(options.fields, [], false, element); markSole(element); }
+
+  /** M3b: a section that is one object shows that object's fields as its own (the Mr Spa CMS lists them flat). */
+  function markSole(box: HTMLElement) {
+    const children = [...box.children].filter((child) => child.classList.contains("vc-field"));
+    if (children.length === 1 && children[0].classList.contains("vc-field-object")) children[0].classList.add("vc-sole");
+  }
 
   function focusPath(path: string) { const target = registry.get(path)?.inputs().find((input) => !(input as HTMLInputElement).disabled); target?.focus(); return Boolean(target); }
 
