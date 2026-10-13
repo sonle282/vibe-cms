@@ -13,7 +13,8 @@ import { isAdminOnly } from "../config/roles.js";
 import type { Role } from "../locks/index.js";
 import { clear, h, icon, uid, type Child } from "./dom.js";
 import { createRichEditor, type RichEditor, type RichEditorOptions } from "./rich-editor.js";
-import { clone, emptyValue, getAt, holdsLockedValue, isRecord, keyPath, pathText, setAt, slugify, type Path } from "./value.js";
+import { clone, emptyValue, getAt, holdsLockedValue, isRecord, keyPath, parsePathText, pathText, setAt, slugify, type Path } from "./value.js";
+import { fieldAt } from "./bridge.js";
 import { pickPlace, type PickChoices } from "../check/picks.js";
 
 export type ReferenceOption = { id: string; label: string };
@@ -69,6 +70,11 @@ export type Form = {
 
 const DAYS: Array<[number, string, string]> = [[1, "Mon", "Monday"], [2, "Tue", "Tuesday"], [3, "Wed", "Wednesday"], [4, "Thu", "Thursday"], [5, "Fri", "Friday"], [6, "Sat", "Saturday"], [0, "Sun", "Sunday"]];
 export const LOCK_HELP = "Only an admin can change this.";
+/** M3c: the field key a section entry starts with ("services[0].card" → "services"), or undefined. */
+export const topKeyOf = (fields: Record<string, Field>, entry: string) => {
+  if (entry in fields) return entry;
+  return Object.keys(fields).sort((a, b) => b.length - a.length).find((key) => entry.startsWith(`${key}.`) || entry.startsWith(`${key}[`));
+};
 export const OWNER_NOTE = "Editors see this but only an admin can change it.";
 
 export const createForm = (options: FormOptions): Form => {
@@ -552,7 +558,10 @@ export const createForm = (options: FormOptions): Form => {
       case "object": {
         const box = h(doc, "div", { class: "vc-object" });
         renderFields(field.fields, path, locked || Boolean(reason), box);
-        return wrap({ ...common, group: true, control: box });
+        const wrapper = wrap({ ...common, group: true, control: box });
+        // M3c: `flat` — in the inspector its fields are the section's own (CSS: .vc-inspector .vc-sole).
+        if (field.flat) wrapper.classList.add("vc-sole");
+        return wrapper;
       }
       case "list": return wrap({ ...common, group: true, control: listInput(field, path, disabled).control });
       case "tuple": {
@@ -575,20 +584,37 @@ export const createForm = (options: FormOptions): Form => {
   const element = h(doc, "div", { class: "vc-form" });
   const general = h(doc, "div", { class: "vc-form-errors", role: "alert", hidden: true });
   element.append(general);
-  const sections = options.sections?.filter((section) => section.fields.some((key) => key in options.fields)) ?? [];
+  const sections = options.sections?.filter((section) => section.fields.some((key) => topKeyOf(options.fields, key) !== undefined)) ?? [];
   if (sections.length) {
-    const placed = new Set(sections.flatMap((section) => section.fields));
+    // M3c: a field shown in parts (sections that point into it) is placed too.
+    const placed = new Set(sections.flatMap((section) => section.fields.map((key) => topKeyOf(options.fields, key)).filter((key): key is string => Boolean(key))));
     const rest = Object.keys(options.fields).filter((key) => !placed.has(key));
     const groups = [...sections, ...(rest.length ? [{ key: "_other", label: "Other", fields: rest }] : [])];
     for (const section of groups) {
       const headingId = uid("s");
       const box = h(doc, "section", { class: "vc-section", "aria-labelledby": headingId, "data-section": section.key }, h(doc, "h2", { id: headingId, class: "vc-section-title" }, section.label));
       // Keep the config's field order inside a section, as the section lists them.
-      for (const key of section.fields) if (key in options.fields) renderFields({ [key]: options.fields[key] }, [], false, box);
+      for (const key of section.fields) {
+        if (key in options.fields) { renderFields({ [key]: options.fields[key] }, [], false, box); continue; }
+        // M3c: a path into a field — an object's field, an item of a fixed list.
+        const path = parsePathText(key);
+        const found = fieldAt(options.fields, path);
+        if (found && !found.rest.length && getAt(state, path.slice(0, -1)) !== undefined) box.append(renderField(found.field, path, lockedAlong(path)));
+      }
       markSole(box);
       element.append(box);
     }
   } else { renderFields(options.fields, [], false, element); markSole(element); }
+
+  /** M3c: locked for this person by a field on the way to `path` (a locked list / object holds what is inside). */
+  function lockedAlong(path: Path) {
+    if (owner) return false;
+    for (let length = 1; length < path.length; length += 1) {
+      const found = fieldAt(options.fields, path.slice(0, length));
+      if (found && !found.rest.length && isAdminOnly(found.field.locked)) return true;
+    }
+    return false;
+  }
 
   /** M3b: a section that is one object shows that object's fields as its own (the Mr Spa CMS lists them flat). */
   function markSole(box: HTMLElement) {

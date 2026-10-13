@@ -11,8 +11,9 @@
  */
 import type { Field } from "../config/index.js";
 import { clear, h, icon } from "./dom.js";
-import type { Form } from "./form.js";
-import { getAt, keyPath, pathText, type Path } from "./value.js";
+import { fieldAt } from "./bridge.js";
+import { topKeyOf, type Form } from "./form.js";
+import { getAt, parsePathText, pathText, type Path } from "./value.js";
 
 export type InspectorSection = { key: string; label: string; fields: string[] };
 type Store = Pick<Storage, "getItem" | "setItem" | "removeItem">;
@@ -22,9 +23,10 @@ const TIP_KEY = "vibe-cms:tip-hidden:page-sections";
 
 /** The sections the form shows: the config's (those with fields), then "Other" for fields in none; one when none declared. */
 export const inspectorSections = (fields: Record<string, Field>, sections: Array<{ key: string; label: string; fields: string[] }> | undefined, pageLabel: string): InspectorSection[] => {
-  const declared = (sections ?? []).map((section) => ({ ...section, fields: section.fields.filter((key) => key in fields) })).filter((section) => section.fields.length);
+  // M3c: an entry may be a path into a field ("services[0].card"); the field it starts with is then placed.
+  const declared = (sections ?? []).map((section) => ({ ...section, fields: section.fields.filter((key) => topKeyOf(fields, key) !== undefined) })).filter((section) => section.fields.length);
   if (!declared.length) return [{ key: "_all", label: pageLabel, fields: Object.keys(fields) }];
-  const placed = new Set(declared.flatMap((section) => section.fields));
+  const placed = new Set(declared.flatMap((section) => section.fields.map((key) => topKeyOf(fields, key)!)));
   const rest = Object.keys(fields).filter((key) => !placed.has(key));
   return [...declared, ...(rest.length ? [{ key: "_other", label: "Other", fields: rest }] : [])];
 };
@@ -50,15 +52,21 @@ export const countItems = (count: number, itemLabel = "item") => {
  * its lists hold ("2 banners"), otherwise how many fields it has. Cut to 120 characters (CSS adds … when narrower).
  */
 export const sectionSummary = (section: InspectorSection, fields: Record<string, Field>, value: Record<string, unknown>, maxLength = 120) => {
-  const texts = section.fields.filter((key) => fields[key]?.type === "text");
+  // M3c: entries may be paths into a field; an object's own texts count (a section that is one object).
+  const fieldOf = (key: string) => fieldAt(fields, parsePathText(key))?.field;
+  const entries = section.fields.flatMap((key) => {
+    const field = fieldOf(key);
+    return field?.type === "object" ? Object.keys(field.fields).map((inner) => `${key}.${inner}`) : [key];
+  });
+  const texts = entries.filter((key) => fieldOf(key)?.type === "text");
   const titled = texts.filter((key) => /(?:^|\.)(?:title|heading)$/i.test(key));
   for (const key of [...titled, ...texts]) {
-    const text = plain(getAt(value, keyPath(key)));
+    const text = plain(getAt(value, parsePathText(key)));
     if (text) return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
   }
-  const lists = section.fields.flatMap((key) => {
-    const field = fields[key];
-    const items = getAt(value, keyPath(key));
+  const lists = entries.flatMap((key) => {
+    const field = fieldOf(key);
+    const items = getAt(value, parsePathText(key));
     return field?.type === "list" && Array.isArray(items) ? [countItems(items.length, field.itemLabel ?? field.of.label)] : [];
   });
   if (lists.length) return lists.join(" · ");
@@ -132,7 +140,7 @@ export const createInspector = (options: InspectorOptions): Inspector => {
   const changedIn = (section: InspectorSection) => {
     const saved = options.saved();
     const current = options.value();
-    return section.fields.some((key) => JSON.stringify(getAt(saved, keyPath(key)) ?? null) !== JSON.stringify(getAt(current, keyPath(key)) ?? null));
+    return section.fields.some((key) => JSON.stringify(getAt(saved, parsePathText(key)) ?? null) !== JSON.stringify(getAt(current, parsePathText(key)) ?? null));
   };
   const drawRows = () => {
     clear(rows);

@@ -45,7 +45,7 @@ const FIELD_OPTIONS: Record<string, string[]> = {
   image: ["alt", "mobile"],
   select: ["options"],
   hours: [],
-  object: ["fields"],
+  object: ["fields", "flat"],
   list: ["of", "ordered", "min", "max", "itemLabel", "fixed"],
   reference: ["to", "multiple", "ordered"],
   tuple: ["items"],
@@ -150,6 +150,7 @@ export const checkField = (context: Context, field: unknown, at: string, depth: 
     case "object":
       if (depth > MAX_DEPTH) { err(context, at, `nested too deep (more than ${MAX_DEPTH} levels of object / list)`, "flatten it or move part of it into a collection with a reference"); break; }
       checkFields(context, field.fields, `${at}.fields`, depth + 1);
+      checkBoolean(context, field, "flat", at);
       break;
     case "list":
       if (depth > MAX_DEPTH) { err(context, at, `nested too deep (more than ${MAX_DEPTH} levels of object / list)`, "flatten it or move part of it into a collection with a reference"); break; }
@@ -393,12 +394,44 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
   return { errors: context.errors, warnings: context.warnings };
 };
 
+/**
+ * M3c: where a section entry that is not a field key points: the field key it starts with, or why it cannot be
+ * shown ("services[0].card": services is a fixed list of objects with a card; "hero.title": hero is an object).
+ */
+const sectionPath = (fields: Record<string, unknown>, name: string): { top: string } | { problem: string } => {
+  const steps: Array<string | number> = [];
+  for (const match of name.matchAll(/\[(\d+)\]|\.?([^.[\]]+)/g)) steps.push(match[1] !== undefined ? Number(match[1]) : match[2]);
+  // The longest start that is a field key (keys may hold dots: "seo.title").
+  let top: string | undefined; let used = 0;
+  for (let end = steps.length; end > 0 && !top; end -= 1) {
+    const words = steps.slice(0, end);
+    if (words.every((step) => typeof step === "string") && words.join(".") in fields) { top = words.join("."); used = end; }
+  }
+  if (!top) return { problem: `${show(name)} is not a field of this file` };
+  let field = fields[top] as Record<string, unknown> | undefined;
+  for (const step of steps.slice(used)) {
+    if (!isRecord(field)) return { problem: `${show(name)} does not lead to a field` };
+    if (typeof step === "number") {
+      if (field.type !== "list") return { problem: `${show(name)}: [${step}] is only for a list` };
+      if (field.fixed !== true) return { problem: `${show(name)}: a section can point into a list only when the list is fixed (its items stay in place)` };
+      field = field.of as Record<string, unknown>;
+      continue;
+    }
+    if (field.type !== "object" || !isRecord(field.fields) || !(step in field.fields)) return { problem: `${show(name)}: ${show(step)} is not a field there` };
+    field = (field.fields as Record<string, unknown>)[step] as Record<string, unknown>;
+  }
+  return { top };
+};
+
 function checkSections(context: Context, entry: Record<string, unknown>, at: string) {
   if (entry.sections === undefined) return;
   if (!Array.isArray(entry.sections)) { err(context, `${at}.sections`, "must be a list", '[{ key: "contact", label: "Contact", fields: ["phone"] }]'); return; }
   const fieldKeys = isRecord(entry.fields) ? Object.keys(entry.fields) : [];
   const sectionKeys = new Set<string>();
   const placed = new Map<string, string>();
+  /** M3c: paths into a field, and the fields that sections show in parts. */
+  const paths = new Map<string, string>();
+  const inside = new Map<string, string>();
   entry.sections.forEach((section, index) => {
     const sat = `${at}.sections[${index}]`;
     if (!isRecord(section)) { err(context, sat, "must be { key, label, fields }"); return; }
@@ -408,12 +441,22 @@ function checkSections(context: Context, entry: Record<string, unknown>, at: str
     if (!filled(section.label)) err(context, `${sat}.label`, "required — the name editors see");
     if (!Array.isArray(section.fields) || !section.fields.length) { err(context, `${sat}.fields`, "required — the field keys in this section", '["phone", "hours"]'); return; }
     section.fields.forEach((name, fieldIndex) => {
-      if (!fieldKeys.includes(name)) err(context, `${sat}.fields[${fieldIndex}]`, `${show(name)} is not a field of this file`, fieldKeys.length ? `use one of ${fieldKeys.join(", ")}` : undefined);
-      else if (placed.has(name)) err(context, `${sat}.fields[${fieldIndex}]`, `"${name}" is already in ${placed.get(name)}`, "a field belongs to one section");
-      else placed.set(name, sat);
+      const where = `${sat}.fields[${fieldIndex}]`;
+      if (typeof name !== "string" || !filled(name)) { err(context, where, "must be a field key or a path into one", '"phone", "hero.title", "services[0].card"'); return; }
+      if (fieldKeys.includes(name)) {
+        if (placed.has(name)) err(context, where, `"${name}" is already in ${placed.get(name)}`, "a field belongs to one section");
+        else if (inside.has(name)) err(context, where, `parts of "${name}" are already in ${inside.get(name)}`, "a field belongs to one section: list its parts, or the whole field");
+        else placed.set(name, sat);
+        return;
+      }
+      const target = isRecord(entry.fields) ? sectionPath(entry.fields, name) : { problem: `${show(name)} is not a field of this file` };
+      if ("problem" in target) { err(context, where, target.problem, fieldKeys.length ? `a field key (${fieldKeys.slice(0, 6).join(", ")}${fieldKeys.length > 6 ? ", …" : ""}) or a path into an object / a fixed list, e.g. "services[0].card"` : undefined); return; }
+      if (paths.has(name)) err(context, where, `"${name}" is already in ${paths.get(name)}`, "a field belongs to one section");
+      else if (placed.has(target.top)) err(context, where, `"${target.top}" is already in ${placed.get(target.top)} as a whole`, "list its parts, or the whole field");
+      else { paths.set(name, sat); if (!inside.has(target.top)) inside.set(target.top, sat); }
     });
   });
-  const loose = fieldKeys.filter((key) => !placed.has(key));
+  const loose = fieldKeys.filter((key) => !placed.has(key) && !inside.has(key));
   if (sectionKeys.size && loose.length) warn(context, `${at}.sections`, `${loose.map((key) => `"${key}"`).join(", ")} ${loose.length === 1 ? "is" : "are"} in no section (shown last, under "Other")`);
 }
 

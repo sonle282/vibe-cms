@@ -3,7 +3,18 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## Unreleased (M1, M2, M3)
+## Unreleased (M1, M2, M3, M3c)
+
+**M3c — sections like the Mr Spa CMS's, for any shape of content.** Nothing to do on a site; new possibilities in
+`cms.config.ts`:
+
+- A section's `fields` may point **into** a field: an object's field (`"hero.title"`) or an item of a **fixed** list
+  (`"services[0].card"`, `"services[0].highlights"`) — one list of services gives a section per service ("Head Spa ·
+  Card & facts", "Head Spa · Highlights"…). The rest of the list is kept as it is. The build refuses a path into a list
+  that is not fixed (its items could move), a path that leads nowhere, and a field listed both whole and in parts.
+- `f.object({ …, flat: true })`: in the page inspector its fields show as the section's own, with their own labels (no
+  group around them). An object that is a section's only field is always shown so.
+- The row's one-line summary reads the texts inside a section's objects too (its title / heading first).
 
 **M3 — the page inspector of the Mr Spa CMS (two levels).** Nothing to do on a site; `sections` in `cms.config.ts` are
 what it lists (a page without sections opens straight at its fields).

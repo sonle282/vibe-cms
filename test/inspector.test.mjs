@@ -101,7 +101,7 @@ test("inspector level 1: crumb Pages, the page's title, the hideable tip, one ro
   assert.equal(h.window.location.pathname, "/admin/pages/site");
   assert.deepEqual(h.head(), ["Pages", "Salon info", true]);
   assert.equal(h.q(".vc-tip-text").textContent, "Click any part of the page, or pick a section below.");
-  assert.deepEqual(h.rows(), [["Contact & hours", site.phone, false], ["Homepage", site.name, false], ["Footer & search", site.seo.title, false]]);
+  assert.deepEqual(h.rows(), [["Contact & hours", site.phone, false], ["Homepage", site.hero.title, false], ["Footer & search", site.seo.title, false]]);
   assert.deepEqual(h.visible(), [], "no section's fields at level 1");
   assert.ok([...h.root.querySelectorAll(".vc-section-chevron")].every((chevron) => chevron.textContent === "›"));
   // Hiding the tip is remembered.
@@ -127,7 +127,7 @@ test("inspector level 2: ← Close section, crumb = the page, title = the sectio
   h.window.document.dispatchEvent(new h.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   assert.deepEqual(h.visible(), []);
   assert.equal(h.window.document.activeElement?.dataset.sectionKey, "home", "focus on the row just left");
-  assert.deepEqual(h.rows().find(([name]) => name === "Homepage"), ["Homepage", site.name, true]);
+  assert.deepEqual(h.rows().find(([name]) => name === "Homepage"), ["Homepage", site.hero.title, true]);
   assert.equal(h.session.get("vibe-cms:section:file:site"), undefined);
   // The section opened stays open when the editor comes back (this session).
   h.root.querySelector('[data-section-key="footer"]').click();
@@ -162,4 +162,49 @@ test("M3b: a section that is one object lists that object's fields flat; one dec
   const inspector = createInspector({ doc: window.document, form, fields, sections: inspectorSections(fields, [{ key: "hero", label: "Hero", fields: ["hero"] }], "Home"), crumb: "Pages", title: "Home", value: () => form.value(), saved: () => ({}), resource: "file:home" });
   assert.deepEqual([inspector.element.querySelector(".vc-inspector-crumb").textContent, inspector.element.querySelector(".vc-inspector-title").textContent, inspector.element.querySelector(".vc-inspector-back").hidden], ["Home", "Hero", true]);
   inspector.destroy();
+});
+
+test("M3c: sections may point into a field — an object's field, an item of a fixed list (one list, a section per item)", async () => {
+  const { checkCmsConfig } = await import("../dist/index.js");
+  const fields = {
+    intro: f.text({ label: "Intro" }),
+    hero: f.object({ label: "Hero", fields: { title: f.text({ label: "Heading" }), photo: f.image({ label: "Photo" }) } }),
+    services: f.list(f.object({ label: "Service", fields: { name: f.text({ label: "Name" }), card: f.object({ label: "Card", flat: true, fields: { blurb: f.text({ label: "Card text" }) } }), highlights: f.list(f.text({ label: "Highlight" }), { label: "Highlights", itemLabel: "Highlight" }) } }), { label: "Services", fixed: true }),
+    loose: f.list(f.text({ label: "Item" }), { label: "Loose" }),
+  };
+  const base = { configVersion: 1, site: { name: "S", url: "https://s.example" }, repo: { owner: "o", name: "r", branch: "main" }, collections: [] };
+  const check = (sections) => checkCmsConfig({ ...base, files: [{ key: "home", label: "Home", path: "src/data/home.json", format: "json", fields, sections }] });
+  const good = check([
+    { key: "top", label: "Top", fields: ["intro", "hero.title"] },
+    { key: "s0", label: "Head Spa · Card & facts", fields: ["services[0].name", "services[0].card"] },
+    { key: "s0h", label: "Head Spa · Highlights", fields: ["services[0].highlights"] },
+    { key: "rest", label: "Rest", fields: ["loose"] },
+  ]);
+  assert.deepEqual(good.errors, []);
+  assert.deepEqual(good.warnings, [], "hero / services shown in parts are placed");
+  const messages = (sections) => check(sections).errors.map((problem) => `${problem.path}: ${problem.message}`);
+  assert.deepEqual(messages([{ key: "a", label: "A", fields: ["loose[0]"] }]), ['files[0].sections[0].fields[0]: "loose[0]": a section can point into a list only when the list is fixed (its items stay in place)']);
+  assert.deepEqual(messages([{ key: "a", label: "A", fields: ["hero.nope"] }]), ['files[0].sections[0].fields[0]: "hero.nope": "nope" is not a field there']);
+  assert.deepEqual(messages([{ key: "a", label: "A", fields: ["hero"] }, { key: "b", label: "B", fields: ["hero.title"] }]), ['files[0].sections[1].fields[0]: "hero" is already in files[0].sections[0] as a whole']);
+  // The form: each section shows exactly its parts; a flat object's fields are the section's own.
+  const { window } = new Window();
+  const value = { intro: "Welcome", hero: { title: "Hi", photo: "/a.png" }, services: [{ name: "Head Spa", card: { blurb: "Calm" }, highlights: ["Scalp", "Steam"] }, { name: "Nails" }], loose: [] };
+  const sections = [{ key: "top", label: "Top", fields: ["intro", "hero.title"] }, { key: "s0", label: "Head Spa · Card & facts", fields: ["services[0].name", "services[0].card"] }, { key: "s0h", label: "Head Spa · Highlights", fields: ["services[0].highlights"] }];
+  const form = createForm({ doc: window.document, fields, sections, value, role: "owner" });
+  const paths = (key) => [...form.element.querySelector(`[data-section="${key}"]`).querySelectorAll(":scope > .vc-field")].map((field) => field.dataset.path);
+  assert.deepEqual(paths("top"), ["intro", "hero.title"]);
+  assert.deepEqual(paths("s0"), ["services[0].name", "services[0].card"]);
+  assert.ok(form.element.querySelector('[data-path="services[0].card"]').classList.contains("vc-sole"), "flat: true");
+  assert.deepEqual(paths("_other"), ["loose"], "only what no section shows is under Other");
+  form.element.querySelector('[data-path="services[0].card.blurb"] input').value = "Very calm";
+  form.element.querySelector('[data-path="services[0].card.blurb"] input').dispatchEvent(new window.Event("input", { bubbles: true }));
+  assert.deepEqual(form.value().services, [{ name: "Head Spa", card: { blurb: "Very calm" }, highlights: ["Scalp", "Steam"] }, { name: "Nails" }], "the rest of the list stays as it was");
+  // The inspector: rows and summaries from the parts.
+  const listed = inspectorSections(fields, sections, "Home");
+  assert.deepEqual(listed.map((section) => section.key), ["top", "s0", "s0h", "_other"]);
+  assert.equal(sectionSummary(listed[1], fields, value), "Head Spa");
+  assert.equal(sectionSummary(listed[2], fields, value), "2 highlights");
+  const { sectionOfPath } = await import("../dist/admin/index.js");
+  assert.equal(sectionOfPath(listed, "services[0].card.blurb").key, "s0");
+  assert.equal(sectionOfPath(listed, "hero.title").key, "top");
 });
