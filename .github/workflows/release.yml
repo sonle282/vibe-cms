@@ -1,7 +1,8 @@
 # Vibe CMS release: pushing a tag vX.Y.Z (equal to package.json "version") runs every check, packs the package and
 # publishes a GitHub Release with vibe-cms-X.Y.Z.tgz + its sha256. Sites install from the public release URL — no token:
 #   "@sonle282/vibe-cms": "https://github.com/sonle282/vibe-cms/releases/download/vX.Y.Z/vibe-cms-X.Y.Z.tgz"
-# Nothing goes to npm or GitHub Packages. A tag is only pushed after the reviewer approves the release.
+# Nothing goes to npm or GitHub Packages. A tag is only pushed after the reviewer approves the release, on the merge of
+# the release PR — whose CI already ran every check (npm run check) on that code; here: build + the tarball check only.
 name: release
 on:
   push:
@@ -31,9 +32,8 @@ jobs:
           awk -v v="${VERSION}" '$0 ~ "^## " v " " {found=1; next} /^## / {if (found) exit} found' docs/CHANGELOG.md > release-notes.md
           if [ ! -s release-notes.md ]; then echo "::error::docs/CHANGELOG.md has no '## ${VERSION} …' section"; exit 1; fi
       - run: npm ci --no-audit --no-fund
-      - run: npm run check
-        env:
-          WRANGLER_SEND_METRICS: "false"
+      - run: npm run build
+      - run: npm run pack:check
       - name: Pack
         run: |
           npm pack --silent

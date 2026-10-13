@@ -410,4 +410,5 @@ only: no Cloudflare account, no resources, no deploy. The e2e step drives a Chro
 (`CHROME_PATH`, or the usual install paths) — nothing is downloaded.
 
 Release (after review only): set `version` in `package.json`, add its CHANGELOG section, push the tag `vX.Y.Z` —
-`.github/workflows/release.yml` checks everything and publishes the GitHub Release with the `.tgz`.
+`.github/workflows/release.yml` builds, checks the tarball and publishes the GitHub Release with the `.tgz` (every other
+check already ran in the release PR's CI — CI runs on pull requests only).
