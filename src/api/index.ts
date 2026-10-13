@@ -304,6 +304,15 @@ export const createCmsApi = (deps: CmsApiDeps) => {
       kind: "collection", key: collection.key, label: collection.label, itemLabel: collection.itemLabel,
       count: (await reader.items(collection.key)).length, drafts: mine.filter((row) => row.kind === "item" && row.resourceKey === collection.key).length,
     })));
+    // M7: an area turned off on the website (its `toggle` is false in the live content) is "Off" on Pages.
+    for (const entry of files as Array<Record<string, unknown>>) {
+      const file = config.files.find((candidate) => candidate.key === entry.key);
+      if (!file?.toggle) continue;
+      const live = (await reader.file(file.key))?.data;
+      let at: unknown = live;
+      for (const part of file.toggle.split(".")) at = at && typeof at === "object" ? (at as Record<string, unknown>)[part] : undefined;
+      if (at !== true) entry.off = true;
+    }
     return json({ files, collections });
   };
 

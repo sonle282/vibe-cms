@@ -3,12 +3,14 @@
  * is signed in. Nothing secret: no token, no binding, no password hash. Runs on the server (admin.astro) and is
  * typed for the browser side (app.ts). P12b: files / collections with access: "admin" are left out for editors.
  */
-import type { CmsConfig, CollectionIcon, Field, Section } from "../config/index.js";
+import type { CmsConfig, CmsFile, CollectionIcon, Field, Section } from "../config/index.js";
 import { isAdminOnly } from "../config/roles.js";
 import type { Role } from "../locks/index.js";
 import { mediaSettings } from "../media/index.js";
 
-export type BootFile = { key: string; label: string; preview?: string; sections?: Section[]; fields: Record<string, Field> };
+export type BootFile = { key: string; label: string; preview?: string; sections?: Section[]; fields: Record<string, Field>;
+  /** M7: Pages and areas (see CmsFile). */
+  group?: string; area?: boolean; description?: string; outline?: string; toggle?: string; layout?: "seo"; seo?: CmsFile["seo"] };
 export type BootCollection = {
   key: string; label: string; itemLabel: string; preview?: string; fields: Record<string, Field>;
   idField: string; markdown: boolean; status?: { field: string; live: string; draft: string };
@@ -44,7 +46,8 @@ export const adminBoot = (config: CmsConfig, user: BootUser, options: { uploads?
   user,
   ...(config.publish?.typicalMinutes ? { publish: { typicalMinutes: config.publish.typicalMinutes } } : {}),
   media: { uploads: Boolean(options.uploads), base: mediaSettings(config.media).base, maxBytes: mediaSettings(config.media).maxBytes },
-  files: config.files.filter((file) => !isAdminOnly(file.access) || user.role === "owner").map((file) => ({ key: file.key, label: file.label, ...(file.preview ? { preview: file.preview } : {}), ...(file.sections ? { sections: file.sections } : {}), fields: file.fields })),
+  files: config.files.filter((file) => !isAdminOnly(file.access) || user.role === "owner").map((file) => ({ key: file.key, label: file.label, ...(file.preview ? { preview: file.preview } : {}), ...(file.sections ? { sections: file.sections } : {}), fields: file.fields,
+    ...Object.fromEntries((["group", "area", "description", "outline", "toggle", "layout", "seo"] as const).filter((name) => file[name] !== undefined).map((name) => [name, file[name]])) })),
   collections: config.collections.filter((collection) => !isAdminOnly(collection.access) || user.role === "owner").map((collection) => ({
     key: collection.key, label: collection.label, itemLabel: collection.itemLabel, fields: collection.fields,
     ...(collection.preview ? { preview: collection.preview } : {}), ...(collection.status ? { status: collection.status } : {}),

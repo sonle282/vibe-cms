@@ -234,6 +234,28 @@ priority: f.number({ label: "Order", integer: true, min: 1, max: 99 }),   // a J
 id: f.text({ label: "ID", from: "name", pattern: "[a-z0-9]+(?:-[a-z0-9]+)*" }),  // made from "name" while the item is new
 ```
 
+## Pages, site-wide areas, Search & sharing (M7)
+
+```ts
+{ key: "terms", label: "Terms", path: "src/data/terms.json", format: "json", preview: "/terms/", group: "Policies", fields },
+{ key: "header", label: "Header", path: "src/data/header.json", format: "json", preview: "/",
+  area: true, description: "Logo, phone number and menu", outline: "[data-site-header]", fields },
+{ key: "popup", label: "Popup", path: "src/data/popup.json", format: "json", preview: "/",
+  area: true, description: "Announcement shown over the website", toggle: "enabled",
+  fields: { enabled: f.toggle({ label: "Show on website" }), /* … */ } },
+{ key: "seo", label: "Search & sharing", path: "src/data/seo.json", format: "json", area: true,
+  description: "How the site looks in Google and when shared", layout: "seo",
+  seo: { siteName: "siteName", title: "title", description: "description", image: "image" }, fields },
+```
+
+**Pages** is the Mr Spa CMS's: "Main pages" on the left (each with its address), "Across the whole site" (the `area`
+files, each with its `description`) and the other `group`s on the right; Live / **Off** (an area whose `toggle` is
+off on the website); "Unpublished changes" while a draft is saved; "Find a page". An area opens on the page given by
+its `preview`, framed in teal (`outline` = its CSS selector on the page); its `toggle` is the switch "Show on website"
+with what visitors see ("On — visitors see this popup.", "Off after you publish — visitors still see it until then."…).
+`layout: "seo"` is the **Search & sharing** screen: Search results · Sharing image, the description's "N / 160", the
+Google result and the share card.
+
 ## Links and phone numbers (M4)
 
 ```ts

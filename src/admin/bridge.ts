@@ -65,6 +65,8 @@ export type Bridge = {
   scrollTo: (path: Path) => boolean;
   /** M3: outline a whole section (the fields' common box, its data-cms-section element first) with its name. */
   showSection: (paths: Path[], label: string, key?: string) => boolean;
+  /** M7 (Mr Spa): frame an area of the page (its CSS selector) in teal 3 px while it is edited; undefined = none. */
+  showArea: (selector: string | undefined) => boolean;
   /** M3: the paths the page shows, in page order (the inspector lists sections in that order). */
   order: () => Path[];
   clearSelection: () => void;
@@ -315,6 +317,8 @@ export const attachBridge = (options: BridgeOptions): Bridge => {
   const sectionBox = box("1px solid rgba(0, 113, 227, 0.35)");
   const hoverBox = box("1px dashed rgba(0, 113, 227, 0.7)");
   const selectedBox = box("2px solid #0071e3");
+  const areaBox = box("3px solid #0f766e");
+  let areaElement: Element | undefined;
   // The Mr Spa CMS's chip: 12 px, white on the accent, radius 6; above the outline, or just inside when there is no room.
   const CHIP_HEIGHT = 22;
   const chip = page.createElement("span");
@@ -339,6 +343,8 @@ export const attachBridge = (options: BridgeOptions): Bridge => {
     const field = show(selectedBox, selected);
     show(hoverBox, hovered && hovered !== selected ? hovered : undefined);
     const section = show(sectionBox, sectionElement);
+    // The Mr Spa CMS's site area frame: 2 px outside the element.
+    if (areaElement?.isConnected) { const rect = areaElement.getBoundingClientRect(); Object.assign(areaBox.style, { display: "block", left: `${rect.left - 2}px`, top: `${rect.top - 2}px`, width: `${rect.width + 4}px`, height: `${rect.height + 4}px` }); } else areaBox.style.display = "none";
     const rect = named === "section" ? section : field;
     if (!rect || !chip.textContent) { chip.style.display = "none"; return; }
     const above = rect.top - PAD - CHIP_HEIGHT - 2 >= 0;
@@ -458,6 +464,14 @@ export const attachBridge = (options: BridgeOptions): Bridge => {
       place();
       flash(sectionBox);
       return true;
+    },
+    showArea: (selector) => {
+      let element: Element | null = null;
+      try { element = selector ? page.querySelector(selector) : null; } catch { element = null; }
+      areaElement = element ?? undefined;
+      if (element) bringIntoView(element);
+      place();
+      return Boolean(element);
     },
     order: () => {
       const visible = bindings.filter((entry) => !(entry.element as HTMLElement).hidden);

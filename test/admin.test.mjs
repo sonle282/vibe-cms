@@ -223,12 +223,12 @@ test("form: problems show next to their field (closest field for deep paths); ot
 
 // ------------------------------------------------------------------ the shell, against the real API
 
-const shell = async ({ role = "owner", confirm = () => true } = {}) => {
+const shell = async ({ role = "owner", confirm = () => true, content = files } = {}) => {
   const { window, document } = dom();
   const drafts = createMemoryDraftStore();
   const audit = createMemoryAuditLog();
   const user = { userId: role === "owner" ? "usr_owner" : "usr_editor", role };
-  const api = createCmsApi({ config, source: createBundledSource(files), drafts, audit, identify: () => user, publisher: undefined });
+  const api = createCmsApi({ config, source: createBundledSource(content), drafts, audit, identify: () => user, publisher: undefined });
   const calls = [];
   const fetch = async (url, init = {}) => {
     calls.push({ method: init.method ?? "GET", url, body: init.body ? JSON.parse(init.body) : undefined });
@@ -245,6 +245,63 @@ const shell = async ({ role = "owner", confirm = () => true } = {}) => {
 };
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+test("M7 shell: an area — “Across the whole site”, what it holds, the switch with what visitors see; Off on Pages while it is off", async () => {
+  const h = await shell();
+  await h.go("/admin/pages/notice");
+  // No preview pane in these tests: the form has the switch; the area's head is in the inspector when the page is on the canvas.
+  const box = h.root.querySelector('[data-path="enabled"] input[role="switch"]');
+  const status = () => h.root.querySelector('[data-path="enabled"] .vc-switch-text span').textContent;
+  assert.equal(h.root.querySelector('[data-path="enabled"] .vc-switch-text strong').textContent, "Show on website");
+  assert.equal(status(), "On — visitors see this notice.");
+  box.checked = false; box.dispatchEvent(new h.window.Event("change", { bubbles: true }));
+  assert.equal(status(), "Off after you publish — visitors still see it until then.");
+  assert.equal(h.state(), "1 unsaved change");
+  const off = await shell({ content: { ...files, "src/data/notice.json": JSON.stringify({ enabled: false, text: "Hi" }) } });
+  await off.go("/admin/pages");
+  assert.deepEqual([...off.root.querySelectorAll(".vc-pages-row")].map((row) => [row.querySelector("strong").textContent, row.querySelector(".vc-content-status").textContent]), [["Salon info", "Live"], ["Notice", "Off"], ["Search & sharing", "Live"]]);
+  await off.go("/admin/pages/notice");
+  const offBox = off.root.querySelector('[data-path="enabled"] input[role="switch"]');
+  assert.equal(off.root.querySelector('[data-path="enabled"] .vc-switch-text span').textContent, "Off — visitors don’t see a notice.");
+  offBox.checked = true; offBox.dispatchEvent(new off.window.Event("change", { bubbles: true }));
+  assert.equal(off.root.querySelector('[data-path="enabled"] .vc-switch-text span').textContent, "On after you publish — visitors don’t see it yet.");
+});
+
+test("M7 shell: Search & sharing — Search results · Sharing image, the description's N / 160, the Google and share previews", async () => {
+  const h = await shell();
+  await h.go("/admin/pages/seo");
+  assert.deepEqual([...h.root.querySelectorAll(".vc-seo-form .vc-section-title")].map((node) => node.textContent), ["Search results", "Sharing image"]);
+  assert.deepEqual([...h.root.querySelectorAll(".vc-seo-card-help")].map((node) => node.textContent), ["Used on every page that does not set its own.", "Shown when someone shares a link on Facebook, Messenger or iMessage.", "Social apps can take a few days to show a new image."]);
+  assert.equal(h.root.querySelector(".vc-preview-frame"), null, "no page on the canvas");
+  const count = () => h.root.querySelector(".vc-seo-count");
+  assert.equal(count().textContent, "38 / 160");
+  assert.equal(h.root.querySelector(".vc-seo-google-site").textContent, "demo.example");
+  assert.equal(h.root.querySelector(".vc-seo-google-title").textContent, "Demo Salon — an invented salon");
+  assert.equal(h.root.querySelector(".vc-seo-share-site").textContent, "DEMO.EXAMPLE");
+  assert.equal(h.root.querySelector(".vc-seo-share-image").getAttribute("src"), "/images/hero.svg");
+  type(h.window, h.root.querySelector('[data-path="description"] textarea'), "x".repeat(161));
+  assert.equal(count().textContent, "161 / 160");
+  assert.equal(count().dataset.state, "long");
+  assert.equal(h.root.querySelector(".vc-seo-google-description").textContent, "x".repeat(161), "not cut (Mr Spa)");
+  type(h.window, h.root.querySelector('[data-path="title"] input'), "");
+  assert.equal(h.root.querySelector(".vc-seo-google-title").textContent, "Page title");
+});
+
+test("M7 config: group / area / description / outline / toggle / layout seo", async () => {
+  const { checkCmsConfig } = await import("../dist/index.js");
+  const base = { configVersion: 1, site: { name: "S", url: "https://s.example" }, repo: { owner: "o", name: "r", branch: "main" }, collections: [] };
+  const problems = (file) => checkCmsConfig({ ...base, files: [{ key: "a", label: "A", path: "src/data/a.json", format: "json", fields: { on: f.toggle({ label: "On" }), t: f.text({ label: "T" }), pic: f.image({ label: "P" }) }, ...file }] });
+  const errors = (file) => problems(file).errors.map((problem) => `${problem.path}: ${problem.message}`);
+  assert.deepEqual(errors({ group: "Policies" }), []);
+  assert.deepEqual(errors({ area: true, description: "Logo and menu", outline: "header", toggle: "on" }), []);
+  assert.match(problems({ area: true }).warnings.map((problem) => problem.path).join(" "), /files\[0\]\.description/);
+  assert.match(errors({ area: true, group: "X", description: "d" }).join("\n"), /group: an area is always under “Across the whole site”/);
+  assert.match(errors({ toggle: "t" }).join("\n"), /toggle: "t" is not a toggle field of this file/);
+  assert.deepEqual(errors({ layout: "seo", seo: { title: "t", description: "t", image: "pic" } }), []);
+  assert.match(errors({ layout: "seo" }).join("\n"), /seo: required with layout "seo"/);
+  assert.match(errors({ layout: "seo", seo: { title: "t", description: "pic" } }).join("\n"), /seo\.description: "pic" is not a text field of this file/);
+  assert.match(errors({ seo: { title: "t", description: "t" } }).join("\n"), /seo: is only for layout "seo"/);
+});
+
 test("shell: Pages lists the files (U4: one row each, with its address and status); the rail marks the current place", async () => {
   const h = await shell();
   // M1 (Mr Spa): /admin opens the first page's editor.
@@ -252,9 +309,21 @@ test("shell: Pages lists the files (U4: one row each, with its address and statu
   assert.equal(h.root.querySelector('.vc-nav-list a[aria-current="page"]').textContent, "Pages");
   await h.go("/admin/pages");
   assert.equal(h.state(), "", "no save state outside a record");
-  assert.deepEqual([...h.root.querySelectorAll(".vc-rows .vc-row-title")].map((node) => node.textContent), ["Salon info"]);
-  assert.match(h.root.querySelector(".vc-rows").textContent, /Salon info.+Live/);
-  assert.equal(h.root.querySelector(".vc-count").textContent, "1 page");
+  // M7 (Mr Spa): Main pages | Across the whole site (the areas, with what they hold); Live / Off; "Find a page".
+  const groups = [...h.root.querySelectorAll(".vc-pages-group")].map((group) => [group.querySelector("h2").textContent, [...group.querySelectorAll(".vc-pages-row-text")].map((row) => row.textContent)]);
+  assert.deepEqual(groups, [
+    ["Main pages", ["Salon info/"]],
+    ["Across the whole siteChanges here show on every page", ["NoticeA short message at the top of every page", "Search & sharingHow the site looks in Google and when shared"]],
+  ]);
+  assert.deepEqual([...h.root.querySelectorAll(".vc-content-status")].map((pill) => pill.textContent), ["Live", "Live", "Live"]);
+  assert.equal(h.root.querySelector(".vc-pages-count").textContent, "1 page · 2 site-wide areas");
+  const find = h.root.querySelector('.vc-pages-search input');
+  assert.equal(find.placeholder, "Find a page");
+  type(h.window, find, "google");
+  assert.deepEqual([...h.root.querySelectorAll(".vc-pages-group:not([hidden]) li:not([hidden]) strong")].map((node) => node.textContent), ["Search & sharing"], "matches what a row holds too; an empty group is hidden");
+  type(h.window, find, "nothing like this");
+  assert.equal(h.root.querySelector(".vc-pages-empty").hidden, false);
+  assert.equal(h.root.querySelector(".vc-pages-empty").textContent, "No page matches that name.");
   assert.equal(h.root.querySelector("h1").textContent, "Pages");
   await h.go("/admin/catalog/services");
   assert.equal(h.root.querySelector('.vc-nav-list a[aria-current="page"]').textContent, "Services");

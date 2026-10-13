@@ -92,6 +92,27 @@ export type CmsFile = {
   path: string;
   format: "json";
   preview?: string;
+  /**
+   * M7 (the Mr Spa CMS's Pages screen): `group` = its group on Pages ("Main pages" when not set; e.g. "Policies");
+   * `area: true` = a part of every page (Header, Footer, Popup, Search & sharing) — listed under "Across the whole site"
+   * with its `description` ("Logo, phone number and menu"); `preview` is then the page it is shown on (e.g. "/").
+   */
+  group?: string;
+  area?: boolean;
+  description?: string;
+  /** M7: the CSS selector of the area on the page ("header", "[data-site-footer]"): framed in teal while it is edited. */
+  outline?: string;
+  /**
+   * M7: a toggle field that turns the area on and off ("enabled", "popup.enabled"): shown as the switch "Show on
+   * website" with what visitors see; on Pages the area is "Off" while it is off on the website.
+   */
+  toggle?: string;
+  /**
+   * M7: `layout: "seo"` = the Mr Spa CMS's Search & sharing screen (Search results · Sharing image · the Google and
+   * share previews), with `seo` naming its fields (keys or paths): `title`, `description`, optional `siteName`, `image`.
+   */
+  layout?: "seo";
+  seo?: { title: string; description: string; siteName?: string; image?: string };
   sections?: Section[];
   access?: Access;
   rules?: ContentRule;

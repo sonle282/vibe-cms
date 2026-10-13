@@ -85,7 +85,7 @@ try {
   // E2E_SCREENSHOTS=<folder>: keep pictures of the image sheet, the review and published screens (local look only; CI leaves it unset).
   const shot = async (name) => { if (process.env.E2E_SCREENSHOTS) await page.screenshot({ path: join(process.env.E2E_SCREENSHOTS, `${name}.png`) }); };
   const api = (path) => page.evaluate(async (url) => (await fetch(url)).json(), path);
-  const open = async (path) => { await page.goto(`${base}${path}`); await page.locator(".vc-inspector, .vc-form, .vc-table, .vc-rows, .vc-empty-state").first().waitFor(); };
+  const open = async (path) => { await page.goto(`${base}${path}`); await page.locator(".vc-inspector, .vc-form, .vc-table, .vc-rows, .vc-pages-columns, .vc-empty-state").first().waitFor(); };
   const save = async () => {
     await page.getByRole("button", { name: "Save draft" }).click();
     // M1 (Mr Spa): a record already on the website says only its changes are not live yet.
@@ -120,7 +120,29 @@ try {
   await open("/admin/pages");
   const navText = await page.locator(".vc-rail").innerText();
   check("shell: the rail has Pages, every collection and Drafts", ["Pages", "Services", "Team", "Blog", "Drafts"].every((label) => navText.includes(label)), navText);
-  check("shell: Pages lists every file, with its address and status", /Salon info\s+demo\.example\/\s+Live/.test(await page.locator(".vc-rows").innerText()) && (await page.locator(".vc-count").textContent()) === "1 page", await page.locator(".vc-rows").innerText());
+  // M7 (Mr Spa): Main pages | Across the whole site, each row with its address or what it holds, Live / Off.
+  const pagesText = await page.locator(".vc-pages-columns").innerText();
+  const columns = await page.evaluate(() => { const groups = [...document.querySelectorAll(".vc-pages-group")].map((group) => group.getBoundingClientRect()); return groups.map((box) => Math.round(box.left)); });
+  check("Pages (M7): Main pages | Across the whole site, two columns, “1 page · 2 site-wide areas”", /Main pages\s+Salon info\s+\/\s+Live/.test(pagesText) && /Across the whole site\s*Changes here show on every page\s+Notice\s+A short message at the top of every page\s+Live\s+Search & sharing\s+How the site looks in Google and when shared\s+Live/.test(pagesText) && columns.length === 2 && columns[1] > columns[0] && (await page.locator(".vc-pages-count").textContent()) === "1 page · 2 site-wide areas", { pagesText, columns });
+  // An area: on the page it is shown on, framed in teal; the inspector says where it is and what it holds; the switch.
+  await page.locator(".vc-pages-row", { hasText: "Notice" }).click();
+  await previewReady();
+  await page.waitForFunction(() => [...(document.querySelector(".vc-preview-frame")?.contentDocument?.querySelectorAll("[data-vibe-cms-preview] div") ?? [])].some((box) => box.style.border.startsWith("3px solid") && box.style.display === "block"), null, { timeout: 10_000 }).catch(() => {});
+  const area = await page.evaluate(() => {
+    const frameBox = [...(document.querySelector(".vc-preview-frame")?.contentDocument?.querySelectorAll("[data-vibe-cms-preview] div") ?? [])].find((box) => box.style.border.startsWith("3px solid"));
+    return { frame: frameBox ? [frameBox.style.display, getComputedStyle(frameBox).borderTopColor] : null, crumb: document.querySelector(".vc-inspector-crumb")?.textContent, title: document.querySelector(".vc-inspector-title")?.textContent, note: document.querySelector(".vc-area-description")?.textContent, status: document.querySelector('[data-path="enabled"] .vc-switch-text span')?.textContent, top: document.querySelector(".vc-top")?.innerText };
+  });
+  check("area (M7): framed in teal on the page; “Across the whole site” / Notice; “… Applies site-wide.”; the switch says what visitors see", assertEqual(area.frame, ["block", "rgb(15, 118, 110)"]) && area.crumb === "Across the whole site" && area.title === "Notice" && area.note === "A short message at the top of every page. Applies site-wide." && area.status === "On — visitors see this notice." && /Pages\s*\/\s*Notice/.test(area.top), area);
+  await page.locator('[data-path="enabled"] .vc-switch').click();
+  check("area (M7): switched off in the draft — “Off after you publish — visitors still see it until then.”", (await page.locator('[data-path="enabled"] .vc-switch-text span').textContent()) === "Off after you publish — visitors still see it until then.");
+  await shot("m7-area");
+  await page.locator('[data-path="enabled"] .vc-switch').click();
+  // Search & sharing: its own screen — the cards, the description's N / 160, the Google and share previews.
+  await open("/admin/pages/seo");
+  await page.locator(".vc-seo-preview").waitFor();
+  check("Search & sharing (M7): Search results · Sharing image, “38 / 160”, the Google result and the share card", assertEqual(await page.locator(".vc-seo-form .vc-section-title").allTextContents(), ["Search results", "Sharing image"]) && (await page.locator(".vc-seo-count").textContent()) === "38 / 160" && (await page.locator(".vc-seo-google-title").textContent()) === "Demo Salon — an invented salon" && (await page.locator(".vc-seo-share-site").textContent()) === "DEMO.EXAMPLE" && (await page.locator(".vc-preview-frame").count()) === 0);
+  await shot("m7-search-sharing");
+  await open("/admin/pages");
   await shot("u4-pages");
 
   // ---------------------------------------------------------------- owner: every field of the salon info

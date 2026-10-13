@@ -657,7 +657,7 @@ nào là tên / host của site thì lấy từ config.
 | Rail: Pages · Products · Projects · Blog · Media · Drafts · (Users) | Pages = mọi `files`; mỗi collection 1 mục (`icon`, `label`); collection có `under: "<collection>"` thành **tab** của mục cha (Products › Categories / Collections) |
 | Pages: "Main pages" / "Across the whole site" / "Policies" | `group` của file (mặc định "Main pages"); `area: true` = khu vực toàn site (vào nhóm "Across the whole site", có `description`) |
 | Sửa trang 2 cấp (section theo thứ tự trên trang) | `sections` như hiện nay; thứ tự lấy theo vị trí trên preview, không theo config. M3c: `fields` của section nhận đường dẫn vào object / item của list cố định (`services[0].card`) — mỗi item một section như Mr Spa; `f.object({ flat: true })` = field con là field của section |
-| Header / Footer / Popup xem trên Homepage | `area: true` + `previewOn: "<file>"` |
+| Header / Footer / Popup xem trên Homepage | `area: true` + `preview: "/"` (trang hiện khu vực) + `outline` (selector, khung teal) + `toggle` (công tắc "Show on website") — M7 ✅ |
 | Search & sharing (Google + thẻ chia sẻ) | `layout: "seo"` (các field `siteName`, `title`, `description`, `image` ánh xạ bằng `seo: { … }`) |
 | Product / Project: mục lục + form + cột phải | collection `layout: "record"` (mặc định); "Ready to publish" = field bắt buộc + `ready` của site; Hide = field trạng thái `status: { field, live, draft, archived }` |
 | Blog: giấy + thanh định dạng; Policy: chữ thuần | `layout: "document"` (`body`, `cover`, `title`), `plain: true` cho policy |

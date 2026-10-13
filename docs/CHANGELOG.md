@@ -3,6 +3,24 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## Unreleased (M7)
+
+**M7 — Pages, site-wide areas and Search & sharing like the Mr Spa CMS.** Nothing to do on a site; new optional
+settings of a file in `cms.config.ts`:
+
+- **Pages:** two columns — "Main pages" | "Across the whole site" ("Changes here show on every page") and the other
+  groups (one column at 1100 px and less). A row: the file icon, its name, its address (an area: its `description`),
+  **Live** / **Off**, "Unpublished changes" while a draft is saved. "1 page · 2 site-wide areas"; "Find a page" matches
+  the name and the second line and hides empty groups; "No page matches that name.".
+- **`group`** (e.g. "Policies"), **`area: true`** + **`description`**: a part of every page, opened on its `preview`
+  page; the inspector says "Across the whole site" and "{description}. Applies site-wide.".
+- **`outline`**: the area's CSS selector on the page — framed in teal 3 px while it is edited.
+- **`toggle`**: the area's on / off toggle field — the switch "Show on website" with the Mr Spa CMS's four sentences
+  (draft against website); Pages says "Off" while it is off on the website (`GET /api/cms/content` answers `off`).
+- **`layout: "seo"`** + **`seo: { title, description, siteName?, image? }`**: the Search & sharing screen — cards
+  "Search results" and "Sharing image", the description's "N / 160" (amber above 160), the Google result and the share
+  card (the site's host), "Social apps can take a few days to show a new image." No page on the canvas.
+
 ## 0.22.0 — 2026-10-13 (M1–M6: the Mr Spa CMS editor — frame, roles, inspector, sections, links, images, publishing)
 
 - **Site action:** none — no data change, no D1 migration. Optional: write the role name `"owner"` as `"admin"` in `cms.config.ts` (`roles`, `locked`, `access`; the old name only warns); `cms.config.ts` `site` now refuses unknown keys; for `publish.buildCheck` the GitHub token also needs Checks: read.
