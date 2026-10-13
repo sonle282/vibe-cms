@@ -7,9 +7,12 @@ import type { Field } from "../config/index.js";
 import type { CheckResult, Problem } from "../config/validate.js";
 import { toTree, type FieldTree } from "../config/tree.js";
 import { isImageName, type ImageNames } from "../media/names.js";
+import { hrefProblem, phoneProblem } from "./link.js";
 
 /** P12g: root = the whole record (pick choices are computed from it); picks = those choices, once per field. */
-export type ValueCtx = CheckResult & { ids: Map<string, Set<string>>; root?: Record<string, unknown>; picks?: Map<Field, Set<string> | null>; imageNames?: ImageNames };
+export type ValueCtx = CheckResult & { ids: Map<string, Set<string>>; root?: Record<string, unknown>; picks?: Map<Field, Set<string> | null>; imageNames?: ImageNames;
+  /** M4: site.phone.country — how phone numbers (Phone fields, tel: links) are checked. */
+  phoneCountry?: string };
 type Ctx = ValueCtx;
 type Tree = FieldTree;
 
@@ -104,6 +107,19 @@ export const checkValue = (ctx: Ctx, field: Field, value: unknown, path: string)
       if (field.min !== undefined && value < field.min) add(ctx.errors, path, `${value} is less than ${field.min}`);
       if (field.max !== undefined && value > field.max) add(ctx.errors, path, `${value} is more than ${field.max}`);
       return;
+    case "link": {
+      // M4: the same plain words the Link field shows while a link is being written.
+      if (typeof value !== "string") { add(ctx.errors, path, `expected a link (text), got ${describe(value)}`, 'e.g. "/about", "https://…", "tel:+12157721111"'); return; }
+      const problem = hrefProblem(value, ctx.phoneCountry);
+      if (problem) add(ctx.errors, path, problem);
+      return;
+    }
+    case "phone": {
+      if (typeof value !== "string") { add(ctx.errors, path, `expected a phone number (text), got ${describe(value)}`, typeof value === "number" ? `write it in quotes: "${value}"` : undefined); return; }
+      const problem = phoneProblem(value, ctx.phoneCountry);
+      if (problem) add(ctx.errors, path, problem);
+      return;
+    }
     case "toggle":
       if (typeof value !== "boolean") add(ctx.errors, path, `expected true or false, got ${describe(value)}`);
       return;
@@ -152,8 +168,8 @@ export const checkValue = (ctx: Ctx, field: Field, value: unknown, path: string)
  * reference checks (a collection missing from the map is not checked); system = properties that are not fields
  * (the id field, status field, Markdown body).
  */
-export const checkRecordValues = ({ fields, record, path = "", ids = new Map(), system = [], imageNames }: { fields: Record<string, Field>; record: unknown; path?: string; ids?: Map<string, Set<string>>; system?: string[]; imageNames?: ImageNames }): CheckResult => {
-  const ctx: Ctx = { errors: [], warnings: [], ids, ...(isRecord(record) ? { root: record } : {}), ...(imageNames ? { imageNames } : {}) };
+export const checkRecordValues = ({ fields, record, path = "", ids = new Map(), system = [], imageNames, phoneCountry }: { fields: Record<string, Field>; record: unknown; path?: string; ids?: Map<string, Set<string>>; system?: string[]; imageNames?: ImageNames; phoneCountry?: string }): CheckResult => {
+  const ctx: Ctx = { errors: [], warnings: [], ids, ...(isRecord(record) ? { root: record } : {}), ...(imageNames ? { imageNames } : {}), ...(phoneCountry ? { phoneCountry } : {}) };
   if (!isRecord(record)) add(ctx.errors, path || "(content)", `expected an object ({ … }), got ${describe(record)}`);
   else checkRecord(ctx, record, toTree(fields), path, system);
   return { errors: ctx.errors, warnings: ctx.warnings };

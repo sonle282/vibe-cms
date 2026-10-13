@@ -58,7 +58,8 @@ export const sectionSummary = (section: InspectorSection, fields: Record<string,
     const field = fieldOf(key);
     return field?.type === "object" ? Object.keys(field.fields).map((inner) => `${key}.${inner}`) : [key];
   });
-  const texts = entries.filter((key) => fieldOf(key)?.type === "text");
+  // M4: a phone number reads as text.
+  const texts = entries.filter((key) => fieldOf(key)?.type === "text" || fieldOf(key)?.type === "phone");
   const titled = texts.filter((key) => /(?:^|\.)(?:title|heading)$/i.test(key));
   for (const key of [...titled, ...texts]) {
     const text = plain(getAt(value, parsePathText(key)));

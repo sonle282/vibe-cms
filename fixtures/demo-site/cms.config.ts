@@ -2,12 +2,12 @@
 // checks this config and the content it points to. Between them they use every field type (P7: the admin edits all of
 // them): text (single / multiline / maxLength), richText, image (path / with alt), select, hours, object, list (ordered,
 // of text / of objects / nested), reference (one / many, ordered), dotted keys, sections, a status field, Markdown body,
-// and (P12g) pick + toggle: the banner's price points to a package of the same file, written once.
+// and (P12g) pick + toggle: the banner's price points to a package of the same file, written once; (M4) link + phone.
 import { defineCmsConfig, f } from "@sonle282/vibe-cms/config";
 
 export default defineCmsConfig({
   configVersion: 1,
-  site: { name: "Demo Salon", url: "https://demo.example", timezone: "America/New_York" },
+  site: { name: "Demo Salon", url: "https://demo.example", timezone: "America/New_York", phone: { country: "US" } },
   repo: { owner: "sonle282", name: "vibe-cms-demo", branch: "main" },
   roles: ["admin", "editor"],
   files: [
@@ -26,7 +26,7 @@ export default defineCmsConfig({
         // P9: the header shows the name without a data-cms-field attribute; the preview finds it by selector.
         name: f.text({ label: "Salon name", required: true, maxLength: 60, bind: "header .brand strong" }),
         // Locked for editors by default on every site: price, hours, phone, email, address.
-        phone: f.text({ label: "Phone", locked: "admin" }),
+        phone: f.phone({ label: "Phone", locked: "admin" }),
         email: f.text({ label: "Email", locked: "admin" }),
         address: f.object({ label: "Address", locked: "admin", fields: { street: f.text({ label: "Street" }), city: f.text({ label: "City" }) } }),
         hours: f.hours({ label: "Opening hours", locked: "admin" }),
@@ -44,7 +44,7 @@ export default defineCmsConfig({
           plain: f.toggle({ label: "Plain price", help: "Show the price without “from”" }),
         } }),
         footerLinks: f.list(
-          f.object({ label: "Link group", fields: { title: f.text({ label: "Group title", required: true }), links: f.list(f.object({ label: "Link", fields: { label: f.text({ label: "Text", required: true }), href: f.text({ label: "Address", required: true }) } }), { label: "Links", ordered: true, max: 5, itemLabel: "Link" }) } }),
+          f.object({ label: "Link group", fields: { title: f.text({ label: "Group title", required: true }), links: f.list(f.object({ label: "Link", fields: { label: f.text({ label: "Text", required: true }), href: f.link({ label: "Address", required: true }) } }), { label: "Links", ordered: true, max: 5, itemLabel: "Link" }) } }),
           { label: "Footer links", ordered: true, max: 3, itemLabel: "Group" },
         ),
         "seo.title": f.text({ label: "Search title", maxLength: 60 }),

@@ -240,8 +240,9 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     const ids = await idsForReferences();
     for (const [key, set] of extraIds) for (const id of set) ids.get(key)?.add(id);
     const imageNames = deps.imageNames;
-    if (target.kind === "file") return withRules(target, content, checkRecordValues({ fields: target.file.fields, record: content, ids, imageNames }));
-    const result = checkRecordValues({ fields: target.collection.fields, record: content, ids, system: systemOf(target.collection), imageNames });
+    const phoneCountry = deps.config.site.phone?.country;
+    if (target.kind === "file") return withRules(target, content, checkRecordValues({ fields: target.file.fields, record: content, ids, imageNames, phoneCountry }));
+    const result = checkRecordValues({ fields: target.collection.fields, record: content, ids, system: systemOf(target.collection), imageNames, phoneCountry });
     const idField = idFieldOf(target.collection);
     const record = content && typeof content === "object" ? (content as Record<string, unknown>) : {};
     if (record[idField] !== target.id) result.errors.push({ path: idField, message: `must be "${target.id}" (the record's id)`, hint: "the id cannot be changed in a draft" });

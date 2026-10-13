@@ -279,6 +279,22 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
 .vc-day input:disabled + span { opacity: .55; cursor: not-allowed; }
 .vc-hours-times { grid-column: 1; display: grid; grid-template-columns: auto 120px 120px 1fr; gap: 8px; align-items: end; }
 .vc-hours-row > .vc-item-actions { grid-row: 1; grid-column: 2; }
+/* M4: the Link field (Mr Spa: .cms-link) — Page · Web address · Phone · Email, the value, "Opens: …", a plain-words error. */
+.vc-link-control { display: grid; min-width: 0; gap: 6px; }
+.vc-link-kinds { display: flex; width: 100%; box-sizing: border-box; gap: 2px; border-radius: var(--radius-8); background: var(--surface-off); padding: 2px; }
+.vc-link-kind { min-width: 0; min-height: 26px; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; border: 0; border-radius: var(--radius-6); background: transparent; padding: 0 6px; color: var(--text-secondary); cursor: pointer; font: inherit; font-size: 12px; font-weight: 500; white-space: nowrap; transition: background var(--motion-hover), color var(--motion-hover); }
+.vc-link-kind[aria-checked="true"] { background: var(--surface); box-shadow: 0 1px 2px #1d1d1f24; color: var(--text); }
+.vc-link-kind:disabled { cursor: not-allowed; }
+.vc-link-kind:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.vc-link-value { display: grid; min-width: 0; gap: 6px; }
+.vc-link-value .vc-input { min-width: 0; }
+.vc-link-value .vc-link-search { min-height: 32px; padding: 4px 10px; font-size: 13px; }
+.vc-link-value [aria-invalid="true"] { border-color: var(--danger); }
+.vc-link-opens { margin: 0; overflow: hidden; color: var(--text-secondary); font-size: 12px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.vc-link-error { margin: 0; color: var(--danger); font-size: 12px; line-height: 1.4; }
+.vc-link-error[hidden] { display: none; }
+.vc-preview-only { display: block; }
+@media (prefers-reduced-motion: reduce) { .vc-link-kind { transition: none; } }
 .vc-check { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; font-size: 13px; }
 .vc-time { min-height: 36px; }
 .vc-chosen { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; }

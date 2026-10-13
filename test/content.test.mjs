@@ -91,7 +91,7 @@ test("select values must be one of the options", async () => {
 
 test("opening hours follow the declared row format", async () => {
   await withSite((root, config) => {
-    const site = { name: "Demo", phone: "1", email: "a@b.example", address: { street: "1", city: "X" }, tagline: "t", hero: { title: "T", text: "x" },
+    const site = { name: "Demo", phone: "(555) 010-0000", email: "a@b.example", address: { street: "1", city: "X" }, tagline: "t", hero: { title: "T", text: "x" },
       hours: [{ days: [1, 2], open: "9am", close: "17:00" }, { days: [2], open: "10:00", close: "09:00" }, { days: [7], closed: true }] };
     json(root, "src/data/site.json", site);
   }, (root, config) => {
@@ -113,7 +113,7 @@ test("lists: must be a list and respect min / max", async () => {
 });
 
 test("text maxLength and objects", async () => {
-  await withSite((root) => { json(root, "src/data/site.json", { name: "x".repeat(61), phone: "1", email: "a@b.example", address: "1 Example Street", tagline: "t", hours: [], hero: { title: "T", text: "x" } }); }, (root, config) => {
+  await withSite((root) => { json(root, "src/data/site.json", { name: "x".repeat(61), phone: "(555) 010-0000", email: "a@b.example", address: "1 Example Street", tagline: "t", hours: [], hero: { title: "T", text: "x" } }); }, (root, config) => {
     const { errors } = checkContent(config, root);
     expectOne(errors, "src/data/site.json.name", /61 characters, longer than maxLength 60/);
     expectOne(errors, "src/data/site.json.address", /expected an object, got text/);
@@ -136,7 +136,7 @@ test("references must point to existing records", async () => {
 test("images: a path or { src, alt }", async () => {
   await withSite((root, config) => {
     config.files[0].fields.hero.fields.image = f.image({ label: "Image", alt: true });
-    json(root, "src/data/site.json", { name: "D", phone: "1", email: "a@b.example", address: { street: "1", city: "X" }, tagline: "t", hours: [], hero: { title: "T", text: "x", image: { src: "/a.jpg" } } });
+    json(root, "src/data/site.json", { name: "D", phone: "(555) 010-0000", email: "a@b.example", address: { street: "1", city: "X" }, tagline: "t", hours: [], hero: { title: "T", text: "x", image: { src: "/a.jpg" } } });
   }, (root, config) => {
     const { errors, warnings } = checkContent(config, root);
     assert.deepEqual(errors, []);
@@ -144,7 +144,7 @@ test("images: a path or { src, alt }", async () => {
   });
   await withSite((root, config) => {
     config.files[0].fields.hero.fields.image = f.image({ label: "Image" });
-    json(root, "src/data/site.json", { name: "D", phone: "1", email: "a@b.example", address: { street: "1", city: "X" }, tagline: "t", hours: [], hero: { title: "T", text: "x", image: 42 } });
+    json(root, "src/data/site.json", { name: "D", phone: "(555) 010-0000", email: "a@b.example", address: { street: "1", city: "X" }, tagline: "t", hours: [], hero: { title: "T", text: "x", image: 42 } });
   }, (root, config) => {
     expectOne(checkContent(config, root).errors, "src/data/site.json.hero.image", /expected an image path/);
   });

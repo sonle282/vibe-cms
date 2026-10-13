@@ -56,10 +56,18 @@ export type PickField = Base & { type: "pick"; choices: (content: Record<string,
 export type NumberField = Base & { type: "number"; min?: number; max?: number; integer?: boolean };
 /** P12g: yes / no, stored as true / false (left out while it was never set). */
 export type ToggleField = Base & { type: "toggle" };
+/**
+ * M4: a link (the Mr Spa CMS's Link field) — saved as the href the site already uses ("/about", "https://…",
+ * "tel:+12157721111", "mailto:…"). The editor picks Page · Web address · Phone · Email; the pages are the files with a
+ * `preview` and `site.pages`. Not `required` = it may be empty ("No link").
+ */
+export type LinkField = Base & { type: "link" };
+/** M4: a phone number as people read it ("(215) 772-1111"), checked for `site.phone.country`. */
+export type PhoneField = Base & { type: "phone" };
 
-export type Field = TextField | RichTextField | ImageField | SelectField | HoursField | ObjectField | ListField | ReferenceField | TupleField | PickField | ToggleField | NumberField;
+export type Field = TextField | RichTextField | ImageField | SelectField | HoursField | ObjectField | ListField | ReferenceField | TupleField | PickField | ToggleField | NumberField | LinkField | PhoneField;
 export type FieldType = Field["type"];
-export const FIELD_TYPES: readonly FieldType[] = ["text", "richText", "image", "select", "hours", "object", "list", "reference", "tuple", "pick", "toggle", "number"];
+export const FIELD_TYPES: readonly FieldType[] = ["text", "richText", "image", "select", "hours", "object", "list", "reference", "tuple", "pick", "toggle", "number", "link", "phone"];
 
 /**
  * P12d: a site's own rule for a file / collection record — the plugin seam: cross-field checks the field types cannot
@@ -120,7 +128,16 @@ export type CmsCollection = {
 
 export type CmsConfig = {
   configVersion: 1;
-  site: { name: string; url: string; timezone?: string };
+  site: {
+    name: string; url: string; timezone?: string;
+    /** M4: how phone numbers are written and checked — "US" / "CA": (215) 772-1111; other or none: with the country code. */
+    phone?: { country: string };
+    /**
+     * M4: more pages a Link field may open, besides the files and collections with a fixed `preview` (policies, booking…).
+     * e.g. [{ path: "/booking/", label: "Booking" }].
+     */
+    pages?: ReadonlyArray<{ path: string; label: string }>;
+  };
   /** branch = the production branch the CMS commits to. */
   repo: { owner: string; name: string; branch: string };
   roles?: readonly ["admin", "editor"] | readonly ["owner", "editor"];
@@ -166,6 +183,10 @@ export const f = {
   toggle: (options: Options<ToggleField>): ToggleField => ({ type: "toggle", ...options }),
   /** f.number({ label: "Order", integer: true, min: 1, max: 99 }) — P16a */
   number: (options: Options<NumberField>): NumberField => ({ type: "number", ...options }),
+  /** M4: a link — Page · Web address · Phone · Email (saved as the href). */
+  link: (options: Options<LinkField>): LinkField => ({ type: "link", ...options }),
+  /** M4: a phone number, written and checked for site.phone.country. */
+  phone: (options: Options<PhoneField>): PhoneField => ({ type: "phone", ...options }),
 };
 
 export { assertCmsConfig, branchProblem, checkCmsConfig, CmsConfigError, countConfig, DEFAULT_CONTENT_DIRS, formatProblem, formatWarnings, MAX_DEPTH, pathProblem } from "./validate.js";
