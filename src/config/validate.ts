@@ -55,7 +55,7 @@ const FIELD_OPTIONS: Record<string, string[]> = {
   link: [],
   phone: [],
 };
-const TOP_LEVEL = ["configVersion", "site", "repo", "roles", "contentDirs", "files", "collections", "media"];
+const TOP_LEVEL = ["configVersion", "site", "repo", "roles", "contentDirs", "files", "collections", "publish", "media"];
 
 /** Why a git branch name is invalid (git check-ref-format rules), or undefined when it is fine. */
 export const branchProblem = (name: string): string | undefined => {
@@ -300,6 +300,16 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
   }
   dirs = [...new Set(dirs)];
 
+  // M6: how publishing is told in the admin.
+  if (config.publish !== undefined) {
+    const publish = config.publish;
+    if (!isRecord(publish)) err(context, "publish", "must be { typicalMinutes?, buildCheck? }", '{ typicalMinutes: "5–10", buildCheck: "Workers Builds" }');
+    else {
+      for (const key of Object.keys(publish)) if (!["typicalMinutes", "buildCheck"].includes(key)) err(context, `publish.${key}`, "unknown setting", "publish has typicalMinutes and buildCheck");
+      if (publish.typicalMinutes !== undefined && (typeof publish.typicalMinutes !== "string" || !/^\d{1,3}(?:\s*[–-]\s*\d{1,3})?$/.test(publish.typicalMinutes))) err(context, "publish.typicalMinutes", `must be minutes like "5" or "5–10" (got ${show(publish.typicalMinutes)})`, 'e.g. typicalMinutes: "5–10"');
+      if (publish.buildCheck !== undefined && !filled(publish.buildCheck)) err(context, "publish.buildCheck", "must be the name of the GitHub check run that builds the site", 'e.g. buildCheck: "Workers Builds"');
+    }
+  }
   if (config.media !== undefined) {
     if (!isRecord(config.media)) err(context, "media", "must be { dir?, base?, maxBytes?, names? }");
     else {

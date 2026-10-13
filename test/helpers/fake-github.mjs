@@ -4,6 +4,7 @@
 //   GET  /repos/:o/:r/git/commits/:sha              POST /repos/:o/:r/git/blobs | git/trees | git/commits
 //   PATCH /repos/:o/:r/git/refs/heads/:branch       (non-fast-forward → 422, like GitHub)
 //   GET  /repos/:o/:r/commits?sha=&path=&per_page=   P12c: newest first, only commits that changed `path` (like GitHub)
+//   GET  /repos/:o/:r/commits/:sha/check-runs        M6: the runs set with setCheckRuns (none by default)
 // Like GitHub: contents come raw only with Accept "application/vnd.github.raw+json"; otherwise JSON + base64, and for
 // files over 1 MB the JSON has encoding "none" and no content. failNext() injects errors (rate limits, 409, 404…).
 import { createHash } from "node:crypto";
@@ -18,6 +19,7 @@ export const startFakeGitHub = async ({ owner = "o", name = "r", branch = "main"
   let movesBeforeRefUpdate = 0;
   let moveFiles = {};
   const failures = [];
+  const checkRuns = new Map();
 
   const putBlob = (bytes) => { const id = sha(bytes.toString("base64")); blobs.set(id, bytes); return id; };
   const putTree = (entries) => { const id = sha([...entries].sort()); trees.set(id, new Map(entries)); return id; };
@@ -64,6 +66,7 @@ export const startFakeGitHub = async ({ owner = "o", name = "r", branch = "main"
       const commit = commits.get(match[1]);
       return commit ? send(200, { sha: match[1], tree: { sha: commit.tree }, parents: commit.parents.map((parent) => ({ sha: parent })) }) : send(404, { message: "Not Found" });
     }
+    if (req.method === "GET" && (match = /^\/commits\/([0-9a-f]{40})\/check-runs$/.exec(path))) return send(200, { total_count: (checkRuns.get(match[1]) ?? []).length, check_runs: checkRuns.get(match[1]) ?? [] });
     if (req.method === "GET" && path === "/commits") {
       const wanted = url.searchParams.get("path");
       const limit = Number(url.searchParams.get("per_page") ?? 30);
@@ -108,6 +111,8 @@ export const startFakeGitHub = async ({ owner = "o", name = "r", branch = "main"
     changedPaths: (from, to = ref) => { const a = treeOf(from); const b = treeOf(to); return [...new Set([...a.keys(), ...b.keys()])].filter((path) => a.get(path) !== b.get(path)).sort(); },
     commitsSince: (from) => { const out = []; let at = ref; while (at && at !== from) { out.push(at); at = commits.get(at).parents[0]; } return out; },
     pushOther,
+    /** M6: the check runs GitHub reports for a commit (e.g. [{ id: 1, name: "Workers Builds", status: "completed", conclusion: "failure" }]). */
+    setCheckRuns: (commitSha, runs) => { checkRuns.set(commitSha, runs); },
     /** The next `times` branch updates find the branch moved by someone else (changing `files`). */
     moveBranchBeforeRefUpdate: (times, files) => { movesBeforeRefUpdate = times; moveFiles = files; },
     /** The next `times` requests matching method + path regex get `status` (+ headers). */

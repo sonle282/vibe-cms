@@ -21,6 +21,10 @@ export type SaveStateInput = {
   /** The record is on the website now: a saved draft says only the changes are not live. */
   recordLive?: boolean;
   host: string;
+  /** M6: publish.typicalMinutes ("5–10"). */
+  typicalMinutes?: string;
+  /** M6: more words for the chip's tooltip (the time since Publish, "· 1m 5s"). */
+  detail?: string;
 };
 
 export type SaveState = {
@@ -31,10 +35,18 @@ export type SaveState = {
   saveEnabled: boolean;
   publishEnabled: boolean;
   publishTooltip: string;
+  /** M6: the chip's tooltip — the label, with the detail when there is one (the Mr Spa CMS shows the time there). */
+  tooltip: string;
 };
 
 export const SAVE_FIRST = "Save a draft first";
 export const PUBLISHING_LABEL = "Publishing… this usually takes a few minutes";
+/** M6: "Publishing… this usually takes 5–10 minutes" (publish.typicalMinutes). */
+export const publishingLabel = (typicalMinutes?: string) => (typicalMinutes ? `Publishing… this usually takes ${typicalMinutes} ${typicalMinutes === "1" ? "minute" : "minutes"}` : PUBLISHING_LABEL);
+/** M6 (Mr Spa): the time since Publish — "45s", "1m 5s". */
+export const elapsedText = (ms: number) => { const seconds = Math.max(0, Math.floor(ms / 1000)); return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`; };
+/** M6 (Mr Spa): when the site's build of a publish failed. */
+export const buildFailedText = (sha: string) => `The website build failed for this publish (commit ${sha.slice(0, 8)}). The website still shows the previous version.`;
 export const STILL_PUBLISHING_LABEL = "Still publishing — check again in a few minutes";
 export const DRAFT_SAVED_LABEL = "Draft saved · not live yet";
 export const DRAFT_SAVED_LIVE_LABEL = "Draft saved · changes not live yet";
@@ -42,7 +54,7 @@ export const NO_CHANGES_LABEL = "No changes";
 
 export const unsavedLabel = (count: number | null) => (count === null || count < 1 ? "Unsaved changes" : count === 1 ? "1 unsaved change" : `${count} unsaved changes`);
 export const unsavedShortLabel = (count: number | null) => (count === null || count < 1 ? "Unsaved" : `${count} unsaved`);
-const publishedLabel = (state: PublishedState, host: string) => (state === "live" ? `Live on ${host}` : state === "waiting" ? STILL_PUBLISHING_LABEL : PUBLISHING_LABEL);
+const publishedLabel = (state: PublishedState, host: string, typicalMinutes?: string) => (state === "live" ? `Live on ${host}` : state === "waiting" ? STILL_PUBLISHING_LABEL : publishingLabel(typicalMinutes));
 const publishedShortLabel = (state: PublishedState) => (state === "live" ? "Live" : state === "waiting" ? "Still publishing" : "Publishing…");
 
 export const deriveSaveState = (input: SaveStateInput): SaveState => {
@@ -51,7 +63,7 @@ export const deriveSaveState = (input: SaveStateInput): SaveState => {
   const label = kind === "problem" ? input.problem!
     : kind === "busy" ? input.busy!
       : kind === "unsaved" ? unsavedLabel(input.unsaved)
-        : kind === "published" ? publishedLabel(input.published!, input.host)
+        : kind === "published" ? publishedLabel(input.published!, input.host, input.typicalMinutes)
           : kind === "saved" ? (input.recordLive ? DRAFT_SAVED_LIVE_LABEL : DRAFT_SAVED_LABEL)
             : NO_CHANGES_LABEL;
   const shortLabel = kind === "unsaved" ? unsavedShortLabel(input.unsaved) : kind === "saved" ? "Draft saved" : kind === "published" ? publishedShortLabel(input.published!) : kind === "problem" ? "Needs attention" : label;
@@ -61,6 +73,7 @@ export const deriveSaveState = (input: SaveStateInput): SaveState => {
     saveEnabled: input.canSave && dirty && kind !== "busy",
     publishEnabled: !dirty && !input.busy && input.hasDraft && input.publishBlockReason === null,
     publishTooltip: dirty ? SAVE_FIRST : input.publishBlockReason ?? "Review changes before publishing.",
+    tooltip: kind === "published" && input.detail ? `${label} · ${input.detail}` : label,
   };
 };
 

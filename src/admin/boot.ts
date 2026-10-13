@@ -27,7 +27,9 @@ export type BootMedia = { uploads: boolean; base: string; maxBytes: number };
  * (a collection's list page; also the admin-only ones — the pages are public), then site.pages; `phone` = site.phone.
  */
 export type BootSite = { name: string; url: string; pages: Array<[string, string]>; phone?: { country: string } };
-export type AdminBoot = { site: BootSite; user: BootUser; files: BootFile[]; collections: BootCollection[]; media?: BootMedia };
+/** M6: how publishing is told ("this usually takes 5–10 minutes"). */
+export type BootPublish = { typicalMinutes?: string };
+export type AdminBoot = { site: BootSite; user: BootUser; publish?: BootPublish; files: BootFile[]; collections: BootCollection[]; media?: BootMedia };
 
 /** M4: the pages a link may open, in config order, each address once (the first name wins). */
 export const linkPages = (config: CmsConfig): Array<[string, string]> => {
@@ -40,6 +42,7 @@ export const linkPages = (config: CmsConfig): Array<[string, string]> => {
 export const adminBoot = (config: CmsConfig, user: BootUser, options: { uploads?: boolean } = {}): AdminBoot => ({
   site: { name: config.site.name, url: config.site.url, pages: linkPages(config), ...(config.site.phone ? { phone: { country: config.site.phone.country } } : {}) },
   user,
+  ...(config.publish?.typicalMinutes ? { publish: { typicalMinutes: config.publish.typicalMinutes } } : {}),
   media: { uploads: Boolean(options.uploads), base: mediaSettings(config.media).base, maxBytes: mediaSettings(config.media).maxBytes },
   files: config.files.filter((file) => !isAdminOnly(file.access) || user.role === "owner").map((file) => ({ key: file.key, label: file.label, ...(file.preview ? { preview: file.preview } : {}), ...(file.sections ? { sections: file.sections } : {}), fields: file.fields })),
   collections: config.collections.filter((collection) => !isAdminOnly(collection.access) || user.role === "owner").map((collection) => ({

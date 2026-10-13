@@ -39,7 +39,7 @@ import {
 import { parseMarkdown } from "../writer/markdown.js";
 import { recordPath, writeArrayItem, writeFile, writeMarkdownItem } from "../writer/index.js";
 import { sameValue, type WriteResult } from "../writer/json.js";
-import { GitPublishError, type CommitAuthor, type FileContent, type GitPublisher } from "./github.js";
+import { buildState, GitPublishError, type CommitAuthor, type FileContent, type GitPublisher } from "./github.js";
 import { MediaError, repoPathOf, uploadPathsIn, type MediaStore } from "../media/index.js";
 import { addUsage, imagesOfRecord, type ImageUsage } from "../media/usage.js";
 import { addressOfName, mapImageValues, nameOfAddress, uploadNamesIn, uploadTail, type ImageNames } from "../media/names.js";
@@ -47,7 +47,7 @@ import type { Identify, Identity, RateLimiter } from "../auth/index.js";
 
 export { createSiteRuntime, loopbackApiUrl, type SiteEnv } from "./runtime.js";
 export { adminBoot, bootJson, type AdminBoot } from "../admin/boot.js";
-export { createGitHubPublisher, GitPublishError, rateLimitWait, type CommitAuthor, type CommitInput, type FileContent, type GitHubOptions, type GitPublisher, type HistoryCommit } from "./github.js";
+export { buildState, createGitHubPublisher, GitPublishError, rateLimitWait, type CheckRun, type CommitAuthor, type CommitInput, type FileContent, type GitHubOptions, type GitPublisher, type HistoryCommit } from "./github.js";
 
 // ---------------------------------------------------------------- identity
 
@@ -531,6 +531,16 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     }
   };
 
+  // ---------------------------------------------------------------- M6: did the site's build fail?
+
+  /** `?commit=<sha>` with `publish.buildCheck` set: the site's build of that commit ("failed" = say so, stop waiting). */
+  const buildOf = async (request: Request): Promise<{ build?: string }> => {
+    const sha = new URL(request.url).searchParams.get("commit") ?? "";
+    const name = config.publish?.buildCheck;
+    if (!name || !/^[0-9a-f]{40}$/.test(sha) || !deps.publisher?.checkRuns) return {};
+    try { return { build: buildState(await deps.publisher.checkRuns(sha), name) }; } catch { return { build: "unknown" }; }
+  };
+
   // ---------------------------------------------------------------- media (P10)
 
   /**
@@ -743,7 +753,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     { pattern: /^\/history\/version$/, methods: { GET: (request, user) => historyVersion(request, user) } },
     { pattern: /^\/history\/restore$/, methods: { POST: (request, user) => historyRestore(request, user) } },
     { pattern: /^\/media$/, methods: { GET: (request, user) => listMedia(request, user), POST: (request, user) => uploadMedia(request, user) } },
-    { pattern: /^\/live-version$/, methods: { GET: async () => json({ liveVersion: await getLiveVersion(), branch: config.repo.branch }) } },
+    { pattern: /^\/live-version$/, methods: { GET: async (request) => json({ liveVersion: await getLiveVersion(), branch: config.repo.branch, ...(await buildOf(request)) }) } },
     { pattern: /^\/publish$/, methods: { POST: (request, user) => publish(request, user) } },
     { pattern: /^\/files\/([a-z][a-z0-9-]*)$/, methods: {
       GET: (_request, user, match) => getResource(user, targetOf(`file:${match[1]}`)),
