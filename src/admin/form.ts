@@ -103,7 +103,7 @@ export const createForm = (options: FormOptions): Form => {
     text,
     field.required ? h(doc, "span", { class: "vc-required", "aria-hidden": "true" }, " *") : null,
     field.required ? h(doc, "span", { class: "vc-sr-only" }, " (required)") : null,
-    locked || (owner && field.locked === "owner") ? h(doc, "span", { class: "vc-lock", title: LOCK_HELP }, icon(doc, "lock"), h(doc, "span", { class: "vc-sr-only" }, " (owner only)")) : null,
+    locked || (owner && isAdminOnly(field.locked)) ? h(doc, "span", { class: "vc-lock", title: LOCK_HELP }, icon(doc, "lock"), h(doc, "span", { class: "vc-sr-only" }, " (admin only)")) : null,
   ];
 
   type Wrap = { path: Path; field: Field; locked: boolean; reason?: string; group: boolean; control: HTMLElement; inputId?: string; hideLabel?: boolean; show?: (value: unknown) => void; extraHelp?: Child };

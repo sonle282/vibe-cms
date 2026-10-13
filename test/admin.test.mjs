@@ -197,6 +197,9 @@ test("form: an editor sees locked fields disabled (any depth) and cannot delete 
   const asOwner = createForm({ doc: document, fields, value, role: "owner" });
   assert.equal(at(asOwner, "menu").querySelector('[aria-label="Delete Row 1"]').disabled, false);
   assert.match(at(asOwner, "menu[0].price").textContent, /Editors see this but only an admin can change it/);
+  // M2: an admin sees the lock too, on "admin" (and on the old name "owner").
+  assert.ok(at(asOwner, "menu[0].price").querySelector(".vc-lock"), "the lock icon for an admin");
+  assert.match(at(asOwner, "menu[0].price").textContent, /\(admin only\)/);
 });
 
 test("form: problems show next to their field (closest field for deep paths); others in a list at the top", () => {

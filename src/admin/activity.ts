@@ -17,7 +17,7 @@ export const ACTIVITY_FILTERS: Array<[string, string]> = [["all", "All"], ["publ
 
 const fieldsOf = (detail: Record<string, unknown>) => (Array.isArray(detail.fields) ? detail.fields : []).map((entry) => (entry && typeof entry === "object" ? String((entry as { field?: unknown }).field ?? "") : "")).filter(Boolean);
 
-/** One row in words: "Published Salon info", "Refused: Price (owner only) in Service · nail-art". */
+/** One row in words: "Published Salon info", "Refused: Price (admin only) in Service · nail-art". */
 export const describeActivity = (entry: ActivityEntry): { text: string; tone: "ok" | "bad" | "plain" } => {
   const { action, what, detail, stage } = entry;
   const short = typeof detail.commitSha === "string" ? ` (${detail.commitSha.slice(0, 7)})` : "";
