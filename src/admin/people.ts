@@ -53,10 +53,11 @@ const row = (doc: Document, id: string, label: string, input: HTMLElement, help?
   h(doc, "div", { class: "vc-field" }, h(doc, "label", { class: "vc-label", for: id }, label), input, help ? h(doc, "p", { class: "vc-help" }, help) : null);
 
 /** M12 (Mr Spa): a temporary password — 4 groups of 4 from 55 letters and digits that are not mixed up (no i l o I O 0 1). */
-export const PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const range = (from: string, to: string) => Array.from({ length: to.charCodeAt(0) - from.charCodeAt(0) + 1 }, (_, index) => String.fromCharCode(from.charCodeAt(0) + index));
+export const READABLE_CHARACTERS = [...range("a", "z"), ...range("A", "Z"), ...range("2", "9")].filter((character) => !"iloIO".includes(character)).join("");
 export const makeTemporaryPassword = (random: (bytes: Uint8Array) => Uint8Array = (bytes) => crypto.getRandomValues(bytes)) => {
   const bytes = random(new Uint8Array(16));
-  const text = [...bytes].map((byte) => PASSWORD_ALPHABET[byte % PASSWORD_ALPHABET.length]).join("");
+  const text = [...bytes].map((byte) => READABLE_CHARACTERS[byte % READABLE_CHARACTERS.length]).join("");
   return text.match(/.{4}/g)!.join("-");
 };
 /** M12 (Mr Spa): "Sep 23" (this year) / "Sep 23, 2025". */
