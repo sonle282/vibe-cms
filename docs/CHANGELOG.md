@@ -3,7 +3,9 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## Unreleased (M7, M11, M12)
+## 0.23.0 — 2026-10-13 (M7, M11, M12: Pages, Media, Drafts, People, Activity and Version history like the Mr Spa CMS)
+
+- **Site action:** none — no data change, no D1 migration. Optional: the new file settings `group`, `area` + `description`, `outline`, `toggle` and `layout: "seo"` (M7, README).
 
 **M12 — People, Activity, Version history and sign-in like the Mr Spa CMS.** Nothing to do on a site (no D1
 migration, no config change).
