@@ -474,38 +474,49 @@ const saveDraft = async (h, url, change) => {
   return h.call("PUT", url, { content: change(current.content), expectedRevision: 0, sourceVersion: current.version });
 };
 
-test("U4 Drafts: one row per draft (what changes, when); Publish opens its review and publishes only it; ⋯ Discard; Recently published", async () => {
+test("M11 Drafts (Mr Spa): one card per draft — kind, name, “N changes: …”, Saved …, Live + Unpublished changes; See changes; ⋯ Discard; Recently published", async () => {
   const h = await publishShell();
   try {
     await h.go("/admin/drafts");
-    assert.match(h.root.querySelector(".vc-empty-state").textContent, /No drafts/);
+    assert.equal(h.root.querySelector(".vc-drafts-empty").textContent, "No draftsWhen you save a draft, it waits here until you publish or discard it.");
     await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Fresh tagline" }));
     await saveDraft(h, "/api/cms/collections/services/items/spa-pedicure", (content) => ({ ...content, price: "$40" }));
     await h.go("/admin/pages");
     await h.go("/admin/drafts");
     assert.equal(h.root.querySelector('.vc-nav-list a[aria-current="page"] .vc-rail-label').textContent, "Drafts");
-    const row = (resource) => h.root.querySelector(`.vc-draft-row[data-resource="${resource}"]`);
-    assert.match(row("file:site").textContent, /Salon info · Salon info1 change: TaglineSaved by you · /);
-    assert.match(row("item:services:spa-pedicure").querySelector(".vc-row-what").textContent, /^1 change: Price$/);
-    assert.ok([...h.root.querySelectorAll(".vc-actions a")].some((link) => link.textContent === "Review & publish all" && link.getAttribute("href") === "/admin/drafts/review"));
+    const card = (resource) => h.root.querySelector(`.vc-drafts-card[data-resource="${resource}"]`);
+    assert.equal(card("file:site").querySelector(".vc-draft-type").textContent, "Page");
+    assert.equal(card("file:site").querySelector(".vc-draft-label").textContent, "Salon info");
+    assert.equal(card("file:site").querySelector(".vc-draft-changes").textContent, "1 change: Tagline");
+    assert.match(card("file:site").querySelector(".vc-drafts-saved").textContent, /^Saved .+/);
+    assert.equal(card("file:site").querySelector(".vc-drafts-status").textContent, "LiveUnpublished changes");
+    assert.equal(card("item:services:spa-pedicure").querySelector(".vc-draft-type").textContent, "Service");
+    assert.equal(card("item:services:spa-pedicure").querySelector(".vc-draft-changes").textContent, "1 change: Price");
+    assert.ok([...h.root.querySelectorAll(".vc-actions a")].some((link) => link.textContent === "Review & publish all" && link.getAttribute("href") === "/admin/drafts/review"), "several drafts in one publish (kept)");
     assert.equal(h.root.querySelector('.vc-rail-item[data-rail="drafts"]').getAttribute("aria-label"), "Drafts, 2 saved");
-    // Publish one row: its review dialog, then only it goes to the website.
-    row("file:site").querySelector('[data-action="publish-draft"]').click();
+    assert.equal(card("file:site").querySelector('[data-action="publish-draft"]'), null, "no Publish on a card (Mr Spa)");
+    // See changes: the review, read-only ("Changes in this draft" · Close).
+    card("file:site").querySelector('[data-action="see-changes"]').click();
     const dialog = () => h.window.document.querySelector(".vc-dialog");
-    // M6 (Mr Spa): Review changes, then "Publish {name}" — This will publish to {host}.
-    assert.equal(dialog().querySelector(".vc-dialog-title").textContent, "Review changes");
+    assert.equal(dialog().querySelector(".vc-dialog-title").textContent, "Changes in this draft");
+    assert.equal(dialog().querySelector(".vc-dialog-text").textContent, "Salon info — saved draft compared with the website.");
     assert.match(dialog().querySelector(".vc-review-summary").textContent, /Changed: Tagline/);
-    h.press("Continue to publish");
-    await h.until(() => h.asked.some((message) => message === "Publish Salon info\n\nThis will publish to demo.example."), "the confirm");
-    await h.until(() => !dialog(), "the publish");
-    await h.until(() => !row("file:site") && row("item:services:spa-pedicure"), "the screen again, with the other draft waiting");
-    assert.match(JSON.parse(h.github.files()["src/data/site.json"]).tagline, /Fresh tagline/);
+    assert.deepEqual([...dialog().querySelectorAll(".vc-dialog-actions button")].map((button) => button.textContent), ["Close"]);
+    h.press("Close");
+    await h.until(() => !dialog(), "closed");
+    // Published elsewhere: Recently published (admins), "Published by … · Oct 13" and the 7-character commit.
+    const published = await h.call("POST", "/api/cms/publish", { resources: ["file:site"] });
+    await h.go("/admin/drafts");
+    assert.equal(card("file:site"), null);
+    const recent = [...h.root.querySelectorAll(".vc-drafts-heading")].find((heading) => heading.textContent === "Recently published").parentElement;
+    assert.match(recent.textContent, /Salon infoPublished by .+ · [A-Z][a-z]{2} \d{1,2}/);
+    assert.equal(recent.querySelector(".vc-activity-commit").textContent, published.commitSha.slice(0, 7));
     assert.equal(h.badge().textContent, "1");
-    assert.match(h.root.textContent, /Recently published.*Salon info.*Published by/s);
     // ⋯ → Discard draft (the test answers yes to the dialog).
-    row("item:services:spa-pedicure").querySelector(".vc-more-button").click();
-    [...row("item:services:spa-pedicure").querySelectorAll(".vc-menu-item")].find((item) => item.textContent === "Discard draft").click();
-    await h.until(() => h.root.querySelector(".vc-empty-state"), "no drafts left");
+    card("item:services:spa-pedicure").querySelector(".vc-more-button").click();
+    [...card("item:services:spa-pedicure").querySelectorAll(".vc-menu-item")].find((item) => item.textContent === "Discard draft").click();
+    await h.until(() => h.root.querySelector(".vc-drafts-empty"), "no drafts left");
+    assert.equal(h.asked.at(-1), 'Discard your draft?\n\nThe website stays as it is. The changes saved in your draft of "Spa Pedicure" are deleted.');
     assert.ok(!(await h.drafts.get("usr_owner", "item:services:spa-pedicure")), "the draft is gone");
   } finally { h.close(); }
 });
@@ -843,41 +854,122 @@ test("P10 / M5 shell: the image card opens the sheet (Current, uploads, the webs
   assert.equal(field.querySelector(".vc-image-empty").textContent, "Choose image");
 });
 
-test("U4 Media: the library (uploads first, then the website's images), filters, the chosen image's details, Upload images", async () => {
+test("M11 Media (Mr Spa): chips, the detail panel (facts, Used on → the field), Rename, Remove, Archive / Unarchive, Upload images, Remove unused images", async () => {
   const { createMediaStore, createMemoryBucket, mediaSettings } = await import("../dist/index.js");
   const { tinyPng } = await import("./helpers/images.mjs");
   const { window, document } = dom();
-  const media = createMediaStore({ bucket: createMemoryBucket(), settings: mediaSettings(config.media), now: () => new Date("2026-03-05T10:00:00Z") });
+  const bucket = createMemoryBucket();
+  const settings = mediaSettings(config.media);
+  const at = (iso) => createMediaStore({ bucket, settings, now: () => new Date(iso) });
+  const old = await at("2026-01-01T10:00:00Z").stage({ bytes: tinyPng(4, 3), fileName: "old.png", userId: "usr_owner" });
+  const pub = await at("2026-02-01T10:00:00Z").stage({ bytes: tinyPng(6, 3), fileName: "pub.png", userId: "usr_owner" });
+  const old2 = await at("2026-01-02T10:00:00Z").stage({ bytes: tinyPng(8, 3), fileName: "older.png", userId: "usr_owner" });
+  const media = at("2026-03-05T10:00:00Z");
   const user = { userId: "usr_owner", role: "owner" };
-  const api = createCmsApi({ config, source: createBundledSource(files), drafts: createMemoryDraftStore(), audit: createMemoryAuditLog(), identify: () => user, media, siteImages: [{ src: "/images/hero.svg", bytes: 3000 }, { src: "/images/team-sam.svg", bytes: 2000 }] });
+  const drafts = createMemoryDraftStore();
+  const siteImages = [{ src: "/images/hero.svg", bytes: 3000 }, { src: "/images/team-sam.svg", bytes: 2000 }, { src: pub.src, bytes: pub.bytes, width: 6, height: 3 }];
+  const api = createCmsApi({ config, source: createBundledSource(files), drafts, audit: createMemoryAuditLog(), identify: () => user, media, siteImages, now: () => "2026-03-05T10:00:00.000Z" });
   const fetch = async (url, init = {}) => {
     const body = init.body && typeof init.body.arrayBuffer === "function" ? new Uint8Array(await init.body.arrayBuffer()) : init.body;
     return api.handle(new Request(new URL(url, "http://localhost"), { ...init, body, headers: { ...(init.headers ?? {}), origin: "http://localhost" } }));
   };
+  const call = async (method, url, body) => { const response = await fetch(url, { method, headers: { "content-type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) }); return { status: response.status, body: await response.json() }; };
+  // The server's rules first: never removes a published image, never archives an upload not published, never one in use.
+  assert.equal((await call("DELETE", `/api/cms/media?src=${encodeURIComponent(pub.src)}`)).body.message, "This image is published on the website. Archive it instead.");
+  assert.equal((await call("POST", "/api/cms/media/archive", { src: old.src })).body.message, "This image is not published yet. Remove it instead.");
+  await drafts.save({ userId: "usr_editor", resource: "file:site", content: { hero: { image: { src: old2.src } } }, sourceVersion: "x" });
+  assert.equal((await call("DELETE", `/api/cms/media?src=${encodeURIComponent(old2.src)}`)).body.message, "This media file is still referenced by CMS content and cannot be deleted.", "a saved draft (anyone's) uses it");
+  assert.deepEqual((await call("POST", "/api/cms/media/cleanup", { dryRun: true })).body, { dryRun: true, removed: 1, keptRecent: 0 }, "only the unused one, more than 30 days old");
+  assert.equal((await call("POST", "/api/cms/media/name", { src: old.src, name: "  " })).body.message, "Enter an image name up to 120 characters.");
+
   const root = document.createElement("div");
   document.body.append(root);
   const boot = adminBoot(config, { id: user.userId, username: "owner", displayName: "Owner", role: "owner" }, { uploads: true });
-  const app = startAdmin({ root, boot, fetch, window, confirm: () => true, prepareImage: async (file) => ({ blob: file, name: "chair.png", width: 4, height: 3 }) });
+  const asked = [];
+  const app = startAdmin({ root, boot, fetch, window, confirm: (message) => { asked.push(message); return true; }, prepareImage: async (file) => ({ blob: file, name: "chair.png", width: 4, height: 3 }) });
   await app.ready;
   await app.go("/admin/media"); await settle(); await app.idle();
-  const tiles = () => [...root.querySelectorAll(".vc-media-grid .vc-tile")].map((tile) => tile.dataset.src);
-  assert.deepEqual(tiles(), ["/images/hero.svg", "/images/team-sam.svg"]);
-  assert.equal(root.querySelector(".vc-count").textContent, "2 images");
-  assert.match(root.querySelector(".vc-media-detail").textContent, /Choose an image to see its details/);
-  root.querySelector('.vc-tile[data-src="/images/team-sam.svg"]').click();
-  assert.match(root.querySelector(".vc-media-detail").textContent, /team-sam\.svgWebsite imageCopy linkDimensions—FormatSVGFile size2 KB/);
-  // Upload from the top bar: the new image comes first and is chosen.
+  const until = async (test, what) => { for (let i = 0; i < 200; i += 1) { if (test()) return; await new Promise((resolve) => setTimeout(resolve, 5)); } assert.fail(`timed out waiting for ${what}`); };
+  const tiles = () => [...root.querySelectorAll(".vc-media-library .vc-sheet-tile")].map((tile) => tile.dataset.src);
+  await until(() => /^\d/.test(root.querySelector(".vc-sheet-count")?.textContent ?? ""), "the library");
+  assert.deepEqual(tiles(), [old2.src, old.src, pub.src, "/images/hero.svg", "/images/team-sam.svg"], "uploads not published yet first, then the published one, then the website's images (used first)");
+  assert.deepEqual([...root.querySelectorAll(".vc-chip")].map((chip) => chip.textContent), ["All", "Pages", "Services", "Team", "Blog", "Not used", "Not published yet", "Archived"]);
+  assert.equal(root.querySelector(".vc-sheet-count").textContent, "5 images");
+  const chip = (label) => [...root.querySelectorAll(".vc-chip")].find((entry) => entry.textContent === label).click();
+  chip("Not used");
+  assert.deepEqual(tiles(), [old2.src, old.src, pub.src]);
+  assert.equal(root.querySelector(".vc-sheet-count").textContent, "3 images found");
+  chip("All");
+  // The detail panel: facts, where it is used.
+  const tile = (src) => root.querySelector(`.vc-media-library .vc-sheet-tile[data-src="${src}"]`);
+  const panel = () => root.querySelector(".vc-media-panel");
+  tile(old.src).click();
+  await until(() => /Not used/.test(panel().querySelector(".vc-media-panel-state").textContent), "the panel");
+  assert.equal(panel().querySelector(".vc-media-panel-kicker").textContent, "Image details");
+  assert.equal(panel().querySelector(".vc-media-panel-name").textContent, "old.png");
+  assert.equal(panel().querySelector(".vc-media-panel-state").textContent, "Not published yet · Not used");
+  assert.deepEqual([...panel().querySelectorAll(".vc-media-panel-actions button")].map((button) => button.textContent), ["Rename", "Copy link", "Adjust"]);
+  assert.equal(panel().querySelector(".vc-media-panel-details").textContent, "Dimensions4 × 3FormatPNGFile size" + panel().querySelectorAll(".vc-media-panel-details dd")[2].textContent + "UploadedJan 1, 2026");
+  assert.equal(panel().querySelector(".vc-media-panel-places").textContent, "Not used on the website or in a saved draft.");
+  assert.match(panel().querySelector(".vc-media-panel-footer").textContent, /^Remove imageNot published and not used in any draft: removing deletes it for good\.$/);
+  // Rename = a display name; the address stays.
+  [...panel().querySelectorAll("button")].find((button) => button.textContent === "Rename").click();
+  const dialog = () => document.querySelector(".vc-dialog");
+  assert.equal(dialog().querySelector(".vc-dialog-title").textContent, "Rename image");
+  dialog().querySelector("input").value = "Old chair";
+  [...dialog().querySelectorAll("button")].find((button) => button.textContent === "Save name").click();
+  await until(() => !dialog(), "renamed");
+  assert.equal(tile(old.src).querySelector(".vc-sheet-name").textContent, "Old chair");
+  assert.match(document.querySelector(".vc-toast").textContent, /^Name saved\. The image address did not change\./);
+  // Remove (never published, used nowhere): asked, then gone for good.
+  await until(() => panel().querySelector(".vc-media-panel-footer button"), "the panel again");
+  [...panel().querySelectorAll("button")].find((button) => button.textContent === "Remove image").click();
+  await until(() => !tile(old.src), "removed");
+  assert.equal(asked.at(-1), "Remove image\n\nRemove Old chair? It is not published and no draft uses it, so it is deleted for good.");
+  assert.equal(await media.staged(old.src), undefined);
+  // Archive (published, used nowhere): hidden everywhere but under Archived; Unarchive brings it back.
+  tile(pub.src).click();
+  await until(() => [...panel().querySelectorAll("button")].some((button) => button.textContent === "Archive image"), "Archive");
+  assert.equal(panel().querySelector(".vc-media-panel-state").textContent, "Published · Not used");
+  [...panel().querySelectorAll("button")].find((button) => button.textContent === "Archive image").click();
+  await until(() => !tile(pub.src), "archived");
+  assert.match(document.querySelector(".vc-toast").textContent, /^Image archived\. Find it under Archived\.Undo$/);
+  chip("Archived");
+  assert.deepEqual(tiles(), [pub.src]);
+  const sheetSrcs = (await (await fetch("/api/cms/media")).json()).notes[pub.src];
+  assert.ok(sheetSrcs.archivedAt, "kept as a note");
+  tile(pub.src).click();
+  await until(() => [...panel().querySelectorAll("button")].some((button) => button.textContent === "Unarchive"), "Unarchive");
+  [...panel().querySelectorAll("button")].find((button) => button.textContent === "Unarchive").click();
+  await until(() => !tile(pub.src), "unarchived");
+  chip("All");
+  assert.ok(tile(pub.src));
+  // Used on → the field it is in.
+  tile("/images/hero.svg").click();
+  await until(() => panel().querySelector(".vc-media-place"), "Used on");
+  assert.equal(panel().querySelector(".vc-media-place").textContent, "Salon infoPicture");
+  assert.equal(panel().querySelector(".vc-media-panel-state").textContent, "Website image · In use");
+  // Upload images (top bar): uploaded, selected, toast.
   const input = root.querySelector("#vc-media-file");
   Object.defineProperty(input, "files", { value: [new window.File([tinyPng(4, 3)], "Chair.png", { type: "image/png" })], configurable: true });
   input.dispatchEvent(new window.Event("change"));
-  for (let i = 0; i < 40 && tiles().length < 3; i += 1) await settle();
+  await until(() => /^Image uploaded\./.test(document.querySelector(".vc-toast")?.textContent ?? ""), "the upload");
   assert.match(tiles()[0], /^\/assets\/uploads\/2026\/03\/chair-[0-9a-f]{8}\.png$/);
-  assert.match(root.querySelector(".vc-media-detail").textContent, /Uploaded image/);
-  // Filters: only uploads, only the website's own.
-  [...root.querySelectorAll(".vc-filter")].find((chip) => chip.textContent === "Uploaded").click();
-  assert.equal(tiles().length, 1);
-  [...root.querySelectorAll(".vc-filter")].find((chip) => chip.textContent === "Website").click();
-  assert.deepEqual(tiles(), ["/images/hero.svg", "/images/team-sam.svg"]);
+  assert.equal(root.querySelector(".vc-media-library .vc-sheet-tile").getAttribute("aria-selected"), "true");
+  // ⋯ Remove unused images…: counted, asked, removed.
+  await drafts.discard("usr_editor", "file:site");
+  root.querySelector('[aria-label="More media actions"]').click();
+  [...root.querySelectorAll(".vc-menu-item")].find((item) => item.textContent === "Remove unused images…").click();
+  await until(() => asked.at(-1)?.startsWith("Remove unused images"), "the question");
+  assert.equal(asked.at(-1), "Remove unused images\n\nRemove 1 image? It was uploaded more than 30 days ago, never published, and no page, record or saved draft uses it. 1 unused image uploaded in the last 30 days is kept.");
+  await until(() => /^1 unused image removed/.test(document.querySelector(".vc-toast")?.textContent ?? ""), "removed");
+  assert.equal(await media.staged(old2.src), undefined, "the old unused upload is gone; the new one stays");
+  // The editor opens at the field.
+  tile("/images/hero.svg").click();
+  await until(() => panel().querySelector(".vc-media-place"), "Used on again");
+  panel().querySelector(".vc-media-place").click();
+  await settle(); await app.idle();
+  assert.equal(window.location.pathname, "/admin/pages/site");
 });
 
 test("P10 shell: without the bucket the sheet says uploading is not set up; an editor sees no buttons on a locked image; prepare refuses GIF / SVG", async () => {

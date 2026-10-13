@@ -149,6 +149,8 @@ export interface DraftStore {
   mine(userId: string): Promise<DraftSummary[]>;
   /** Everyone's drafts of one resource, newest first (no content). */
   forResource(resource: string): Promise<DraftSummary[]>;
+  /** M11: everyone's drafts whose content holds `text` (an upload's address part) — is an image still used by a draft? */
+  using(text: string): Promise<DraftSummary[]>;
 }
 
 const prepare = (input: SaveDraft) => {
@@ -216,6 +218,7 @@ export const createD1DraftStore = (db: D1Like, now: () => string = () => new Dat
     async clearAfterPublish(userId, resource) { await db.prepare("DELETE FROM cms_draft_index WHERE user_id = ? AND resource = ?").bind(userId, resource).run(); },
     async mine(userId) { return (await db.prepare(`SELECT ${SUMMARY} FROM cms_draft_index WHERE user_id = ? ORDER BY updated_at DESC, resource`).bind(userId).all<Row>()).results.map(fromRow); },
     async forResource(resource) { return (await db.prepare(`SELECT ${SUMMARY} FROM cms_draft_index WHERE resource = ? ORDER BY updated_at DESC, user_id`).bind(resource).all<Row>()).results.map(fromRow); },
+    async using(text) { return (await db.prepare(`SELECT ${SUMMARY} FROM cms_draft_index WHERE instr(content, ?) > 0 ORDER BY updated_at DESC, user_id`).bind(text).all<Row>()).results.map(fromRow); },
   };
 };
 
@@ -239,6 +242,7 @@ export const createMemoryDraftStore = (now: () => string = () => new Date().toIS
     clearAfterPublish: async (userId, resource) => { rows.delete(key(userId, resource)); },
     mine: async (userId) => [...rows.values()].filter((row) => row.userId === userId).sort((a, b) => newest(a, b) || a.resource.localeCompare(b.resource)).map(summary),
     forResource: async (resource) => [...rows.values()].filter((row) => row.resource === resource).sort((a, b) => newest(a, b) || a.userId.localeCompare(b.userId)).map(summary),
+    using: async (text) => [...rows.values()].filter((row) => JSON.stringify(row.content ?? null).includes(text)).sort((a, b) => newest(a, b) || a.userId.localeCompare(b.userId)).map(summary),
   };
 };
 

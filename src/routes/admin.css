@@ -855,3 +855,75 @@ label.vc-button[role="button"] { cursor: pointer; }
 .vc-seo-form [data-section="sharing"] .vc-image-card:not(.is-empty) { grid-template-columns: 180px minmax(0, 1fr); align-items: center; gap: 14px; }
 .vc-seo-form [data-section="sharing"] .vc-image-card:not(.is-empty) .vc-image-frame { height: 96px; aspect-ratio: auto !important; border: 0; border-radius: var(--radius-12); }
 .vc-seo-form [data-section="sharing"] .vc-image-card:not(.is-empty) .vc-image-meta { flex-wrap: wrap; margin: 0; padding: 0; border: 0; }
+
+/* ---------- M11: the Media screen of the Mr Spa CMS (grid + the 360 px detail panel) */
+.vc-media-view { height: 100%; background: var(--canvas); }
+.vc-media-layout { display: grid; height: 100%; grid-template-columns: minmax(0, 1fr); }
+.vc-media-view.has-media-panel .vc-media-layout { grid-template-columns: minmax(0, 1fr) 360px; }
+.vc-media-main { overflow-y: auto; padding: 20px 24px 32px; }
+.vc-media-status { margin: 0 0 12px; color: var(--text-secondary); font-size: 12px; }
+.vc-media-status:empty { display: none; }
+.vc-media-status[data-state="error"] { color: var(--danger); }
+.vc-media-status[data-state="saving"] { color: var(--accent-hover); }
+.vc-media-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin-bottom: 18px; }
+.vc-media-filter-row .vc-sheet-search { flex: 0 1 300px; }
+.vc-sheet-grid.vc-media-library { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 18px 16px; }
+.vc-media-library .vc-sheet-thumb { height: auto; aspect-ratio: 4 / 3; }
+.vc-media-panel { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; padding: 16px 20px 24px; border-left: 1px solid var(--hairline); background: var(--surface); }
+.vc-media-panel[hidden] { display: none; }
+.vc-media-panel-head { display: flex; align-items: center; justify-content: space-between; }
+.vc-media-panel-kicker { margin: 0; color: var(--text-secondary); font-size: 12px; }
+.vc-media-panel-close { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 999px; background: var(--canvas); color: var(--text); cursor: pointer; }
+.vc-media-panel-close:hover { background: var(--surface-hover); }
+.vc-media-panel-close .vc-icon { width: 16px; height: 16px; }
+.vc-media-panel-preview { display: grid; place-items: center; aspect-ratio: 4 / 3; overflow: hidden; border-radius: var(--radius-12); background: var(--canvas); }
+.vc-media-panel-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.vc-media-panel-name { margin: 4px 0 0; overflow-wrap: anywhere; font-size: 16px; font-weight: 600; line-height: 1.3; }
+.vc-media-panel-file { margin: -8px 0 0; color: var(--text-secondary); font-size: 12px; }
+.vc-media-panel-state { margin: -6px 0 0; color: var(--text-secondary); font-size: 13px; }
+.vc-media-panel-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; }
+.vc-media-panel-actions .vc-button { justify-content: center; padding: 0 10px; }
+.vc-media-panel-details { display: grid; grid-template-columns: auto 1fr; margin: 0; border-top: 1px solid var(--hairline); }
+.vc-media-panel-details dt, .vc-media-panel-details dd { margin: 0; padding: 9px 0; border-bottom: 1px solid var(--hairline); font-size: 13px; }
+.vc-media-panel-details dt { color: var(--text-secondary); }
+.vc-media-panel-details dd { text-align: right; }
+.vc-media-panel-heading { margin: 6px 0 0; font-size: 14px; font-weight: 600; }
+.vc-media-panel-places { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.vc-media-place { position: relative; display: grid; gap: 1px; width: 100%; padding: 9px 30px 9px 12px; border: 0; border-radius: var(--radius-10); background: var(--canvas); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+button.vc-media-place::after { content: "›"; position: absolute; top: 50%; right: 12px; color: var(--text-secondary); transform: translateY(-50%); }
+button.vc-media-place:hover { background: var(--surface-hover); }
+.vc-media-place.is-static { cursor: default; }
+.vc-media-place-label { font-size: 13px; font-weight: 500; }
+.vc-media-place-detail { color: var(--text-secondary); font-size: 12px; }
+.vc-media-panel-note { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.45; }
+.vc-media-panel-footer { display: grid; gap: 8px; margin-top: 4px; }
+.vc-media-panel-footer[hidden] { display: none; }
+.vc-button.vc-danger { border-color: var(--danger); color: var(--danger); }
+.vc-button.vc-danger:hover { background: var(--danger-bg); }
+.vc-media-more { position: relative; }
+.vc-media-more-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 60; min-width: 220px; }
+.vc-media-rename-label { display: grid; gap: 6px; font-size: 13px; font-weight: 500; }
+.vc-media-rename-status { min-height: 18px; margin: 0; font-size: 12px; }
+.vc-media-rename-status[data-state="saving"] { color: var(--accent-hover); }
+.vc-media-rename-status[data-state="error"] { color: var(--danger); }
+
+/* ---------- M11: My drafts of the Mr Spa CMS */
+.vc-drafts-view { display: grid; gap: 28px; max-width: 960px; }
+.vc-drafts-heading { margin: 0 0 10px; font-size: 14px; font-weight: 700; }
+.vc-drafts-list { margin: 0; padding: 0; border: 1px solid var(--hairline); border-radius: var(--radius-14); background: var(--surface); list-style: none; }
+.vc-drafts-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; }
+.vc-drafts-card + .vc-drafts-card { border-top: 1px solid var(--hairline); }
+.vc-drafts-what { display: grid; min-width: 0; gap: 2px; }
+.vc-draft-type { color: var(--text-secondary); font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.vc-draft-label { display: block; margin-top: 2px; font-size: 14px; }
+.vc-draft-changes { max-width: 420px; color: var(--text-secondary); font-size: 13px; line-height: 1.45; }
+.vc-draft-changes[data-state="conflict"] { color: var(--warning); }
+.vc-drafts-saved { color: var(--text-secondary); font-size: 12px; }
+.vc-draft-actions { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.vc-drafts-status { display: grid; justify-items: end; margin-right: 6px; }
+.vc-content-status.is-draft { background: var(--accent-bg); color: var(--accent-strong); }
+.vc-drafts-note { margin: 10px 0 0; color: var(--text-secondary); font-size: 12px; }
+.vc-drafts-empty { display: grid; justify-items: center; gap: 6px; padding: 40px 20px; text-align: center; }
+.vc-drafts-empty strong { font-size: 15px; }
+.vc-drafts-empty span { max-width: 320px; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.vc-activity-commit { color: var(--accent); font-size: 12px; }

@@ -3,7 +3,29 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## Unreleased (M7)
+## Unreleased (M7, M11)
+
+**M11 — Media and Drafts like the Mr Spa CMS.** Nothing to do on a site (no D1 migration).
+
+- **Media:** search, chips **All · Pages · each collection | Not used · Not published yet · Archived**, 4:3 tiles
+  ("1440 × 990 · 184 KB · Salon info +2"), Load more; top bar **⋯ Remove unused images…** and **Upload images**.
+  The **detail panel** (360 px, × / Esc): Rename · Copy link · Adjust; Dimensions / Format / File size / Uploaded;
+  **Used on** (each row opens the editor at that field; a saved draft that uses it is listed too); **Remove image**
+  (an upload never published and used nowhere — for good), **Archive / Unarchive** (a published upload used nowhere;
+  archived images are not offered in the image sheet).
+- **Rename** = a display name (1–120 characters); the image address never changes. Names and archive dates are small
+  notes in the R2 bucket (`media-note/…`), so no new D1 table.
+- **Remove unused images…:** uploads never published, used nowhere (live content, the publish branch, everyone's saved
+  drafts), uploaded more than 30 days ago — counted first, then asked. The server checks again before Remove, Archive
+  and this, and refuses when it cannot tell.
+- New API: `GET /media/usage?src=`, `POST /media/name`, `/media/archive`, `/media/unarchive`, `/media/cleanup`
+  (`{ dryRun }`), `DELETE /media?src=`; `GET /media` answers `notes`; usage places say their field (`resource`,
+  `path`, `detail`). Draft stores have `using(text)`.
+- **Drafts:** one card per draft — its kind ("Page", "Service", "New service"), its name, "N changes: a, b, c and K
+  more", "Saved Oct 13, 2026, 2:20 PM", **Live** + "Unpublished changes" / **Draft** + "Not on the website yet";
+  **See changes** (the review, read-only: "Changes in this draft" · Close), **Open**, ⋯ **Discard draft**.
+  "Recently published" (admins): the last 5, "Published by … · Oct 13" and the 7-character commit. The Publish button
+  on each card is gone (the Mr Spa CMS publishes from the editor); "Review & publish all" stays.
 
 **M7 — Pages, site-wide areas and Search & sharing like the Mr Spa CMS.** Nothing to do on a site; new optional
 settings of a file in `cms.config.ts`:

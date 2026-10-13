@@ -43,6 +43,8 @@ export const runStoreScenario = async ({ drafts }) => {
   const theirs = await drafts.get("usr_editor2", "file:site");
   check("two users' drafts of one file are separate", mine.content.phone === stored.content.phone && theirs.content.phone === "(555) 010-0003", { mine, theirs });
   check("forResource lists both, newest first", same((await drafts.forResource("file:site")).map((row) => row.userId), ["usr_editor2", "usr_owner1"]));
+  // M11: is an image still used by a saved draft (anyone's)? — a text the content holds.
+  check("using finds the drafts whose content holds a text", same((await drafts.using("\"phone\"")).map((row) => row.userId).sort(), ["usr_editor2", "usr_owner1"]) && same((await drafts.using("010-0003")).map((row) => row.userId), ["usr_editor2"]) && (await drafts.using("not anywhere at all")).length === 0);
 
   // Two items of the same collection file: separate drafts.
   await drafts.save({ userId: "usr_owner1", resource: "item:services:classic-manicure", label: "Classic Manicure", content: { price: "$22" }, sourceVersion: "sha256:m1" });

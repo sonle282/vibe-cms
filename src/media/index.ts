@@ -23,6 +23,8 @@ export interface MediaBucket {
   put(key: string, value: ArrayBuffer | Uint8Array | string, options?: { httpMetadata?: { contentType?: string; cacheControl?: string }; customMetadata?: Record<string, string> }): Promise<unknown>;
   get(key: string): Promise<{ arrayBuffer(): Promise<ArrayBuffer>; text(): Promise<string>; size: number; httpMetadata?: { contentType?: string }; customMetadata?: Record<string, string> } | null>;
   head(key: string): Promise<{ size: number; customMetadata?: Record<string, string> } | null>;
+  /** M11: Remove image / Remove unused images (R2 takes one key or several). */
+  delete?(keys: string | string[]): Promise<void>;
   list(options: { prefix: string; cursor?: string; limit?: number; include?: Array<"customMetadata" | "httpMetadata"> }): Promise<{ objects: Array<{ key: string; size: number; uploaded: Date; customMetadata?: Record<string, string> }>; truncated: boolean; cursor?: string }>;
 }
 
@@ -31,6 +33,15 @@ export const DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
 export const MAX_EDGE = 2400;
 const STAGING = "staging/";
 const INDEX = "upload-index/";
+/** M11: a small object beside an upload — its display name and whether it is archived (no D1 table needed). */
+const NOTE = "media-note/";
+export type MediaNote = { displayName?: string; archivedAt?: string; archivedBy?: string };
+/** M11 (Mr Spa): a display name — NFKC, no control characters, single spaces, 1–120 characters; undefined when not usable. */
+export const cleanDisplayName = (value: unknown) => {
+  if (typeof value !== "string") return undefined;
+  const text = value.normalize("NFKC").replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim();
+  return text.length >= 1 && text.length <= 120 ? text : undefined;
+};
 
 export type MediaSettings = { dir: string; base: string; maxBytes: number };
 export const mediaSettings = (media?: { dir?: string; base?: string; maxBytes?: number }): MediaSettings => {
@@ -124,7 +135,46 @@ export const createMediaStore = ({ bucket, settings, now = () => new Date() }: {
     return path;
   };
 
-  return { settings, stage, list, read, serve, pattern, find };
+  // ---- M11: notes (display name, archived) and removal of an upload that was never published
+
+  const noteKey = (path: string) => `${NOTE}${path.replace(/^\//, "")}`;
+  /** Every upload's note, by address. */
+  const notes = async () => {
+    const found = new Map<string, MediaNote>();
+    let cursor: string | undefined;
+    do {
+      const page = await bucket.list({ prefix: NOTE, ...(cursor ? { cursor } : {}), limit: 1000, include: ["customMetadata"] });
+      for (const object of page.objects) {
+        const meta = object.customMetadata ?? {};
+        const note: MediaNote = { ...(meta.displayName ? { displayName: meta.displayName } : {}), ...(meta.archivedAt ? { archivedAt: meta.archivedAt, archivedBy: meta.archivedBy ?? "" } : {}) };
+        found.set(`/${object.key.slice(NOTE.length)}`, note);
+      }
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+    return found;
+  };
+  /** Change an upload's note (undefined = remove that part); an empty note is removed. */
+  const setNote = async (path: string, change: Partial<Record<keyof MediaNote, string | undefined>>) => {
+    if (!pattern.test(path)) throw new MediaError(400, "invalid_path", "Invalid media path.");
+    const before = (await bucket.head(noteKey(path)))?.customMetadata ?? {};
+    const next: Record<string, string> = { ...before };
+    for (const [key, value] of Object.entries(change)) { if (value === undefined) delete next[key]; else next[key] = value; }
+    if (!Object.keys(next).length) { await bucket.delete?.(noteKey(path)); return {}; }
+    await bucket.put(noteKey(path), "", { httpMetadata: { contentType: "application/octet-stream" }, customMetadata: next });
+    return next as MediaNote;
+  };
+  /** The staged upload's facts (its metadata), or undefined. */
+  const staged = async (path: string) => (pattern.test(path) ? (await bucket.head(keyOf(path))) ?? undefined : undefined);
+  /** Delete a staged upload for good: its bytes, its duplicate-check record and its note. */
+  const remove = async (path: string) => {
+    const head = await staged(path);
+    if (!head) throw new MediaError(404, "not_found", "Media file does not exist.");
+    if (!bucket.delete) throw new MediaError(503, "media_not_configured", "Removing images is not available here.");
+    const sha = head.customMetadata?.sha256;
+    await bucket.delete([keyOf(path), ...(sha ? [`${INDEX}${sha}`] : []), noteKey(path)]);
+  };
+
+  return { settings, stage, list, read, serve, pattern, find, notes, setNote, staged, remove };
 };
 export type MediaStore = ReturnType<typeof createMediaStore>;
 
@@ -140,6 +190,7 @@ export const createMemoryBucket = (): MediaBucket & { keys(): string[] } => {
     put: async (key, value, options = {}) => { objects.set(key, { bytes: toBytes(value), httpMetadata: options.httpMetadata, customMetadata: options.customMetadata, uploaded: new Date() }); },
     get: async (key) => { const entry = objects.get(key); return entry ? view(entry) : null; },
     head: async (key) => { const entry = objects.get(key); return entry ? { size: entry.bytes.length, customMetadata: entry.customMetadata } : null; },
+    delete: async (keys) => { for (const key of Array.isArray(keys) ? keys : [keys]) objects.delete(key); },
     list: async ({ prefix, limit = 1000 }) => ({ objects: [...objects].filter(([key]) => key.startsWith(prefix)).slice(0, limit).map(([key, entry]) => ({ key, size: entry.bytes.length, uploaded: entry.uploaded, customMetadata: entry.customMetadata })), truncated: false }),
     keys: () => [...objects.keys()],
   };

@@ -22,6 +22,7 @@ import { INVALID_LINK_REASON, LINK_VALIDITY } from "./link.js";
 import { ACCEPTED_TYPES, adjustImage, imageFileProblem, measureImage, openAdjust, openImagePicker, prepareImage, type Adjust, type LibraryImage, type Measure, type Prepare, type PreparedImage, type Upload } from "./media.js";
 import { configBinds, fieldAt, type PreviewOwner } from "./bridge.js";
 import { createPreview, previewUrl, type Preview } from "./preview.js";
+import { openMediaScreen } from "./media-screen.js";
 import { createInspector, inspectorSections, sectionOfPath, type Inspector, type InspectorSection } from "./inspector.js";
 import { openChangePassword, peopleScreen, type ScreenKit } from "./people.js";
 import { activityScreen } from "./activity.js";
@@ -1111,7 +1112,15 @@ export const startAdmin = (options: AdminOptions) => {
 
   // ---------------------------------------------------------------- U4: Drafts (Mr Spa 18)
 
-  type PublishEntry = { id: number; at: string; who: string | null; action: string; resource: string; what: string };
+  type PublishEntry = { id: number; at: string; who: string | null; action: string; resource: string; what: string; detail?: { commitSha?: string | null } };
+  /** M11 (Mr Spa): "Oct 13" (this year) / "Oct 13, 2025". */
+  const shortDate = (iso: string) => { const date = new Date(iso); if (Number.isNaN(date.getTime())) return "—"; return date.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(date.getFullYear() === new Date(now()).getFullYear() ? {} : { year: "numeric" }) }); };
+  /**
+   * M11: My drafts, as in the Mr Spa CMS — one card per draft (its kind, its name, "N changes: a, b, c and K more",
+   * "Saved …", Live + "Unpublished changes" / Draft + "Not on the website yet"), See changes (read-only), Open,
+   * ⋯ Discard draft; "Recently published" for admins (the last 5, with the 7-character commit). The package keeps
+   * "Review & publish all" (several drafts in one publish, DESIGN §H.1).
+   */
   const draftsScreen = async (stillHere: () => boolean) => {
     const crumbsFor: Array<[string, string?]> = [["Drafts"]];
     const listed = await refreshDrafts();
@@ -1120,139 +1129,78 @@ export const startAdmin = (options: AdminOptions) => {
     const rows = listed.data.drafts;
     const [reviews, recent] = await Promise.all([reviewsOf(rows), user.role === "owner" ? api.get<{ entries: PublishEntry[] }>("/api/cms/activity?kind=publish") : Promise.resolve(undefined)]);
     if (!stillHere()) return;
-    const summary = (changes: Change[], ok: boolean) => {
-      if (!ok) return "Could not be compared with the website";
-      if (!changes.length) return "No differences from the website";
-      const places = [...new Set(changes.map((change) => change.label.split(" › ")[0]))];
-      return `${plural(changes.length, "change")}: ${places.slice(0, 3).join(", ")}${places.length > 3 ? ` and ${places.length - 3} more` : ""}`;
+    const summary = (row: DraftRow, changes: Change[], ok: boolean) => {
+      if (row.isNew) return `Not on the website yet · ${row.label || "untitled"}`;
+      if (!ok) return "Open to see the changes.";
+      if (!changes.length) return "No differences from the live version.";
+      const labels = [...new Set(changes.map((change) => change.label))];
+      return `${plural(changes.length, "change")}: ${labels.slice(0, 3).join(", ")}${labels.length > 3 ? ` and ${labels.length - 3} more` : ""}`;
+    };
+    const typeOf = (row: DraftRow) => {
+      if (row.kind === "file") return boot.files.find((entry) => entry.key === row.key)?.area ? "Across the whole site" : "Page";
+      const collection = collectionOf(row.key);
+      return row.isNew ? `New ${(collection?.itemLabel ?? "record").toLowerCase()}` : collection?.itemLabel ?? "Content";
     };
     const waiting = reviews.map(({ row, view, changes }) => {
-      const publishButton = h(doc, "button", { type: "button", class: "vc-button", "data-action": "publish-draft", disabled: row.stale || !view.ok, onclick: async () => {
-        // M6: the same two dialogs as in the editor.
-        const sections = inspectorSections(fieldsOfDraft(row) ?? {}, row.kind === "file" ? boot.files.find((entry) => entry.key === row.key)?.sections : undefined, row.label);
-        if (!(await confirmPublish(row.label, reviewGroups(changes, sections, row.label)))) return;
-        const result = await publishResource(row.resource, row.label);
-        if (!result.ok) { say(publishProblem(result), "error"); return; }
-        pending = route();
-      } }, "Publish");
       const discard = async () => {
-        if (!(await ask(`Discard your draft?\n\nThe website stays as it is. The changes saved in this ${row.label} draft are deleted.`, { confirm: "Discard draft", danger: true }))) return;
+        if (!(await ask(`Discard your draft?\n\nThe website stays as it is. The changes saved in your draft of "${row.label}" are deleted.`, { confirm: "Discard draft", danger: true }))) return;
         const result = await api.delete(urlOfDraft(row));
-        if (!result.ok) { say(result.message, "error"); return; }
-        // M6 (Mr Spa): no toast — the list shows it.
+        if (!result.ok) { say(result.message || "The draft could not be discarded.", "error"); return; }
         pending = route();
       };
-      return h(doc, "li", { class: "vc-row vc-draft-row", "data-resource": row.resource },
-        h(doc, "span", { class: "vc-row-text" },
-          h(doc, "span", { class: "vc-row-title" }, row.label, h(doc, "span", { class: "vc-row-group" }, ` · ${row.group}`)),
-          h(doc, "span", { class: "vc-row-sub vc-row-what" }, summary(changes, view.ok)),
-          h(doc, "span", { class: "vc-row-meta" }, `Saved by you · ${timeOf(row.updatedAt)}`),
-          row.stale ? h(doc, "span", { class: "vc-row-warn" }, "The website changed after this draft was started. Open it, discard the draft and make your change again.") : null),
-        h(doc, "span", { class: "vc-row-actions" }, link(hrefOfDraft(row), "Open", { class: "vc-button" }), publishButton,
+      const seeChanges = () => {
+        const sections = inspectorSections(fieldsOfDraft(row) ?? {}, row.kind === "file" ? boot.files.find((entry) => entry.key === row.key)?.sections : undefined, row.label);
+        const dialog = openDialog(doc, { title: "Changes in this draft", text: `${row.label} — saved draft compared with the website.`, body: [reviewSummary(doc, reviewGroups(changes, sections, row.label))], buttons: [{ label: "Close", value: "close" }] });
+        dialog.element.classList.add("vc-review-dialog");
+      };
+      const what = summary(row, changes, view.ok);
+      return h(doc, "li", { class: "vc-drafts-card", "data-resource": row.resource },
+        h(doc, "div", { class: "vc-drafts-what" },
+          h(doc, "span", { class: "vc-draft-type" }, typeOf(row)),
+          h(doc, "strong", { class: "vc-draft-label" }, row.label),
+          h(doc, "span", { class: "vc-draft-changes", ...(row.stale ? { "data-state": "conflict" } : {}) }, row.stale ? `${what} · The live version changed since; reload the draft before publishing.` : what),
+          h(doc, "span", { class: "vc-drafts-saved" }, `Saved ${new Date(row.updatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`)),
+        h(doc, "div", { class: "vc-draft-actions" },
+          h(doc, "span", { class: "vc-drafts-status" },
+            h(doc, "span", { class: `vc-content-status${row.isNew ? " is-draft" : ""}` }, row.isNew ? "Draft" : "Live"),
+            h(doc, "span", { class: "vc-list-status-note" }, row.isNew ? "Not on the website yet" : "Unpublished changes")),
+          !row.isNew && view.ok && changes.length ? h(doc, "button", { type: "button", class: "vc-button", "data-action": "see-changes", onclick: seeChanges }, "See changes") : null,
+          link(hrefOfDraft(row), "Open", { class: "vc-button" }),
           moreMenu(`More for ${row.label}`, [{ text: "Discard draft", danger: true, run: () => { void discard(); } }])));
     });
     const published = recent?.ok ? recent.data.entries.filter((entry) => entry.action === "succeeded").slice(0, 5) : [];
     const recentRows = published.map((entry) => {
-      const target = historyTarget(entry.resource);
-      return h(doc, "li", { class: "vc-row" },
-        h(doc, "span", { class: "vc-row-text" }, h(doc, "span", { class: "vc-row-title" }, entry.what), h(doc, "span", { class: "vc-row-meta" }, `Published by ${entry.who ?? "someone"} · ${timeOf(entry.at)}`)),
-        target ? link(adminHref.history(entry.resource), "View history", { class: "vc-link" }) : null);
+      const sha = entry.detail?.commitSha ?? "";
+      return h(doc, "li", { class: "vc-drafts-card" },
+        h(doc, "div", { class: "vc-drafts-what" }, h(doc, "strong", { class: "vc-draft-label" }, entry.what), h(doc, "span", { class: "vc-drafts-saved" }, `Published by ${entry.who ?? "someone"} · ${shortDate(entry.at)}`)),
+        h(doc, "code", { class: "vc-activity-commit", ...(sha ? { title: sha } : {}) }, sha.slice(0, 7)));
     });
     if (rows.length) actions.append(link(adminHref.review(), `Review & publish ${rows.length === 1 ? "it" : "all"}`, { class: "vc-button vc-primary", "data-action": "review-all" }));
-    const empty = h(doc, "div", { class: "vc-empty-state" }, icon(doc, "inbox"), h(doc, "h2", {}, "No drafts"), h(doc, "p", {}, "When you save a draft, it waits here until you publish or discard it."));
+    const empty = h(doc, "li", { class: "vc-drafts-empty" }, h(doc, "strong", {}, "No drafts"), h(doc, "span", {}, "When you save a draft, it waits here until you publish or discard it."));
     show({ title: "Drafts", crumbs: crumbsFor }, [
       quietHeading("Drafts"),
-      h(doc, "h2", { class: "vc-group-title" }, "Waiting to publish"),
-      rows.length ? h(doc, "ul", { class: "vc-rows" }, waiting) : empty,
-      h(doc, "p", { class: "vc-help vc-rows-note" }, "Each person keeps their own drafts. Nothing here is on the website until it is published."),
-      recentRows.length ? h(doc, "h2", { class: "vc-group-title" }, "Recently published") : h(doc, "span", { hidden: true }),
-      recentRows.length ? h(doc, "ul", { class: "vc-rows" }, recentRows) : h(doc, "span", { hidden: true }),
+      h(doc, "div", { class: "vc-drafts-view" },
+        h(doc, "section", {}, h(doc, "h2", { class: "vc-drafts-heading" }, "Waiting to publish"), h(doc, "ul", { class: "vc-drafts-list" }, rows.length ? waiting : [empty]),
+          h(doc, "p", { class: "vc-drafts-note" }, "Each person keeps their own drafts. Nothing here is on the website until it is published.")),
+        recentRows.length ? h(doc, "section", {}, h(doc, "h2", { class: "vc-drafts-heading" }, "Recently published"), h(doc, "ul", { class: "vc-drafts-list" }, recentRows)) : null),
     ]);
   };
 
   // ---------------------------------------------------------------- U4: Media (Mr Spa 17)
 
   const sizeOf = (bytes: number) => (bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
+  // M11: the Media screen of the Mr Spa CMS (src/admin/media-screen.ts).
   const mediaScreen = async (stillHere: () => boolean) => {
-    const crumbsFor: Array<[string, string?]> = [["Media"]];
-    const result = await api.get<{ uploads: LibraryImage[]; site: LibraryImage[] }>("/api/cms/media");
-    if (!stillHere()) return;
-    if (!result.ok) return failed(result, crumbsFor);
-    const uploadedSet = new Set(result.data.uploads.map((image) => image.src));
-    let images: LibraryImage[] = [...result.data.uploads.map((image) => ({ ...image, source: "upload" as const })), ...result.data.site.filter((image) => !uploadedSet.has(image.src)).map((image) => ({ ...image, source: "site" as const }))];
-    rememberImages(images);
-    let kind: "all" | "upload" | "site" = "all";
-    let selected: LibraryImage | undefined;
-    const nameOf = (image: LibraryImage) => image.name || decodeURIComponent(image.src.split("/").pop() || image.src);
-    const search = searchBox("Search by file name");
-    const count = h(doc, "p", { class: "vc-count", "aria-live": "polite" });
-    const grid = h(doc, "div", { class: "vc-picker-grid vc-media-grid", role: "list" });
-    const status = h(doc, "p", { class: "vc-picker-status", role: "status", "aria-live": "polite" });
-    const detail = h(doc, "aside", { class: "vc-media-detail", "aria-label": "Image details" });
-    const chips = h(doc, "div", { class: "vc-filters", role: "group", "aria-label": "Show" });
-    for (const [key, text] of [["all", "All"], ["upload", "Uploaded"], ["site", "Website"]] as const) chips.append(h(doc, "button", { type: "button", class: "vc-filter", "data-kind": key, "aria-pressed": String(key === kind), onclick: () => { kind = key; for (const chip of chips.querySelectorAll("button")) chip.setAttribute("aria-pressed", String(chip.dataset.kind === key)); render(); } }, text));
-    const showDetail = () => {
-      clear(detail);
-      if (!selected) { detail.append(h(doc, "p", { class: "vc-help" }, "Choose an image to see its details.")); return; }
-      const image = selected;
-      const dims = h(doc, "dd", {}, image.width && image.height ? `${image.width} × ${image.height}` : "—");
-      const picture = h(doc, "img", { src: image.src, alt: "", class: "vc-media-picture" });
-      picture.addEventListener("load", () => { if (!image.width && picture.naturalWidth) dims.textContent = `${picture.naturalWidth} × ${picture.naturalHeight}`; });
-      const address = /^https:\/\//.test(image.src) ? image.src : `${win.location.origin}${image.src}`;
-      detail.append(picture,
-        h(doc, "h2", { class: "vc-media-name" }, nameOf(image)),
-        h(doc, "p", { class: "vc-help" }, image.source === "upload" ? "Uploaded image" : "Website image"),
-        h(doc, "div", { class: "vc-media-actions" }, h(doc, "button", { type: "button", class: "vc-button", onclick: async () => { say((await kit.copy?.(address)) ? "Image link copied" : `Image link: ${address}`); } }, "Copy link")),
-        h(doc, "dl", { class: "vc-media-facts" },
-          h(doc, "dt", {}, "Dimensions"), dims,
-          h(doc, "dt", {}, "Format"), h(doc, "dd", {}, (image.src.split(/[?#]/)[0].split(".").pop() ?? "").toUpperCase() || "—"),
-          h(doc, "dt", {}, "File size"), h(doc, "dd", {}, image.bytes ? sizeOf(image.bytes) : "—")));
-    };
-    const render = () => {
-      const query = search.value.trim().toLowerCase();
-      const shown = images.filter((image) => (kind === "all" || image.source === kind) && (!query || nameOf(image).toLowerCase().includes(query) || image.src.toLowerCase().includes(query)));
-      clear(grid);
-      for (const image of shown) {
-        const on = selected?.src === image.src;
-        grid.append(h(doc, "div", { role: "listitem" }, h(doc, "button", { type: "button", class: `vc-tile${on ? " vc-tile-selected" : ""}`, "data-src": image.src, "aria-pressed": String(on), "aria-label": nameOf(image), onclick: () => { selected = image; render(); showDetail(); } },
-          h(doc, "span", { class: "vc-tile-picture" }, h(doc, "img", { src: image.src, alt: "", loading: "lazy", decoding: "async" }), h(doc, "span", { class: "vc-tile-check", "aria-hidden": "true" }, "✓")),
-          h(doc, "span", { class: "vc-tile-name" }, nameOf(image)),
-          h(doc, "span", { class: "vc-tile-meta" }, [image.width && image.height ? `${image.width} × ${image.height}` : "", image.bytes ? sizeOf(image.bytes) : ""].filter(Boolean).join(" · ")))));
-      }
-      if (!shown.length) grid.append(h(doc, "p", { class: "vc-note" }, images.length ? "No image matches." : "No images yet."));
-      count.textContent = plural(shown.length, "image");
-    };
-    search.addEventListener("input", render);
-    // Upload: each file is made smaller and WebP in the browser first, like in the image sheet.
-    if (media.uploads) {
-      const fileInput = h(doc, "input", { type: "file", accept: ACCEPTED_TYPES.join(","), multiple: true, class: "vc-sr-only", id: "vc-media-file", "aria-label": "Images to upload" });
-      fileInput.addEventListener("change", async () => {
-        const files = [...(fileInput.files ?? [])];
-        let added = 0;
-        for (const file of files) {
-          status.textContent = `Uploading ${file.name}…`;
-          let prepared: PreparedImage;
-          try { prepared = await prepare(file); } catch (error) { status.textContent = `${file.name}: ${(error as Error).message}`; continue; }
-          if (prepared.blob.size > media.maxBytes) { status.textContent = `${file.name} is still larger than ${sizeOf(media.maxBytes)} after preparing it.`; continue; }
-          const done = await uploadImage(prepared);
-          if (!done.ok) { status.textContent = `${file.name}: ${done.message}`; continue; }
-          images = [done.image, ...images.filter((image) => image.src !== done.image.src)];
-          selected = done.image;
-          added += 1;
-        }
-        fileInput.value = "";
-        if (added) { status.textContent = ""; render(); showDetail(); say(added === 1 ? "Image uploaded." : `${added} images uploaded.`, "success"); }
-      });
-      actions.append(fileInput, h(doc, "label", { for: "vc-media-file", class: "vc-button vc-primary", role: "button", tabindex: "0", onkeydown: (event: Event) => { const key = (event as KeyboardEvent).key; if (key === "Enter" || key === " ") { event.preventDefault(); fileInput.click(); } } }, icon(doc, "upload"), "Upload images"));
-    }
-    render();
-    showDetail();
-    show({ title: "Media", crumbs: crumbsFor, leave: () => body.classList.remove("vc-body-wide") }, [
-      quietHeading("Media"),
-      h(doc, "div", { class: "vc-media" },
-        h(doc, "div", { class: "vc-media-main" }, h(doc, "div", { class: "vc-toolbar" }, search, chips, count), media.uploads ? status : h(doc, "p", { class: "vc-note" }, "Uploading is not set up on this site (its image storage is missing)."), grid),
-        detail),
-    ]);
+    const screen = openMediaScreen({
+      doc, api, media, prepare, upload: uploadImage, adjust, measure, groups: imageGroups, actions, stillHere, remember: rememberImages,
+      say: (text, tone, action) => say(text, tone ?? "info", action), ask: (text, choice) => ask(text, choice),
+      openPlace: (resource, path) => {
+        const [kind, key, ...rest] = resource.split(":");
+        if (path) pendingFocus = path;
+        void go(kind === "file" ? adminHref.file(key) : adminHref.item(key, rest.join(":")));
+      },
+    });
+    show({ title: "Media", crumbs: [["Media"]], leave: () => { screen.leave(); body.classList.remove("vc-body-wide"); } }, [quietHeading("Media"), screen.element]);
     body.classList.add("vc-body-wide");
   };
 

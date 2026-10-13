@@ -509,9 +509,23 @@ try {
   check("navigation counts my drafts", (await page.locator(".vc-badge").textContent()) === "6");
   await page.locator(".vc-nav-list").getByRole("link", { name: /Drafts/ }).click();
   // U4: Drafts lists them (what changes, when); "Review & publish all" opens the review of all of them.
-  await page.locator(".vc-draft-row").first().waitFor();
-  check("drafts: one row per draft with what it changes", (await page.locator(".vc-draft-row").count()) === 6 && /\d+ changes?: /.test(await page.locator(".vc-draft-row .vc-row-what").first().innerText()));
+  await page.locator(".vc-drafts-card").first().waitFor();
+  check("drafts (M11): one card per draft — its kind, what it changes, Saved …, Live / Draft", (await page.locator(".vc-drafts-card").count()) === 6 && /\d+ changes?: /.test(await page.locator(".vc-drafts-card .vc-draft-changes").first().innerText()) && /^Saved /.test(await page.locator(".vc-drafts-saved").first().innerText()) && (await page.locator(".vc-drafts-status").first().innerText()).replace(/\s+/g, " ").trim().length > 0);
+  await page.locator('.vc-drafts-card [data-action="see-changes"]').first().click();
+  const changesDialog = page.getByRole("alertdialog", { name: "Changes in this draft" });
+  check("drafts (M11): See changes is the review, read-only (Close)", /saved draft compared with the website\./.test(await changesDialog.innerText()) && assertEqual(await changesDialog.locator(".vc-dialog-actions button").allTextContents(), ["Close"]));
+  await changesDialog.getByRole("button", { name: "Close" }).click();
   await shot("u4-drafts");
+  // M11: Media — the uploads (not published yet, used by a draft), the detail panel.
+  await page.locator(".vc-nav-list").getByRole("link", { name: "Media" }).click();
+  await page.locator(".vc-media-library .vc-sheet-tile").first().waitFor();
+  await page.locator(".vc-media-library .vc-sheet-tile").first().click();
+  await page.locator(".vc-media-panel-state", { hasText: "Not published yet" }).waitFor();
+  const mediaPanel = await page.locator(".vc-media-panel").innerText();
+  check("media (M11): an upload not published yet, used by a saved draft — the panel says so; no Remove", /Image details/.test(mediaPanel) && /Not published yet/.test(mediaPanel) && /Saved draft, not published yet/.test(mediaPanel) && /Replace it there first to remove or archive it\./.test(mediaPanel) && (await page.locator(".vc-media-panel").getByRole("button", { name: "Remove image" }).count()) === 0, mediaPanel);
+  await shot("m11-media");
+  await page.locator(".vc-nav-list").getByRole("link", { name: /Drafts/ }).click();
+  await page.locator(".vc-drafts-card").first().waitFor();
   await page.getByRole("link", { name: "Review & publish all" }).click();
   await page.locator(".vc-review-card").first().waitFor();
   const reviewText = await page.locator(".vc-review-list").innerText();

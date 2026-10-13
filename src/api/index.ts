@@ -40,8 +40,8 @@ import { parseMarkdown } from "../writer/markdown.js";
 import { recordPath, writeArrayItem, writeFile, writeMarkdownItem } from "../writer/index.js";
 import { sameValue, type WriteResult } from "../writer/json.js";
 import { buildState, GitPublishError, type CommitAuthor, type FileContent, type GitPublisher } from "./github.js";
-import { MediaError, repoPathOf, uploadPathsIn, type MediaStore } from "../media/index.js";
-import { addUsage, imagesOfRecord, type ImageUsage } from "../media/usage.js";
+import { cleanDisplayName, MediaError, repoPathOf, uploadPathsIn, type MediaStore } from "../media/index.js";
+import { addUsage, imagePlacesOfRecord, type ImageUsage } from "../media/usage.js";
 import { addressOfName, mapImageValues, nameOfAddress, uploadNamesIn, uploadTail, type ImageNames } from "../media/names.js";
 import type { Identify, Identity, RateLimiter } from "../auth/index.js";
 
@@ -556,17 +556,17 @@ export const createCmsApi = (deps: CmsApiDeps) => {
    * M5: where the live content uses each image (by address), for the image sheet — group "Pages" for a file, the
    * collection's name (the one it is a tab of, when `under`) for a record. Only what this person may open.
    */
-  const imageUsage = async (user: Identity): Promise<ImageUsage> => {
+  const imageUsage = async (user?: Identity): Promise<ImageUsage> => {
     const usage: ImageUsage = {};
     for (const file of config.files) {
-      if (!mayOpen(user, file)) continue;
+      if (user && !mayOpen(user, file)) continue;
       const record = await reader.file(file.key);
       if (!record) continue;
       const target: Target = { kind: "file", file, resource: `file:${file.key}`, label: file.label };
-      addUsage(usage, imagesOfRecord(file.fields, await toAddresses(target, record.data)), { label: file.label, group: "Pages" });
+      addUsage(usage, imagePlacesOfRecord(file.fields, await toAddresses(target, record.data)), { label: file.label, group: "Pages", resource: target.resource });
     }
     for (const collection of config.collections) {
-      if (!mayOpen(user, collection)) continue;
+      if (user && !mayOpen(user, collection)) continue;
       const parent = collection.under ? config.collections.find((entry) => entry.key === collection.under) : undefined;
       for (const record of await reader.items(collection.key)) {
         const parsed = parseResourceId(record.resource);
@@ -574,16 +574,119 @@ export const createCmsApi = (deps: CmsApiDeps) => {
         const target: Target = { kind: "item", collection, id, resource: record.resource, label: collection.itemLabel };
         const data = await toAddresses(target, record.data);
         const body = collection.store.kind === "markdown-dir" && data && typeof data === "object" && typeof (data as Record<string, unknown>).body === "string" ? String((data as Record<string, unknown>).body) : undefined;
-        addUsage(usage, imagesOfRecord(collection.fields, data, body), { label: recordLabel(collection, data, id), group: (parent ?? collection).label });
+        addUsage(usage, imagePlacesOfRecord(collection.fields, data, body), { label: recordLabel(collection, data, id), group: (parent ?? collection).label, resource: record.resource });
       }
     }
     return usage;
   };
 
+  // ---------------------------------------------------------------- M11: Media — names, archive, remove (the Mr Spa CMS's rules)
+
+  /** "2026/10/chair-1a2b3c4d": the part of an upload's address that both its address and its name hold (drafts keep either). */
+  const uploadStem = (media: NonNullable<typeof deps.media>, src: string) => { const match = media.pattern.exec(src); return match ? `${match[1]}/${match[2]}/${match[3]}-${match[4]}` : undefined; };
+  /** Is the upload on the website (built into it, or committed on the publish branch)? Throws when it cannot be told. */
+  const isPublished = async (media: NonNullable<typeof deps.media>, src: string) => {
+    if ((deps.siteImages ?? []).some((image) => image.src === src)) return true;
+    // Without GitHub (local development) the built site's images are the website; with it, a failure to read is "unknown".
+    const publisher = deps.publisher;
+    if (!publisher?.exists) return false;
+    const path = repoPath(media, src);
+    return (await publisher.exists((await publisher.head()).sha, [path])).has(path);
+  };
+  const repoPath = (media: NonNullable<typeof deps.media>, src: string) => `${media.settings.dir}${src.slice(media.settings.base.length)}`;
+  /** Where an image is used now: the live content (everything, whoever asks) and every person's saved drafts. */
+  const usedBy = async (media: NonNullable<typeof deps.media>, src: string) => {
+    const places = (await imageUsage())[src] ?? [];
+    const stem = uploadStem(media, src);
+    const drafts = stem && deps.drafts ? await deps.drafts.using(stem) : [];
+    return { places, drafts };
+  };
+  const needUpload = (media: NonNullable<typeof deps.media>, value: unknown) => {
+    if (typeof value !== "string" || !media.pattern.test(value)) fail(400, "invalid_path", "Only uploaded images can be changed here.");
+    return value as string;
+  };
+
+  /** The detail panel's "Used on": the live places of the person's reach, and the saved drafts (any person) that use it. */
+  const mediaUsage = async (request: Request, user: Identity) => {
+    const src = new URL(request.url).searchParams.get("src") ?? "";
+    if (!src.startsWith("/")) fail(400, "invalid_path", "Invalid image address.");
+    const places = (await imageUsage(user))[src] ?? [];
+    const stem = deps.media ? uploadStem(deps.media, src) : undefined;
+    let drafts: Array<{ resource: string; label: string; mine: boolean }> = [];
+    let draftsKnown = true;
+    if (stem && deps.drafts) {
+      try { drafts = (await deps.drafts.using(stem)).map((row) => ({ resource: row.resource, label: row.label, mine: row.userId === user.userId })); } catch { draftsKnown = false; }
+    }
+    return json({ src, places, drafts, draftsKnown });
+  };
+
+  const renameMedia = async (request: Request) => {
+    const media = need(deps.media, "media");
+    const body = await readBody(request) as { src?: unknown; name?: unknown };
+    const src = needUpload(media, body.src);
+    const name = cleanDisplayName(body.name);
+    if (!name) fail(400, "invalid_name", "Enter an image name up to 120 characters.");
+    await media.setNote(src, { displayName: name });
+    return json({ src, displayName: name });
+  };
+
+  const archiveMedia = async (request: Request, user: Identity, archived: boolean) => {
+    const media = need(deps.media, "media");
+    const body = await readBody(request) as { src?: unknown };
+    const src = needUpload(media, body.src);
+    if (!archived) { await media.setNote(src, { archivedAt: undefined, archivedBy: undefined }); return json({ src, archived: false }); }
+    let published: boolean; let used: Awaited<ReturnType<typeof usedBy>>;
+    try { published = await isPublished(media, src); used = await usedBy(media, src); } catch { return fail(503, "usage_unknown", "Could not check whether this image is still used, so it was not archived. Please try again."); }
+    if (!published) fail(409, "not_published", "This image is not published yet. Remove it instead.");
+    if (used.places.length || used.drafts.length) fail(409, "image_in_use", "This image is still used, so it cannot be archived.");
+    const archivedAt = now();
+    await media.setNote(src, { archivedAt, archivedBy: user.userId });
+    return json({ src, archived: true, archivedAt });
+  };
+
+  const removeMedia = async (request: Request) => {
+    const media = need(deps.media, "media");
+    const src = needUpload(media, new URL(request.url).searchParams.get("src"));
+    if (!(await media.staged(src))) fail(404, "not_found", "Media file does not exist.");
+    let published: boolean; let used: Awaited<ReturnType<typeof usedBy>>;
+    try { published = await isPublished(media, src); used = await usedBy(media, src); } catch { return fail(503, "usage_unknown", "Could not check whether this image is still used, so it was not deleted. Please try again."); }
+    if (published) fail(409, "published", "This image is published on the website. Archive it instead.");
+    if (used.places.length || used.drafts.length) fail(409, "image_in_use", "This media file is still referenced by CMS content and cannot be deleted.");
+    try { await media.remove(src); } catch (error) { if (error instanceof MediaError) fail(error.status, error.code, error.message); throw error; }
+    return json({ src, removed: true });
+  };
+
+  /** Remove unused images…: uploads never published, used nowhere, uploaded more than 30 days ago. */
+  const CLEANUP_AGE = 30 * 24 * 3600 * 1000;
+  const cleanupMedia = async (request: Request) => {
+    const media = need(deps.media, "media");
+    const body = await readBody(request) as { dryRun?: unknown };
+    const dryRun = body.dryRun !== false;
+    const candidates: string[] = []; let keptRecent = 0;
+    try {
+      const usage = await imageUsage();
+      let cursor: string | undefined;
+      const uploads: Array<{ src: string; uploadedAt: string }> = [];
+      do { const page = await media.list({ ...(cursor ? { cursor } : {}), limit: 1000 }); uploads.push(...page.images); cursor = page.cursor; } while (cursor);
+      const nowMs = Date.parse(now());
+      for (const upload of uploads) {
+        if (usage[upload.src]?.length) continue;
+        const stem = uploadStem(media, upload.src);
+        if (stem && deps.drafts && (await deps.drafts.using(stem)).length) continue;
+        if (await isPublished(media, upload.src)) continue;
+        if (nowMs - Date.parse(upload.uploadedAt) > CLEANUP_AGE) candidates.push(upload.src); else keptRecent += 1;
+      }
+    } catch { return fail(503, "usage_unknown", "Could not check which images are still used, so nothing was removed. Please try again."); }
+    if (!dryRun) for (const src of candidates) await media.remove(src);
+    return json({ dryRun, removed: candidates.length, keptRecent });
+  };
+
   const listMedia = async (request: Request, user: Identity) => {
     const cursor = new URL(request.url).searchParams.get("cursor") ?? undefined;
     const uploads = deps.media ? await deps.media.list({ cursor }) : { images: [], cursor: undefined };
-    return json({ uploads: uploads.images, cursor: uploads.cursor ?? null, site: cursor ? [] : deps.siteImages ?? [], ...(cursor ? {} : { usage: await imageUsage(user) }), uploadsEnabled: Boolean(deps.media), base: deps.media?.settings.base ?? null, maxBytes: deps.media?.settings.maxBytes ?? null });
+    // M11: each upload's display name and archive date (its note).
+    const notes = deps.media && !cursor ? await deps.media.notes() : new Map();
+    return json({ ...(cursor ? {} : { notes: Object.fromEntries(notes) }), uploads: uploads.images, cursor: uploads.cursor ?? null, site: cursor ? [] : deps.siteImages ?? [], ...(cursor ? {} : { usage: await imageUsage(user) }), uploadsEnabled: Boolean(deps.media), base: deps.media?.settings.base ?? null, maxBytes: deps.media?.settings.maxBytes ?? null });
   };
 
   const uploadMedia = async (request: Request, user: Identity) => {
@@ -761,7 +864,13 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     { pattern: /^\/history$/, methods: { GET: (request, user) => history(request, user) } },
     { pattern: /^\/history\/version$/, methods: { GET: (request, user) => historyVersion(request, user) } },
     { pattern: /^\/history\/restore$/, methods: { POST: (request, user) => historyRestore(request, user) } },
-    { pattern: /^\/media$/, methods: { GET: (request, user) => listMedia(request, user), POST: (request, user) => uploadMedia(request, user) } },
+    { pattern: /^\/media$/, methods: { GET: (request, user) => listMedia(request, user), POST: (request, user) => uploadMedia(request, user), DELETE: (request) => removeMedia(request) } },
+    // M11: the Media screen.
+    { pattern: /^\/media\/usage$/, methods: { GET: (request, user) => mediaUsage(request, user) } },
+    { pattern: /^\/media\/name$/, methods: { POST: (request) => renameMedia(request) } },
+    { pattern: /^\/media\/archive$/, methods: { POST: (request, user) => archiveMedia(request, user, true) } },
+    { pattern: /^\/media\/unarchive$/, methods: { POST: (request, user) => archiveMedia(request, user, false) } },
+    { pattern: /^\/media\/cleanup$/, methods: { POST: (request) => cleanupMedia(request) } },
     { pattern: /^\/live-version$/, methods: { GET: async (request) => json({ liveVersion: await getLiveVersion(), branch: config.repo.branch, ...(await buildOf(request)) }) } },
     { pattern: /^\/publish$/, methods: { POST: (request, user) => publish(request, user) } },
     { pattern: /^\/files\/([a-z][a-z0-9-]*)$/, methods: {
