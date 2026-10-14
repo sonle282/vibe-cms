@@ -108,6 +108,10 @@ test("P19 at build — redirects (Mr Spa's rules): form, 301 only, duplicates, o
     "(warning) public/_redirects: 1 of 1 dynamic rules used.",
   ]);
   assert.deepEqual(messages(checkContent(catalog([redirectsCheck()]), site(content()))), []);
+  // A record shown somewhere else: its own address may redirect (Mr Spa: /category/pedicure-chairs/ → /pedicure-chairs/).
+  const moved = { ...content(), "public/_redirects": "/products/chair-two/ /chairs/two/ 301\n" };
+  assert.deepEqual(messages(checkContent(catalog([redirectsCheck()]), site(moved))), ["public/_redirects line 1: /products/chair-two/ is a Live page — a redirect would hide it"]);
+  assert.deepEqual(messages(checkContent(catalog([redirectsCheck({ allow: ["/products/chair-two"] })]), site(moved))), []);
   assert.deepEqual(messages(checkContent(catalog([redirectsCheck({ file: "public/none" })]), site(content()))), [], "no file: nothing to check");
 });
 

@@ -88,8 +88,8 @@ export const checkValue = (ctx: Ctx, field: Field, value: unknown, path: string)
       const named = (name: unknown, at: string) => { if (ctx.imageNames && typeof name === "string" && name && !isImageName(ctx.imageNames, name)) add(ctx.errors, at, `${describe(name)} is not an image of the site's manifest`, "choose an image from the library"); };
       if (typeof value === "string") { named(value, path); return; }
       if (!isRecord(value) || typeof value.src !== "string" || !value.src) { add(ctx.errors, path, `expected an image path or { "src": … }, got ${describe(value)}`, 'e.g. "/images/hero.jpg" or { "src": "/images/hero.jpg", "alt": "…" }'); return; }
-      for (const key of Object.keys(value)) if (!["src", "alt", "mobile"].includes(key)) add(ctx.warnings, `${path}.${key}`, "is not part of an image", "images have src, alt, mobile");
-      for (const key of ["alt", "mobile"] as const) if (value[key] !== undefined && typeof value[key] !== "string") add(ctx.errors, `${path}.${key}`, `expected text, got ${describe(value[key])}`);
+      for (const key of Object.keys(value)) if (!["src", "alt", "mobile", ...(field.caption ? ["caption"] : [])].includes(key)) add(ctx.warnings, `${path}.${key}`, "is not part of an image", key === "caption" ? 'add caption: true to the image field' : "images have src, alt, mobile (and caption with caption: true)");
+      for (const key of ["alt", "mobile", "caption"] as const) if (value[key] !== undefined && typeof value[key] !== "string") add(ctx.errors, `${path}.${key}`, `expected text, got ${describe(value[key])}`);
       if (field.alt && !value.alt) add(ctx.warnings, `${path}.alt`, "is empty", "describe the image for people using screen readers");
       named(value.src, `${path}.src`);
       named(value.mobile, `${path}.mobile`);

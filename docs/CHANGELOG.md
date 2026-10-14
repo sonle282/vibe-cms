@@ -11,8 +11,21 @@ migration that is not automatic. Each entry says what a site has to do.
   "privacy-policy", … } }`); each record holds its id too, and the build says so when it does not match its key.
 - `pointer: "projects"` on "json-array" and "json-object": the list (or object) inside the file's object; the other
   keys of the file stay as they are.
+- `pointer: "header"` on a file: the record is that key of the file's object, so one JSON file can hold several
+  records — several file entries share it (Mr Spa: site-settings.json → Header, Footer, Search & sharing, Popup;
+  policies.json → each policy under Pages › Policies). Each has its own version: publishing Header does not make a
+  Footer draft stale. Entries on one file may not overlap, nor share it with a whole-file entry.
+- `keep: ["sizeGuide", "hero.imageAlt", "items[].id"]` on a file or collection: keys the site owns, kept as they are
+  and not shown, without a "not in cms.config" warning (a declared field cannot be kept).
 - The store, the build check, the API (read, save, publish, history, Hide / Show) and the format-keeping writer use
   them: a publish changes only the record's lines (line endings and the rest of the file byte for byte).
+- `f.image({ caption: true })`: the image holds a caption too (`{ src, alt, caption }`), edited under it.
+- `redirectsCheck({ allow: ["/category/pedicure-chairs"] })`: sources that may redirect although they look like a
+  record's page (a record the site shows at another address).
+- `npx vibe-cms check` does a round-trip: every record written back unchanged by the writer publish uses must give
+  its file byte for byte ("… records round-trip byte for byte (N files)"); a record that would not is an error.
+  On Mr Spa's content: 172 records in 13 files, all 83 products among them, byte for byte.
+- Fixed: a record whose undeclared status field was `status.archived` stopped the build.
 
 ## 0.25.0 — 2026-10-14 (M8–M10, M13, M14, P19: the Mr Spa CMS's lists, record and document editors, menus and prices; admin and site plugins)
 

@@ -64,5 +64,20 @@ export const withStoreRecord = (store: JsonStore, data: unknown, id: string, rec
   return go(data, 0);
 };
 
+/** P20: a file's record — the file's value, or the one at its `pointer`. */
+export const fileRecord = (file: { pointer?: string }, data: unknown): unknown =>
+  !file.pointer ? data : file.pointer.split(".").reduce<unknown>((at, key) => (isRecord(at) ? at[key] : undefined), data);
+/** P20: the file's whole value with its record (at `pointer`) replaced. */
+export const withFileRecord = (file: { pointer?: string }, data: unknown, record: unknown): unknown => {
+  if (!file.pointer) return record;
+  const keys = file.pointer.split(".");
+  const go = (at: unknown, depth: number): unknown => {
+    const object = isRecord(at) ? { ...at } : {};
+    object[keys[depth]] = depth === keys.length - 1 ? record : go(object[keys[depth]], depth + 1);
+    return object;
+  };
+  return go(data, 0);
+};
+
 /** An empty file of a store (a new site's first record). */
 export const emptyStoreFile = (store: JsonStore) => (store.pointer ? "{}\n" : store.kind === "json-array" ? "[]\n" : "{}\n");

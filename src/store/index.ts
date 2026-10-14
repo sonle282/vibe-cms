@@ -6,7 +6,7 @@
  *                   on KV is not safe); KV keeps sessions only.
  * Nothing here writes to GitHub (P5).
  */
-import { storeRecords } from "../config/store.js";
+import { fileRecord, storeRecords } from "../config/store.js";
 import type { CmsConfig } from "../config/index.js";
 import { parseMarkdown } from "../writer/markdown.js";
 
@@ -66,7 +66,10 @@ export const createContentReader = (config: CmsConfig, source: ContentSource) =>
       if (!file) throw new RangeError(`no file "${key}"`);
       const text = await source.read(file.path);
       if (text === undefined) return undefined;
-      return { resource: resourceId({ kind: "file", key }), path: file.path, text, data: JSON.parse(text.replace(/^﻿/, "")), version: await textVersion(text) };
+      if (!file.pointer) return { resource: resourceId({ kind: "file", key }), path: file.path, text, data: JSON.parse(text.replace(/^﻿/, "")), version: await textVersion(text) };
+      // P20: one record of a shared file — its own value and version (another record's edit does not make it stale).
+      const data = fileRecord(file, JSON.parse(text.replace(/^﻿/, "")));
+      return data === undefined ? undefined : { resource: resourceId({ kind: "file", key }), path: file.path, text, data, version: await valueVersion(data) };
     },
     async items(key: string): Promise<SourceRecord[]> {
       const entry = collection(key);

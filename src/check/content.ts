@@ -12,7 +12,7 @@ import { toTree } from "../config/tree.js";
 import { add, checkRecord, describe, isRecord, at, type ValueCtx } from "./values.js";
 import { sanitizeRecord, unsafeOnly } from "./rich-text.js";
 import { ruleContext, runRules } from "./rules.js";
-import { storeIdField, storeRecords } from "../config/store.js";
+import { fileRecord, storeIdField, storeRecords } from "../config/store.js";
 import { pluginFiles, runSiteChecks, siteContext } from "./site.js";
 import { mediaSettings } from "../media/index.js";
 import { imageNamesOf, type ImageManifest } from "../media/names.js";
@@ -91,6 +91,17 @@ const loadCollection = (ctx: Ctx, root: string, collection: CmsCollection, index
   return { collection, records };
 };
 
+/** P20: the "not in cms.config" warnings of a record's `keep` keys go (the site owns them). */
+const keepOnly = (ctx: Ctx, from: number, recordPath: string, keep: readonly string[] | undefined) => {
+  if (!keep?.length) return;
+  const kept = ctx.warnings.slice(from).filter((warning) => {
+    if (!warning.message.startsWith("is not in cms.config") || !warning.path.startsWith(`${recordPath}.`)) return true;
+    const key = warning.path.slice(recordPath.length + 1).replace(/\[\d+\]/g, "[]");
+    return !keep.some((entry) => key === entry || key.startsWith(`${entry}.`) || key.startsWith(`${entry}[`));
+  });
+  ctx.warnings.splice(from, ctx.warnings.length - from, ...kept);
+};
+
 /** root = the project root (the folder of cms.config.ts). */
 export const checkContent = (config: CmsConfig, root: string): CheckResult => {
   const ctx: Ctx = { errors: [], warnings: [], ids: new Map(), ...(config.site.phone?.country ? { phoneCountry: config.site.phone.country } : {}) };
@@ -99,12 +110,17 @@ export const checkContent = (config: CmsConfig, root: string): CheckResult => {
   const loaded = config.collections.map((collection, index) => loadCollection(ctx, root, collection, index));
   const fileData = new Map<string, unknown>();
   config.files.forEach((file, index) => {
-    const data = readJson(ctx, root, file.path, `files[${index}].path`);
-    if (data === undefined) return;
+    const whole = readJson(ctx, root, file.path, `files[${index}].path`);
+    if (whole === undefined) return;
+    // P20: a record at a key of the file.
+    const data = fileRecord(file, whole);
+    if (data === undefined) { add(ctx.errors, file.path, `has no "${file.pointer}" (files[${index}].pointer)`, "add the key, or fix the pointer"); return; }
     if (!isRecord(data)) { add(ctx.errors, file.path, `expected an object ({ … }), got ${describe(data)}`); return; }
     fileData.set(file.key, data);
     ctx.root = data; ctx.picks = undefined; // P12g: pick choices come from this record
+    const before = ctx.warnings.length;
     checkRecord(ctx, data, toTree(file.fields), file.path);
+    keepOnly(ctx, before, file.path, file.keep);
     unsafeHtml(ctx, file.fields, data, file.path);
   });
   for (const entry of loaded) {
@@ -113,11 +129,13 @@ export const checkContent = (config: CmsConfig, root: string): CheckResult => {
     const system = [storeIdField(collection.store), ...(collection.status ? [collection.status.field] : []), ...(collection.store.kind === "markdown-dir" ? ["body"] : [])];
     for (const record of entry.records) {
       ctx.root = isRecord(record.data) ? record.data : undefined; ctx.picks = undefined;
+      const before = ctx.warnings.length;
       checkRecord(ctx, record.data, toTree(collection.fields), record.path, system);
+      keepOnly(ctx, before, record.path, collection.keep);
       unsafeHtml(ctx, collection.fields, record.data, record.path, collection.store.kind === "markdown-dir");
       if (collection.status && !collection.fields[collection.status.field]) {
         const status = record.data[collection.status.field];
-        if (status !== undefined && status !== collection.status.live && status !== collection.status.draft) add(ctx.errors, at(record.path, collection.status.field), `${describe(status)} is neither live (${JSON.stringify(collection.status.live)}) nor draft (${JSON.stringify(collection.status.draft)})`);
+        if (status !== undefined && status !== collection.status.live && status !== collection.status.draft && status !== collection.status.archived) add(ctx.errors, at(record.path, collection.status.field), `${describe(status)} is neither live (${JSON.stringify(collection.status.live)}) nor draft (${JSON.stringify(collection.status.draft)})`);
       }
     }
   }

@@ -132,6 +132,11 @@ export type RedirectsOptions = {
   trailingSlash?: boolean;
   /** Cloudflare's limits: 2,000 exact + 100 dynamic rules (a warning from 90 %). */
   limits?: { exact: number; dynamic: number };
+  /**
+   * Sources that may redirect though they look like a record's page — a record the site shows somewhere else (Mr Spa:
+   * the "pedicure-chairs" category lives at /pedicure-chairs/, so /category/pedicure-chairs/ redirects there).
+   */
+  allow?: readonly string[];
 };
 
 /**
@@ -181,7 +186,7 @@ export const redirectsCheck = (options: RedirectsOptions = {}): CmsPlugin => {
         else {
           exact += 1;
           if (firstDynamic) say(line, `exact rule after the first dynamic rule (line ${firstDynamic}) — it would be dynamic`);
-          if (live.has(source) || live.has(slashed(source))) say(line, `${source} is a Live page — a redirect would hide it`);
+          if (!(options.allow ?? []).some((allowed) => slashed(allowed) === slashed(source)) && (live.has(source) || live.has(slashed(source)))) say(line, `${source} is a Live page — a redirect would hide it`);
         }
         if (destination.startsWith("/") && !/[*:]/.test(destination)) {
           const path = destination.split(/[?#]/)[0];

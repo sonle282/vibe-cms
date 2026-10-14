@@ -13,7 +13,7 @@ export type Locked = "admin" | "owner";
 /** P12b: a whole file / collection only admins see and change (editors get 403; it is not in their navigation). */
 export type Access = "admin" | "owner";
 export { isAdminOnly } from "./roles.js";
-export { emptyStoreFile, isJsonStore, storeHolder, storeIdField, storePath, storeRecords, withStoreRecord, type CollectionStore, type JsonStore } from "./store.js";
+export { emptyStoreFile, fileRecord, isJsonStore, withFileRecord, storeHolder, storeIdField, storePath, storeRecords, withStoreRecord, type CollectionStore, type JsonStore } from "./store.js";
 
 type Base = {
   label: string;
@@ -44,7 +44,8 @@ export type TextField = Base & { type: "text"; maxLength?: number; multiline?: b
   format?: "price" };
 /** P12d: `allow` = the tags this field may hold (a part of the rich-text allow-list, e.g. ["em", "br"]); the toolbar follows. */
 export type RichTextField = Base & { type: "richText"; allow?: readonly string[] };
-export type ImageField = Base & { type: "image"; alt?: boolean; mobile?: boolean };
+/** P20: `caption` = the image also holds a caption ({ src, alt, caption }), edited under it. */
+export type ImageField = Base & { type: "image"; alt?: boolean; mobile?: boolean; caption?: boolean };
 export type SelectField = Base & { type: "select"; options: readonly string[] };
 /** Content: [{ days: [1, 2, 3, 4, 5], label?, open: "09:00", close: "19:00" }, { days: [0], closed: true }] (0 = Sunday). */
 export type HoursField = Base & { type: "hours" };
@@ -139,7 +140,18 @@ export type CmsFile = {
   key: string;
   label: string;
   path: string;
+  /**
+   * P20: the record is the value at this key path of the file's object ("header", "privacy-policy"), so one JSON file
+   * can hold several records (Mr Spa: site-settings.json → Header, Footer, Search & sharing, Popup). Only that key is
+   * written; each one is its own resource with its own version.
+   */
+  pointer?: string;
   format: "json";
+  /**
+   * P20: keys the site owns that the CMS keeps as they are and does not show ("sizeGuide", "hero.imageAlt",
+   * "items[].id"): no "not in cms.config" warning for them. Saving keeps them untouched.
+   */
+  keep?: readonly string[];
   preview?: string;
   /**
    * M7 (the Mr Spa CMS's Pages screen): `group` = its group on Pages ("Main pages" when not set; e.g. "Policies");
@@ -196,6 +208,11 @@ export type CmsCollection = {
   preview?: string;
   /** M8: the list screen (the Mr Spa CMS's Products / Projects / Blog lists). */
   list?: CollectionList;
+  /**
+   * P20: keys the site owns that the CMS keeps as they are and does not show ("sizeGuide", "hero.imageAlt",
+   * "items[].id"): no "not in cms.config" warning for them. Saving keeps them untouched.
+   */
+  keep?: readonly string[];
   /**
    * M9: how a record is edited. "record" = the Mr Spa CMS's record editor (sections on the left, the form, and on the
    * right "On the website" / "Ready to publish" / Duplicate / Hide from website); "page" = the page editor with the
