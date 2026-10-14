@@ -2,7 +2,8 @@
  * M15 `vibe-cms init`: a first draft of cms.config.ts from the site's own JSON content, for a site that has no CMS yet
  * (design §H.1 point 4, track C). It reads every *.json under src/data and src/content (or --data), and writes:
  *
- * - a JSON object → a file (a page): key and label from the file name; `preview` when a page of that name exists;
+ * - a JSON object → a file (a page): key and label from the file name; `preview` when a page of that name exists
+ *   ("/about/", or "/about" when astro.config builds pages as files: build.format "file");
  *   `group: "Policies"` for policy / privacy / terms files; `area: true` for header / footer / popup / banner files;
  *   `layout: "seo"` for a file named seo with a title and a description; sections = its top-level groups;
  * - a JSON list of records that all have a unique id / slug / key → a collection (store json-array);
@@ -172,7 +173,7 @@ const phoneValues = (value: unknown, key = ""): string[] => (typeof value === "s
 
 const readSiteFacts = (root: string, options: InitOptions) => {
   const pkg = existsSync(join(root, "package.json")) ? (JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as { name?: string }) : {};
-  const astro = ["astro.config.mjs", "astro.config.ts", "astro.config.js"].map((file) => join(root, file)).find(existsSync);
+  const astro = astroConfigFile(root);
   const siteUrl = astro ? /\bsite\s*:\s*["'`](https?:\/\/[^"'`]+)["'`]/.exec(readFileSync(astro, "utf8"))?.[1] : undefined;
   const git = options.git ?? readGit(root);
   const fromRemote = git.remote ? /github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(git.remote) : null;
@@ -210,10 +211,17 @@ const resourceKey = (name: string, taken: Set<string>) => {
   taken.add(unique);
   return unique;
 };
-const pagePath = (root: string, key: string) => {
+/** The site's astro.config file, if it has one. */
+const astroConfigFile = (root: string) => ["astro.config.mjs", "astro.config.ts", "astro.config.js"].map((file) => join(root, file)).find(existsSync);
+/** Astro's `build: { format: "file" }` writes /about.html, served at /about — no trailing slash on the page addresses. */
+export const usesFileFormat = (root: string) => {
+  const file = astroConfigFile(root);
+  return file ? /\bformat\s*:\s*["'`]file["'`]/.test(readFileSync(file, "utf8")) : false;
+};
+const pagePath = (root: string, key: string, fileFormat = usesFileFormat(root)) => {
   if (/^(home|index|homepage|site|global|settings)$/.test(key)) return "/";
   const pages = join(root, "src", "pages");
-  for (const ext of [".astro", ".md", ".mdx", ".html"]) if (existsSync(join(pages, `${key}${ext}`)) || existsSync(join(pages, key, `index${ext}`))) return `/${key}/`;
+  for (const ext of [".astro", ".md", ".mdx", ".html"]) if (existsSync(join(pages, `${key}${ext}`)) || existsSync(join(pages, key, `index${ext}`))) return fileFormat ? `/${key}` : `/${key}/`;
   return undefined;
 };
 const ID_FIELDS = ["id", "slug", "key"];
@@ -336,7 +344,7 @@ export const previewHints = (root: string, drafts: Array<FileDraft | CollectionD
 
 // ---------------------------------------------------------------- the draft as code
 
-type Facts = ReturnType<typeof readSiteFacts> & { phoneCountry?: string; contentDirs?: string[] };
+type Facts = ReturnType<typeof readSiteFacts> & { phoneCountry?: string; contentDirs?: string[]; fileFormat?: boolean };
 const configCode = (facts: Facts, files: FileDraft[], collections: CollectionDraft[], notes: string[]) => {
   const out: string[] = [];
   out.push(`// Vibe CMS — what this site's editors can change. A FIRST DRAFT written by \`npx vibe-cms init\` (vibe-cms ${packageVersion()}, ${new Date().toISOString().slice(0, 10)}):`);
@@ -355,7 +363,7 @@ const configCode = (facts: Facts, files: FileDraft[], collections: CollectionDra
   out.push("  files: [");
   for (const file of files) {
     const head = [`key: ${q(file.key)}`, `label: ${q(file.label)}`, `path: ${q(file.path)}`, 'format: "json"', ...(file.preview ? [`preview: ${q(file.preview)}`] : []), ...(file.group ? [`group: ${q(file.group)}`] : []), ...(file.area ? ["area: true", 'description: "TODO: what it holds, in a few words"'] : []), ...(file.seo ? ['layout: "seo"', `seo: { ${Object.entries(file.seo).map(([name, field]) => `${name}: ${q(field)}`).join(", ")} }`] : [])];
-    out.push(`    {${file.preview ? "" : " // TODO: preview: the address of the page that shows it (e.g. \"/about/\")"}`);
+    out.push(`    {${file.preview ? "" : ` // TODO: preview: the address of the page that shows it (e.g. "/about${facts.fileFormat ? "" : "/"}")`}`);
     out.push(`      ${head.join(", ")},`);
     if (file.sections?.length) out.push(`      sections: [${file.sections.map((section) => `{ key: ${q(section.key)}, label: ${q(section.label)}, fields: [${section.fields.map(q).join(", ")}] }`).join(", ")}],`);
     out.push("      fields: {");
@@ -368,7 +376,7 @@ const configCode = (facts: Facts, files: FileDraft[], collections: CollectionDra
   for (const collection of collections) {
     out.push("    {");
     out.push(`      key: ${q(collection.key)}, label: ${q(collection.label)}, itemLabel: ${q(collection.itemLabel)},`);
-    out.push(`      store: { kind: "json-array", path: ${q(collection.path)}, idField: ${q(collection.idField)} }, // TODO: preview: the address of one record's page (e.g. "/blog/{${collection.idField}}/"), if it has one`);
+    out.push(`      store: { kind: "json-array", path: ${q(collection.path)}, idField: ${q(collection.idField)} }, // TODO: preview: the address of one record's page (e.g. "/blog/{${collection.idField}}${facts.fileFormat ? "" : "/"}"), if it has one`);
     out.push("      fields: {");
     out.push(fieldsCode(collection.spec, "        ").replace(/\n$/, ""));
     out.push("      },");
@@ -419,7 +427,7 @@ export const init = (options: InitOptions) => {
   // Content outside src/data and src/content is allowed by naming its folders (contentDirs).
   const inDefault = (dir: string) => DEFAULT_CONTENT_DIRS.some((base) => dir === base || dir.startsWith(`${base}/`));
   const contentDirs = dirs.map((dir) => dir.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "")).filter((dir) => !inDefault(dir));
-  const facts = { ...readSiteFacts(root, options), phoneCountry, ...(contentDirs.length ? { contentDirs } : {}) };
+  const facts = { ...readSiteFacts(root, options), phoneCountry, ...(contentDirs.length ? { contentDirs } : {}), fileFormat: usesFileFormat(root) };
   const files = drafts.filter((draft): draft is FileDraft => draft.kind === "file" && draft.spec.length > 0);
   const collections = drafts.filter((draft): draft is CollectionDraft => draft.kind === "collection" && draft.spec.length > 0);
   // Only a draft the package itself accepts is written.
