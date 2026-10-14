@@ -2,7 +2,7 @@
 
 > Nguồn: [DESIGN.md](DESIGN.md) §I. Quy tắc: 1 task = 1 commit; mỗi task REPORT → DỪNG chờ review. Test của gói **không đọc
 > dữ liệu site khách**. Task có sửa repo site: đầu task `git status` sạch + pull nhánh production của site; có thay đổi
-> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-13 (Track A xong: v0.23.0 · M7, M11, M12, Innovate chạy gói — P17 / P18; Novelle 0.22.0 — novelle PR #4 · 3 track A → C → B, DESIGN §H.4–H.5; Track C xong: v0.24.0 · M15, Modern có CMS — P23–P25, thời gian tới publish đầu ≈ 3,3 giờ làm; Track B: M8, M9, M10, M13, M14, P19 xong, release **v0.25.0**; P20 phần gói xong, release **v0.26.0**; tiếp theo P20 phía Mr Spa).
+> lạ → DỪNG hỏi. Chi tiết riêng từng site nằm trong tài liệu private của dự án đó. Cập nhật lần cuối: 2026-10-13 (Track A xong: v0.23.0 · M7, M11, M12, Innovate chạy gói — P17 / P18; Novelle 0.22.0 — novelle PR #4 · 3 track A → C → B, DESIGN §H.4–H.5; Track C xong: v0.24.0 · M15, Modern có CMS — P23–P25, thời gian tới publish đầu ≈ 3,3 giờ làm; Track B: M8, M9, M10, M13, M14, P19 xong, release **v0.25.0**; P20 phần gói xong, release **v0.26.0** + **v0.26.1** (bỏ peer vite: cài gói không đổi Vite của site); tiếp theo P20 phía Mr Spa).
 
 | Task | Việc | Giờ | Trạng thái |
 |---|---|---:|---|

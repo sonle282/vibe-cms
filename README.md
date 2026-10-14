@@ -5,7 +5,7 @@ saving and publishing (commits to the site's GitHub repo). Everything is describ
 Target: Astro 7 on **Cloudflare Workers** (`@astrojs/cloudflare`). The source is public to read; it is not
 open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY.md).
 
-> Status: **0.26.0 · M1–M15, P19, P20 stores (the Mr Spa CMS: editor, lists, record and document editors, Pages, Media, Drafts, People, Activity, Version history, menus, prices; `vibe-cms init`; admin and site plugins).** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
+> Status: **0.26.1 · M1–M15, P19, P20 stores (the Mr Spa CMS: editor, lists, record and document editors, Pages, Media, Drafts, People, Activity, Version history, menus, prices; `vibe-cms init`; admin and site plugins).** Done: config + content checks at build, store (drafts in D1), format-keeping writer, locked
 > fields on the server, CMS API + one-commit GitHub publishing, sign-in, and the editor at `/admin` (lists, forms
 > generated from `cms.config`, a visual rich-text editor, a live preview of the draft on the real page, drafts, review
 > of changes, publish, live status, People, My account), rich text cleaned on the server, images (upload to R2, picker,
@@ -15,7 +15,7 @@ open source — see [LICENSE](LICENSE). Security reports: [SECURITY.md](SECURITY
 > into a new copy. Next: moving the first sites onto the package (P13–P18; either-fields and images by name, P12g,
 > before the second), then
 > moving them onto the package (P13–P18;
-> [docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). First release: **v0.19.0** (2026-10-12); latest: **v0.26.0** (2026-10-14).
+> [docs/TRACKER.md](docs/TRACKER.md), design: [docs/DESIGN.md](docs/DESIGN.md)). First release: **v0.19.0** (2026-10-12); latest: **v0.26.1** (2026-10-14).
 
 ## Install in a site (5 steps, no token)
 
@@ -25,11 +25,11 @@ that version — no `.npmrc`, no `NODE_AUTH_TOKEN`, on your machine or in Cloudf
 1. **Install**
 
    ```bash
-   npm i https://github.com/sonle282/vibe-cms/releases/download/v0.26.0/vibe-cms-0.26.0.tgz @astrojs/cloudflare
+   npm i https://github.com/sonle282/vibe-cms/releases/download/v0.26.1/vibe-cms-0.26.1.tgz @astrojs/cloudflare
    ```
 
    `package.json` then holds
-   `"@sonle282/vibe-cms": "https://github.com/sonle282/vibe-cms/releases/download/v0.26.0/vibe-cms-0.26.0.tgz"`
+   `"@sonle282/vibe-cms": "https://github.com/sonle282/vibe-cms/releases/download/v0.26.1/vibe-cms-0.26.1.tgz"`
    (and `package-lock.json` its checksum). To upgrade later: `npx vibe-cms update [version]` (below).
 
 2. **Add it to `astro.config.mjs`** (public pages keep prerendering; only the CMS routes run on demand):
