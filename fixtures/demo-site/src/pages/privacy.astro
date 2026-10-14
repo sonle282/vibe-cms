@@ -1,0 +1,13 @@
+---
+import Base from "../layouts/Base.astro";
+import privacy from "../data/privacy.json";
+---
+<Base title="Privacy policy">
+  <h1 data-cms-field="title">{privacy.title}</h1>
+  {privacy.sections.map((section) => (
+    <section>
+      <h2>{section.heading}</h2>
+      {section.paragraphs.map((text) => <p>{text}</p>)}
+    </section>
+  ))}
+</Base>

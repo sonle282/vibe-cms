@@ -85,6 +85,16 @@ export type ContentRule = (value: Record<string, unknown>, content: RuleContext)
  */
 export type Section = { key: string; label: string; fields: string[] };
 
+/**
+ * M10: `layout: "document"` = the Mr Spa CMS's Blog post / Policy editor — the text on a sheet of paper (the
+ * formatting bar on top, the cover, the title in large type, the body) and on the right "On the website", the other
+ * fields ("Post details" / "Page details"), "In Google" and "Ready to publish". The keys name the fields: `title` (a
+ * text field), `body` (rich text, or "body" of a Markdown collection), `cover` (an image field). `plain: true` = the
+ * Policy page: no formatting bar — the body's text boxes on the paper (a text field or a list of sections) and a word
+ * count.
+ */
+export type DocumentLayout = { title: string; body: string; cover?: string; plain?: boolean };
+
 /** One file = one record (a page, the salon info). */
 export type CmsFile = {
   key: string;
@@ -111,8 +121,10 @@ export type CmsFile = {
    * M7: `layout: "seo"` = the Mr Spa CMS's Search & sharing screen (Search results · Sharing image · the Google and
    * share previews), with `seo` naming its fields (keys or paths): `title`, `description`, optional `siteName`, `image`.
    */
-  layout?: "seo";
+  layout?: "seo" | "document";
   seo?: { title: string; description: string; siteName?: string; image?: string };
+  /** M10: the document layout's fields (see DocumentLayout). */
+  document?: DocumentLayout;
   sections?: Section[];
   access?: Access;
   rules?: ContentRule;
@@ -146,7 +158,9 @@ export type CmsCollection = {
    * right "On the website" / "Ready to publish" / Duplicate / Hide from website); "page" = the page editor with the
    * record's page on the canvas. Default: "page" when the collection has a `preview`, "record" otherwise.
    */
-  layout?: "record" | "page";
+  layout?: "record" | "page" | "document";
+  /** M10: the document layout's fields (see DocumentLayout). */
+  document?: DocumentLayout;
   /** M9: the record editor's sections (cards and the list on the left), as for files. */
   sections?: Section[];
   /**

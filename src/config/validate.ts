@@ -350,7 +350,7 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     config.files.forEach((entry, index) => {
       const at = `files[${index}]`;
       if (!isRecord(entry)) { err(context, at, "must be an object", '{ key, label, path, format: "json", fields }'); return; }
-      const FILE_SETTINGS = ["key", "label", "path", "format", "preview", "sections", "access", "rules", "fields", "group", "area", "description", "outline", "toggle", "layout", "seo"];
+      const FILE_SETTINGS = ["key", "label", "path", "format", "preview", "sections", "access", "rules", "fields", "group", "area", "description", "outline", "toggle", "layout", "seo", "document"];
       for (const key of Object.keys(entry)) if (!FILE_SETTINGS.includes(key)) err(context, `${at}.${key}`, "unknown setting", `allowed: ${FILE_SETTINGS.join(", ")}`);
       checkRules(context, entry, at);
       checkAccess(context, entry, at);
@@ -373,7 +373,7 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     collections.forEach((entry, index) => {
       const at = `collections[${index}]`;
       if (!isRecord(entry)) { err(context, at, "must be an object", "{ key, label, itemLabel, store, fields }"); return; }
-      for (const key of Object.keys(entry)) if (!["key", "label", "itemLabel", "icon", "under", "store", "status", "preview", "order", "access", "fixed", "rules", "list", "labels", "layout", "sections", "ready", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, itemLabel, icon, under, store, status, preview, order, access, fixed, rules, fields");
+      for (const key of Object.keys(entry)) if (!["key", "label", "itemLabel", "icon", "under", "store", "status", "preview", "order", "access", "fixed", "rules", "list", "labels", "layout", "sections", "ready", "document", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, itemLabel, icon, under, store, status, preview, order, access, fixed, rules, fields");
       if (entry.under !== undefined) {
         const parent = collections.find((other) => isRecord(other) && other.key === entry.under);
         if (!filled(entry.under) || !isRecord(parent)) err(context, `${at}.under`, `${show(entry.under)} is not a collection of this config`, 'the key of the collection whose tabs it joins, e.g. "products"');
@@ -425,7 +425,8 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
       }
       checkCollectionList(context, entry, at);
       // M9: the record editor.
-      if (entry.layout !== undefined && entry.layout !== "record" && entry.layout !== "page") err(context, `${at}.layout`, `${show(entry.layout)} is not a layout of a collection`, 'use "record" or "page"');
+      if (entry.layout !== undefined && entry.layout !== "record" && entry.layout !== "page" && entry.layout !== "document") err(context, `${at}.layout`, `${show(entry.layout)} is not a layout of a collection`, 'use "record", "page" or "document"');
+      checkDocument(context, entry, at, isRecord(entry.store) && entry.store.kind === "markdown-dir");
       if (entry.layout === "page" && !filled(entry.preview)) err(context, `${at}.layout`, '"page" shows the record\'s page, so it needs a preview', 'add preview: "/<page>/{id}/", or use "record"');
       checkSections(context, entry, at);
       if (entry.ready !== undefined) {
@@ -446,6 +447,22 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
   if (context.oldAdminName.length) warn(context, context.oldAdminName[0], `"owner" is the old name of "admin" (${context.oldAdminName.length} ${context.oldAdminName.length === 1 ? "place" : "places"}: ${context.oldAdminName.slice(0, 5).join(", ")}${context.oldAdminName.length > 5 ? ", …" : ""})`, 'write locked: "admin" / access: "admin" — it works the same');
   return { errors: context.errors, warnings: context.warnings };
 };
+
+/** M10: `layout: "document"` and its `document: { title, body, cover?, plain? }`. */
+function checkDocument(context: Context, entry: Record<string, unknown>, at: string, markdown: boolean) {
+  const document = entry.document;
+  if (entry.layout !== "document") { if (document !== undefined) err(context, `${at}.document`, 'is only for layout "document"', 'add layout: "document", or remove document'); return; }
+  if (!isRecord(document)) { err(context, `${at}.document`, 'required with layout "document" — which fields are the title and the body', '{ title: "title", body: "body", cover: "cover" }'); return; }
+  for (const key of Object.keys(document)) if (!["title", "body", "cover", "plain"].includes(key)) err(context, `${at}.document.${key}`, "unknown setting", "document has title, body, cover and plain");
+  if (document.plain !== undefined && typeof document.plain !== "boolean") err(context, `${at}.document.plain`, "must be true or false");
+  const plain = document.plain === true;
+  if (fieldTypeAt(entry.fields, String(document.title ?? "")) !== "text") err(context, `${at}.document.title`, `${show(document.title)} is not a text field`, 'e.g. title: "title"');
+  const bodyType = markdown && document.body === "body" && !(isRecord(entry.fields) && "body" in entry.fields) ? "richText" : isRecord(entry.fields) && typeof document.body === "string" && isRecord(entry.fields[document.body]) ? String((entry.fields[document.body] as Record<string, unknown>).type) : undefined;
+  if (!bodyType) err(context, `${at}.document.body`, `${show(document.body)} is not a field`, markdown ? 'the Markdown text is body: "body"' : 'e.g. body: "content" with content: f.richText(…)');
+  else if (!plain && bodyType !== "richText") err(context, `${at}.document.body`, "the paper holds formatted text: use a richText field", "or plain: true for plain text (a policy)");
+  else if (plain && bodyType !== "text" && bodyType !== "list") err(context, `${at}.document.body`, "plain text is a text field or a list of sections", "or remove plain for formatted text");
+  if (document.cover !== undefined && fieldTypeAt(entry.fields, String(document.cover)) !== "image") err(context, `${at}.document.cover`, `${show(document.cover)} is not an image field`, 'e.g. cover: "cover"');
+}
 
 /** M7: the type of the field at a key or a path into objects ("popup.enabled", "seo.title"), or undefined. */
 const fieldTypeAt = (fields: unknown, name: string): string | undefined => {
@@ -525,7 +542,8 @@ function checkPageSettings(context: Context, entry: Record<string, unknown>, at:
   if (entry.area === true && entry.group !== undefined) err(context, `${at}.group`, "an area is always under “Across the whole site”", "remove group, or area");
   if (entry.outline !== undefined && !filled(entry.outline)) err(context, `${at}.outline`, "must be a CSS selector of the area on the page", 'e.g. outline: "header"');
   if (entry.toggle !== undefined && fieldTypeAt(entry.fields, String(entry.toggle)) !== "toggle") err(context, `${at}.toggle`, `${show(entry.toggle)} is not a toggle field of this file`, 'e.g. toggle: "enabled" with enabled: f.toggle({ label: "Show on website" })');
-  if (entry.layout !== undefined && entry.layout !== "seo") err(context, `${at}.layout`, `unknown layout ${show(entry.layout)}`, 'only "seo" (Search & sharing)');
+  if (entry.layout !== undefined && entry.layout !== "seo" && entry.layout !== "document") err(context, `${at}.layout`, `unknown layout ${show(entry.layout)}`, '"seo" (Search & sharing) or "document" (a policy page)');
+  checkDocument(context, entry, at, false);
   if (entry.layout === "seo") {
     const seo = entry.seo;
     if (!isRecord(seo)) { err(context, `${at}.seo`, "required with layout \"seo\" — which fields are the title and the description", '{ title: "title", description: "description", siteName: "siteName", image: "image" }'); return; }

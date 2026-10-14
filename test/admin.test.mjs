@@ -258,7 +258,7 @@ test("M7 shell: an area — “Across the whole site”, what it holds, the swit
   assert.equal(h.state(), "1 unsaved change");
   const off = await shell({ content: { ...files, "src/data/notice.json": JSON.stringify({ enabled: false, text: "Hi" }) } });
   await off.go("/admin/pages");
-  assert.deepEqual([...off.root.querySelectorAll(".vc-pages-row")].map((row) => [row.querySelector("strong").textContent, row.querySelector(".vc-content-status").textContent]), [["Salon info", "Live"], ["Notice", "Off"], ["Search & sharing", "Live"]]);
+  assert.deepEqual([...off.root.querySelectorAll(".vc-pages-row")].map((row) => [row.querySelector("strong").textContent, row.querySelector(".vc-content-status").textContent]), [["Salon info", "Live"], ["Notice", "Off"], ["Search & sharing", "Live"], ["Privacy policy", "Live"]]);
   await off.go("/admin/pages/notice");
   const offBox = off.root.querySelector('[data-path="enabled"] input[role="switch"]');
   assert.equal(off.root.querySelector('[data-path="enabled"] .vc-switch-text span').textContent, "Off — visitors don’t see a notice.");
@@ -314,9 +314,10 @@ test("shell: Pages lists the files (U4: one row each, with its address and statu
   assert.deepEqual(groups, [
     ["Main pages", ["Salon info/"]],
     ["Across the whole siteChanges here show on every page", ["NoticeA short message at the top of every page", "Search & sharingHow the site looks in Google and when shared"]],
+    ["Policies", ["Privacy policy/privacy/"]],
   ]);
-  assert.deepEqual([...h.root.querySelectorAll(".vc-content-status")].map((pill) => pill.textContent), ["Live", "Live", "Live"]);
-  assert.equal(h.root.querySelector(".vc-pages-count").textContent, "1 page · 2 site-wide areas");
+  assert.deepEqual([...h.root.querySelectorAll(".vc-content-status")].map((pill) => pill.textContent), ["Live", "Live", "Live", "Live"]);
+  assert.equal(h.root.querySelector(".vc-pages-count").textContent, "2 pages · 2 site-wide areas");
   const find = h.root.querySelector('.vc-pages-search input');
   assert.equal(find.placeholder, "Find a page");
   type(h.window, find, "google");
@@ -715,22 +716,19 @@ test("M6 shell: unsaved edits are kept in this browser (400 ms after typing, 24 
   } finally { await h.close(); }
 });
 
-test("P8c shell: unsafe HTML typed in rich text is removed on save; the form shows what was saved and says where", async () => {
+test("P8c shell: unsafe HTML that gets into rich text (pasted, dropped) never reaches the draft", async () => {
   const h = await shell();
   await h.go("/admin/pages/site");
-  // Typed as HTML in the editor's source view ("Edit HTML").
-  h.root.querySelector('[data-path="hero.text"] .vc-tool-source').click();
-  const text = h.root.querySelector('[data-path="hero.text"] textarea');
-  assert.equal(text.hidden, false);
-  type(h.window, text, '<p>Hello</p><script>alert(1)</script><a href="javascript:alert(2)">x</a>');
+  // M10: no "Edit HTML" box (Mr Spa has none) — what lands in the visual editor is cleaned, and the server cleans again.
+  const area = h.root.querySelector('[data-path="hero.text"] .vc-rich-area');
+  area.innerHTML = '<p>Hello</p><script>alert(1)</script><a href="javascript:alert(2)">x</a>';
+  area.dispatchEvent(new h.window.Event("input", { bubbles: true }));
   h.button("Save draft").click();
   for (let i = 0; i < 40 && h.state() !== "Draft saved · not live yet"; i += 1) await settle();
   assert.equal(h.state(), "Draft saved · not live yet", "nothing left unsaved: the form holds what the server kept");
-  assert.equal(text.value, "<p>Hello</p><a>x</a>");
-  const banner = h.root.querySelector(".vc-banner");
-  assert.equal(banner.hidden, false);
-  assert.match(banner.textContent, /Saved, with some HTML removed for safety: Banner \(hero\.text\) — <script>, a\[href=javascript:\]/);
-  assert.equal((await h.drafts.get("usr_owner", "file:site")).content.hero.text, "<p>Hello</p><a>x</a>");
+  const saved = (await h.drafts.get("usr_owner", "file:site")).content.hero.text;
+  assert.match(saved, /^<p>Hello<\/p>/);
+  assert.doesNotMatch(saved, /script|javascript/i);
 });
 
 // ------------------------------------------------------------------ P10: images
@@ -998,16 +996,18 @@ test("P10 shell: without the bucket the sheet says uploading is not set up; an e
 // ------------------------------------------------------------------ P9: preview pane
 
 test("P9 / M1 shell: the record's page is on the canvas (cmsPreview=1); Laptop / Tablet / Mobile in the top bar, remembered", async () => {
+  // Posts with their own page on the canvas (the demo edits them on the paper, M10).
+  const pageConfig = { ...config, collections: config.collections.map(({ document: _paper, ...collection }) => (collection.key === "posts" ? { ...collection, layout: "page" } : { ...collection, ...(_paper ? { document: _paper } : {}) })) };
   const window = new Window({ url: "http://localhost/admin", settings: { disableIframePageLoading: true } });
   const document = window.document;
   const user = { userId: "usr_owner", role: "owner" };
-  const api = createCmsApi({ config, source: createBundledSource(files), drafts: createMemoryDraftStore(), audit: createMemoryAuditLog(), identify: () => user });
+  const api = createCmsApi({ config: pageConfig, source: createBundledSource(files), drafts: createMemoryDraftStore(), audit: createMemoryAuditLog(), identify: () => user });
   const fetch = async (url, init = {}) => api.handle(new Request(new URL(url, "http://localhost"), { ...init, headers: { ...(init.headers ?? {}), origin: "http://localhost" } }));
   const store = new Map();
   const storage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
   const root = document.createElement("div");
   document.body.append(root);
-  const app = startAdmin({ root, boot: adminBoot(config, { id: user.userId, username: "owner", displayName: "Owner", role: "owner" }), fetch, window, confirm: () => true, storage });
+  const app = startAdmin({ root, boot: adminBoot(pageConfig, { id: user.userId, username: "owner", displayName: "Owner", role: "owner" }), fetch, window, confirm: () => true, storage });
   await app.ready;
   const go = async (path) => { await app.go(path); await settle(); await app.idle(); };
   await go("/admin/pages/site");

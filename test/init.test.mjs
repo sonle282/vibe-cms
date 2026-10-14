@@ -171,7 +171,7 @@ test("M15 init on the demo site: a draft that loads and checks with no warning",
   cpSync(join(demo, "astro.config.mjs"), join(root, "astro.config.mjs"));
   const result = await cli(root, ["--repo", "demo/demo-site"]);
   assert.equal(result.code, 0, result.err);
-  assert.match(result.out, /3 pages \(files\), 2 collections/);
+  assert.match(result.out, /4 pages \(files\), 2 collections/);
   const warnings = [];
   const loaded = await checkSite(join(root, "cms.config.ts"), { onWarnings: (list) => warnings.push(...list) });
   assert.deepEqual(warnings, []);

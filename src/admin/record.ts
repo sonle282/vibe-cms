@@ -65,6 +65,10 @@ export const createRecordSide = (doc: Document, options: {
   noun: string; nounTitle: string;
   duplicate?: () => void;
   visibility?: (archive: boolean) => void;
+  /** M10: cards between "On the website" and "Ready to publish" (Post details, In Google). */
+  extra?: Node[];
+  /** M10: the column's name ("Post details"); "<Item> status" by default. */
+  label?: string;
 }) => {
   const pill = h(doc, "span", { class: "vc-content-status" });
   const link = h(doc, "a", { class: "vc-record-side-url", target: "_blank", rel: "noopener", hidden: true });
@@ -79,7 +83,7 @@ export const createRecordSide = (doc: Document, options: {
   const visibility = options.visibility ? h(doc, "button", { type: "button", class: "vc-record-side-action is-danger", onclick: () => options.visibility?.(!archived) }, "Hide from website") : null;
   const visibilityNote = options.visibility ? h(doc, "p", { class: "vc-record-side-note" }, `Hiding keeps the ${options.noun} in the CMS as Archived. You can show it again any time.`) : null;
   const actions = h(doc, "div", { class: "vc-record-side-actions" }, duplicate, visibility, visibilityNote);
-  const element = h(doc, "aside", { class: "vc-record-side", "aria-label": `${options.nounTitle} status` }, web, ready, actions);
+  const element = h(doc, "aside", { class: "vc-record-side", "aria-label": options.label ?? `${options.nounTitle} status` }, web, ...(options.extra ?? []), ready, actions);
 
   const update = (state: WebState, items: ReadyItem[], blocked: string | undefined) => {
     pill.className = `vc-content-status${state.isNew || state.status === "draft" ? " is-draft" : state.status === "archived" ? " is-archived" : ""}`;
