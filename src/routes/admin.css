@@ -1151,3 +1151,7 @@ a.vc-row-menu-item { display: flex; align-items: center; color: var(--text); tex
 .vc-same-edit { padding: 0; border: 0; background: none; color: var(--accent); font: 600 14px/1 var(--font-ui); cursor: pointer; }
 .vc-same-edit:hover { text-decoration: underline; }
 .vc-same-edit:focus-visible { outline: var(--focus-ring); outline-offset: 2px; border-radius: 4px; }
+
+/* ---------------------------------------------------------------- M14: the site's admin plugins (panels; a plugin that failed) */
+.vc-list-panels { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin: 0 0 16px; }
+.vc-plugin-problem { margin: 0; color: var(--danger); font-size: 13px; line-height: 1.5; }

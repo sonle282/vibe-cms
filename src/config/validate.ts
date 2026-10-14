@@ -38,7 +38,7 @@ const FIELD_KEY = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
 const GITHUB_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
 const GITHUB_REPO = /^[A-Za-z0-9._-]{1,100}$/;
 
-const BASE_OPTIONS = ["type", "label", "help", "required", "locked", "bind", "sameAs"];
+const BASE_OPTIONS = ["type", "label", "help", "required", "locked", "bind", "sameAs", "control"];
 const FIELD_OPTIONS: Record<string, string[]> = {
   text: ["maxLength", "multiline", "pattern", "patternHint", "tokens", "from", "format"],
   richText: ["allow"],
@@ -55,7 +55,7 @@ const FIELD_OPTIONS: Record<string, string[]> = {
   link: [],
   phone: [],
 };
-const TOP_LEVEL = ["configVersion", "site", "repo", "roles", "contentDirs", "files", "collections", "publish", "media"];
+const TOP_LEVEL = ["configVersion", "site", "repo", "roles", "contentDirs", "files", "collections", "publish", "media", "admin"];
 
 /** Why a git branch name is invalid (git check-ref-format rules), or undefined when it is fine. */
 export const branchProblem = (name: string): string | undefined => {
@@ -112,6 +112,7 @@ export const checkField = (context: Context, field: unknown, at: string, depth: 
   if (!filled(field.label)) err(context, `${at}.label`, "required — the name editors see", 'e.g. label: "Phone"');
   if (field.help !== undefined && typeof field.help !== "string") err(context, `${at}.help`, "must be text");
   if (field.bind !== undefined && !filled(field.bind)) err(context, `${at}.bind`, "must be a CSS selector", 'e.g. bind: ".hero h1"');
+  if (field.control !== undefined && (typeof field.control !== "string" || !/^[a-z][a-z0-9-]*$/.test(field.control))) err(context, `${at}.control`, `${show(field.control)} is not a control name`, 'the name an admin plugin gives it, e.g. control: "call-for-price"');
   checkBoolean(context, field, "required", at);
   if (field.locked === "owner") context.oldAdminName.push(`${at}.locked`);
   else if (field.locked !== undefined && field.locked !== "admin") err(context, `${at}.locked`, `only "admin" is allowed (got ${show(field.locked)})`, 'write locked: "admin" or remove it');
@@ -248,6 +249,16 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
   const context: Context = { errors: [], warnings: [], collectionKeys: new Set(), oldAdminName: [] };
   if (!isRecord(config)) { err(context, "(default export)", "must be defineCmsConfig({ … })", "export default defineCmsConfig({ configVersion: 1, … })"); return context; }
   for (const key of Object.keys(config)) if (!TOP_LEVEL.includes(key)) err(context, key, "unknown setting", `allowed: ${TOP_LEVEL.join(", ")}`);
+  // M14: the site's admin plugins (browser modules bundled into /admin).
+  if (config.admin !== undefined) {
+    if (!isRecord(config.admin)) err(context, "admin", "must be { plugins: [...] }", 'admin: { plugins: ["./cms/admin-plugin.ts"] }');
+    else {
+      for (const key of Object.keys(config.admin)) if (key !== "plugins") err(context, `admin.${key}`, "unknown setting", "allowed: plugins");
+      const plugins = config.admin.plugins;
+      if (plugins !== undefined && !Array.isArray(plugins)) err(context, "admin.plugins", "must be a list of modules", '["./cms/admin-plugin.ts"]');
+      else if (Array.isArray(plugins)) plugins.forEach((entry, index) => { if (!filled(entry)) err(context, `admin.plugins[${index}]`, "must be a module: a path from cms.config.ts or a package name", '"./cms/admin-plugin.ts"'); });
+    }
+  }
   if (config.configVersion !== 1) err(context, "configVersion", `must be 1 (got ${show(config.configVersion)})`);
 
   const site = config.site;

@@ -28,6 +28,7 @@ import { openChangePassword, peopleScreen, rowMenu, type ScreenKit } from "./peo
 import { activityScreen } from "./activity.js";
 import { openHistory, type HistoryTarget } from "./history.js";
 import { createRecordSide, createRecordToc } from "./record.js";
+import { pluginControls, pluginPanels, type AdminPlugin } from "./plugins.js";
 import { createDetailsCard, createDocBar, createGoogleCard, excerptOf, googlePath, plainTextOf, stringsIn, wordCount } from "./document.js";
 import { ADMIN_BASE, adminHref, legacyHashPath, parseAdminPath, type AdminRoute } from "./routes.js";
 import { applyLeafChanges, buildFailedText, deriveSaveState, elapsedText, publishBlockReason, unsavedLeafChanges, type LeafChange, type PublishedState, type SaveState } from "./save-state.js";
@@ -56,6 +57,8 @@ export type AdminOptions = {
   measureImage?: Measure;
   /** P9: show the page in the canvas when the content has one (default; tests may turn it off). */
   preview?: boolean;
+  /** M14: the site's admin plugins (cms.config.ts `admin.plugins`, bundled into /admin). */
+  plugins?: readonly AdminPlugin[];
 };
 
 /**
@@ -130,6 +133,9 @@ export const startAdmin = (options: AdminOptions) => {
   const doc = root.ownerDocument;
   // M5: uploads report their progress (XMLHttpRequest) unless a fetch is passed in (tests).
   const api: Client = createClient(options.fetch ?? ((input, init) => win.fetch(input, init)), options.fetch ? undefined : xhrUpload(win));
+  // M14: the site's own controls and panels.
+  const plugins = options.plugins ?? [];
+  const controls = pluginControls(plugins);
   const ask = (message: string, choice?: ConfirmOptions) => Promise.resolve(options.confirm ? options.confirm(message, choice) : confirmDialog(doc, message, choice));
   /** U3: leaving with unsaved changes — "Keep editing" is the safe choice, "Discard changes" is red. */
   const askLeave = (count: number) => ask(leaveMessage(count), { cancel: "Keep editing", confirm: "Discard changes", danger: true });
@@ -719,11 +725,15 @@ export const startAdmin = (options: AdminOptions) => {
     search.addEventListener("input", render);
     render();
     if (!collection.fixed) actions.append(h(doc, "a", { href: adminHref.newItem(key), class: "vc-button vc-primary" }, icon(doc, "plus"), collection.labels?.add ?? `Add ${one}`));
+    // M14: the site's panels above the list, told the rows.
+    const listPanels = pluginPanels(doc, plugins, "list", { collection: key });
+    for (const panel of listPanels) panel.update({ rows: items.map((item) => ({ id: item.id, label: item.label, ...(item.status ? { status: item.status } : {}), ...(item.values ? { values: item.values } : {}) })) });
     // Mr Spa: the list uses the whole workspace (38 px / 48 px around it), not the editor's column.
     body.classList.add("vc-body-list");
     show({ title: collection.label, crumbs: crumbsFor, leave: () => body.classList.remove("vc-body-list") }, [
       quietHeading(collection.label),
       tabsOf(collection) ?? h(doc, "span", { hidden: true }),
+      listPanels.length ? h(doc, "div", { class: "vc-list-panels" }, ...listPanels.map((panel) => panel.element)) : h(doc, "span", { hidden: true }),
       h(doc, "div", { class: "vc-list-toolbar" }, h(doc, "label", { class: "vc-list-search" }, h(doc, "span", { class: "vc-sr-only" }, search.placeholder), search), ...filterControls, count),
       h(doc, "div", { class: "vc-workspace-card" },
         h(doc, "table", { class: "vc-list-table" }, h(doc, "thead", {}, h(doc, "tr", {}, ...headers.map((text) => h(doc, "th", { scope: "col" }, text)), h(doc, "th", { scope: "col" }, h(doc, "span", { class: "vc-sr-only" }, "Actions")))), tbody)),
@@ -960,7 +970,7 @@ export const startAdmin = (options: AdminOptions) => {
     const plain = Boolean(documentSpec?.plain);
     const seoSections = seoLayout && input.kind === "file" ? seoSectionsOf(input.file) : undefined;
     const form: Form = createForm({
-      doc, fields, value: start, role: user.role, references, readOnly, pickImage, choices: view?.choices, notify: (text, action) => say(text, "info", action),
+      doc, fields, value: start, role: user.role, references, readOnly, pickImage, choices: view?.choices, controls, notify: (text, action) => say(text, "info", action),
       markdown: collection?.markdown && !("body" in collection.fields) ? ["body"] : [],
       // M3 (Mr Spa): deleting a list item asks first; a click on an item's card shows it on the page; the validation
       // summary's buttons go to their field (opening its section).
@@ -1163,16 +1173,22 @@ export const startAdmin = (options: AdminOptions) => {
       docBar?.setCount(wordCount([titleValue, ...stringsIn(bodyValue)]));
       showAddress();
     };
+    // M14: the site's panels in the right column, told the record after every change.
+    const recordPanels = sideLayout ? pluginPanels(doc, plugins, "record", input.kind === "file" ? { file: input.file.key } : { collection: input.collection.key }) : [];
+    const sideExtra = documentSpec ? [detailsCard!.element, googleCard!.element] : [];
+    const sidePanels = recordPanels.map((panel) => panel.element);
     const recordSide = collection && sideLayout ? createRecordSide(doc, {
       noun: collection.itemLabel.toLowerCase(), nounTitle: collection.itemLabel,
-      ...(documentSpec ? { extra: [detailsCard!.element, googleCard!.element], label: `${collection.itemLabel} details` } : {}),
+      ...(sideExtra.length ? { extra: sideExtra } : {}),
+      ...(sidePanels.length ? { panels: sidePanels } : {}),
+      ...(documentSpec ? { label: `${collection.itemLabel} details` } : {}),
       ...(collection.list?.duplicate && !collection.fixed ? { duplicate: () => {
         if (dirty()) { say(`Save or discard your changes before duplicating this ${collection.itemLabel.toLowerCase()}.`); return; }
         void duplicateRecord(collection, { id: input.kind === "item" ? input.id ?? "" : "", label: titleText(), resource: resourceOf(), version, hasDraft });
       } } : {}),
       ...(collection.status?.archived ? { visibility: (archive: boolean) => { void changeVisibility(archive); } } : {}),
-    }) : documentSpec ? createRecordSide(doc, { noun: "page", nounTitle: "Page", extra: [detailsCard!.element, googleCard!.element], label: "Page details" }) : undefined;
-    if (recordSide) recordUpdate = (count, blocked) => { recordSide.update(webStateOf(count), readyItemsOf(), blocked ?? undefined); updateDocument(); };
+    }) : documentSpec ? createRecordSide(doc, { noun: "page", nounTitle: "Page", extra: sideExtra, panels: sidePanels, label: "Page details" }) : undefined;
+    if (recordSide) recordUpdate = (count, blocked) => { recordSide.update(webStateOf(count), readyItemsOf(), blocked ?? undefined); updateDocument(); for (const panel of recordPanels) panel.update({ record: form.value() }); };
     /** M10: the paper — the formatting bar (or a policy's bar), the cover, the title, the body; the rest goes right. */
     const documentPaper = () => {
       const spec = documentSpec!;

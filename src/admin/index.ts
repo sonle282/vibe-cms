@@ -31,3 +31,4 @@ export { clone, countChanges, emptyValue, getAt, holdsLockedValue, ID_PATTERN, k
 export { excerptOf, googlePath, plainTextOf, stringsIn, wordCount } from "./document.js";
 export { linkProblem } from "./rich-editor.js";
 export { priceNote, priceShown, priceValue, sameAsNote } from "./blocks.js";
+export { defineAdminPlugin, type AdminPlugin, type ControlContext, type ListRow, type PanelContext, type PluginControl, type PluginPanel } from "./plugins.js";

@@ -97,6 +97,8 @@ for (const [name, value] of Object.entries({
 
     <script>
       import { startAdmin, type AdminBoot } from "@sonle282/vibe-cms/admin";
+      // M14: the site's own admin code (cms.config.ts admin.plugins).
+      import plugins from "virtual:vibe-cms/admin-plugins";
 
       const send = async (method: string, path: string, body?: unknown) => {
         const response = await fetch(path, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body), credentials: "same-origin" });
@@ -125,7 +127,7 @@ for (const [name, value] of Object.entries({
 
       const root = document.getElementById("vibe-cms-admin");
       const data = document.getElementById("vibe-cms-boot");
-      if (root && data?.textContent) startAdmin({ root, boot: JSON.parse(data.textContent) as AdminBoot });
+      if (root && data?.textContent) startAdmin({ root, boot: JSON.parse(data.textContent) as AdminBoot, plugins });
     </script>
   </body>
 </html>

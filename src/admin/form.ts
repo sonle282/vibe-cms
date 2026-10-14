@@ -18,6 +18,7 @@ import { fieldAt } from "./bridge.js";
 import { pickPlace, type PickChoices } from "../check/picks.js";
 import { formatPhone, linkOpensText, phoneProblem, type LinkPage } from "../check/link.js";
 import { priceNote, priceShown, priceValue, sameAsNote } from "./blocks.js";
+import { pluginProblem, type pluginControls } from "./plugins.js";
 import { createLinkControl, invalidLinks } from "./link.js";
 import { createImageCard, type ImageSlot, type PickRequest } from "./image-card.js";
 import type { LibraryImage } from "./media.js";
@@ -68,6 +69,8 @@ export type FormOptions = {
   reveal?: (path: string) => void;
   /** M4: what Link fields offer and show — the site's pages, its host ("Opens: mysalon.example/about"), site.phone.country. */
   links?: { pages: readonly LinkPage[]; host: string; country?: string };
+  /** M14: the admin plugins' controls, by name (a field with `control: "<name>"`). */
+  controls?: ReturnType<typeof pluginControls>;
   /** M4: the page is on the canvas — a Link field says its destination is not visible there (as the Mr Spa CMS does). */
   previewNotes?: boolean;
   /**
@@ -710,6 +713,30 @@ export const createForm = (options: FormOptions): Form => {
     const common = { path, field: shown, locked: locked && !lockedAbove, reason, hideLabel: extra.hideLabel };
     // M13: a copy of another field is that field's value and the way to it, not a box of its own.
     if (field.sameAs) return wrap({ ...common, field: { ...shown, help: undefined }, group: false, control: sameAsCard(field, path), hideLabel: true });
+    // M14: a plugin's control instead of the standard box (which it may wrap: standard()).
+    const plugged = field.control ? options.controls?.[field.control] : undefined;
+    if (plugged) {
+      const id = uid("f");
+      let control: HTMLElement;
+      let show: ((value: unknown) => void) | undefined;
+      try {
+        const made = plugged.make({
+          doc, id, field, path, value: clone(getAt(state, path)), disabled,
+          set: (value) => set(path, value),
+          record: () => clone(state),
+          standard: () => {
+            const box = renderField({ ...field, control: undefined } as Field, path, lockedAbove, { ...extra, hideLabel: true });
+            box.classList.add("vc-plugin-standard");
+            // The field is the outer box (the plugin's): the standard one inside does not claim its place.
+            box.removeAttribute("data-path");
+            return { element: box, show: registry.get(pathText(path))?.show };
+          },
+        });
+        control = made.element;
+        show = made.show;
+      } catch (error) { control = pluginProblem(doc, plugged.plugin, error); }
+      return wrap({ ...common, group: false, control, inputId: id, show });
+    }
     switch (field.type) {
       case "text": {
         const { control, id, show } = textInput(field, path, disabled);
