@@ -202,15 +202,30 @@ export const peopleScreen = async (kit: ScreenKit, stillHere: () => boolean) => 
   await load();
 };
 
-/** M12 (Mr Spa): a row's ⋯ — a small menu of plain items. */
-export const rowMenu = (doc: Document, label: string, items: Array<{ text: string; run: () => void }>) => {
+/**
+ * M12 (Mr Spa): a row's ⋯ — a small menu of plain items. M8: an item with `href` is a link that opens in a new tab
+ * (View on website); `tooltip` = the trigger's tooltip ("More"; default its label).
+ */
+export const rowMenu = (doc: Document, label: string, items: Array<{ text: string; run?: () => void; href?: string }>, tooltip = label) => {
   const list = h(doc, "div", { class: "vc-row-menu-list", role: "menu" });
-  const button = h(doc, "button", { type: "button", class: "vc-row-menu-button", "aria-label": label, "data-tooltip": label, "aria-haspopup": "menu", "aria-expanded": "false" }, "⋯");
+  const button = h(doc, "button", { type: "button", class: "vc-row-menu-button", "aria-label": label, "data-tooltip": tooltip, "aria-haspopup": "menu", "aria-expanded": "false" }, "⋯");
   const close = () => { list.hidden = true; button.setAttribute("aria-expanded", "false"); };
   list.hidden = true;
-  for (const item of items) list.append(h(doc, "button", { type: "button", class: "vc-row-menu-item", role: "menuitem", onclick: () => { close(); item.run(); } }, item.text));
-  button.addEventListener("click", (event) => { event.stopPropagation(); list.hidden = !list.hidden; button.setAttribute("aria-expanded", String(!list.hidden)); if (!list.hidden) list.querySelector<HTMLElement>("button")?.focus(); });
-  list.addEventListener("keydown", (event) => { if (event.key === "Escape") { close(); button.focus(); } });
+  for (const item of items) {
+    list.append(item.href
+      ? h(doc, "a", { class: "vc-row-menu-item", role: "menuitem", href: item.href, target: "_blank", rel: "noopener", onclick: () => close() }, item.text)
+      : h(doc, "button", { type: "button", class: "vc-row-menu-item", role: "menuitem", onclick: () => { close(); item.run?.(); } }, item.text));
+  }
+  button.addEventListener("click", (event) => { event.stopPropagation(); list.hidden = !list.hidden; button.setAttribute("aria-expanded", String(!list.hidden)); if (!list.hidden) list.querySelector<HTMLElement>(".vc-row-menu-item")?.focus(); });
+  list.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") { close(); button.focus(); return; }
+    if (event.key === "Tab") { close(); return; }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    event.preventDefault();
+    const entries = [...list.querySelectorAll<HTMLElement>(".vc-row-menu-item")];
+    const at = entries.indexOf(doc.activeElement as HTMLElement);
+    entries[(at + (event.key === "ArrowDown" ? 1 : -1) + entries.length) % entries.length]?.focus();
+  });
   doc.addEventListener("pointerdown", (event) => { if (!list.hidden && !list.contains(event.target as Node) && event.target !== button) close(); });
   return h(doc, "div", { class: "vc-row-menu" }, button, list);
 };

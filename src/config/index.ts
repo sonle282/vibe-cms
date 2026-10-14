@@ -136,8 +136,14 @@ export type CmsCollection = {
    */
   under?: string;
   store: { kind: "json-array"; path: string; idField: string } | { kind: "markdown-dir"; dir: string; slugField: string };
-  status?: { field: string; live: string; draft: string };
+  /** M8: `archived` = the value of a record hidden from the website but kept in the CMS (the Mr Spa CMS's "Archived"). */
+  status?: { field: string; live: string; draft: string; archived?: string };
   preview?: string;
+  /** M8: the list screen (the Mr Spa CMS's Products / Projects / Blog lists). */
+  list?: CollectionList;
+  /** M8: words of the list screen: `add` = its button ("Add product"; default "Add <item>"), `search` = the search
+   *  box's placeholder (default "Search <items>"), `many` = the plural of the item ("posts"; default from itemLabel). */
+  labels?: { add?: string; search?: string; many?: string };
   order?: "file" | { by: string };
   access?: Access;
   /** P12b: no record is added (the site's code expects exactly these); the records stay editable. */
@@ -145,6 +151,37 @@ export type CmsCollection = {
   /** P12d: the site's own check of one record (see ContentRule). */
   rules?: ContentRule;
   fields: Record<string, Field>;
+};
+
+/** M8: one column of a collection's list (after the name, before the status), or one filter above it. */
+export type ListColumn = {
+  /** A field of the record (a key, or a path into an object: "seo.title"). */
+  field: string;
+  /** The header / the filter's name; default: the field's label. */
+  label?: string;
+  /** What a stored value is shown as ({ en: "English", vi: "Tiếng Việt" }); other values are shown as they are. */
+  values?: Readonly<Record<string, string>>;
+  /** "date": 2024-10-25 is shown as "Oct 25, 2024". */
+  format?: "date";
+};
+export type ListFilter = {
+  /** A select, toggle or reference field, or the collection's status field (All · Live · Draft · Archived). */
+  field: string;
+  label?: string;
+  values?: Readonly<Record<string, string>>;
+  /** The first choice of a dropdown filter ("All categories"; default "All"). */
+  all?: string;
+};
+export type CollectionList = {
+  columns?: ReadonlyArray<ListColumn>;
+  /** Filters above the table: a few choices are buttons (All · Live · Draft), many are a dropdown. */
+  filters?: ReadonlyArray<ListFilter>;
+  /** Fields the search box reads besides the name and the columns ("sku"). */
+  search?: readonly string[];
+  /** A second line under the name, with {field} words ("SKU {sku}"): shown when every word has a value. */
+  detail?: string;
+  /** ⋯ Duplicate: a new, unpublished copy named "Copy of …"; `clear` = fields the copy starts without ("sku"). */
+  duplicate?: boolean | { clear?: readonly string[] };
 };
 
 export type CmsConfig = {

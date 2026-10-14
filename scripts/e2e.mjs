@@ -85,7 +85,7 @@ try {
   // E2E_SCREENSHOTS=<folder>: keep pictures of the image sheet, the review and published screens (local look only; CI leaves it unset).
   const shot = async (name) => { if (process.env.E2E_SCREENSHOTS) await page.screenshot({ path: join(process.env.E2E_SCREENSHOTS, `${name}.png`) }); };
   const api = (path) => page.evaluate(async (url) => (await fetch(url)).json(), path);
-  const open = async (path) => { await page.goto(`${base}${path}`); await page.locator(".vc-inspector, .vc-form, .vc-table, .vc-rows, .vc-pages-columns, .vc-empty-state").first().waitFor(); };
+  const open = async (path) => { await page.goto(`${base}${path}`); await page.locator(".vc-inspector, .vc-form, .vc-list-table, .vc-rows, .vc-pages-columns, .vc-empty-state").first().waitFor(); };
   const save = async () => {
     await page.getByRole("button", { name: "Save draft" }).click();
     // M1 (Mr Spa): a record already on the website says only its changes are not live yet.
@@ -324,7 +324,7 @@ try {
 
   // A new service: the id follows the name until edited.
   await open("/admin/catalog/services");
-  await page.getByRole("link", { name: "New service" }).click();
+  await page.getByRole("link", { name: "Add service" }).click();
   await page.locator(".vc-form").waitFor();
   await input("name").fill("Gel Removal");
   check("new record: id filled from the name", (await input("id").inputValue()) === "gel-removal");
@@ -339,10 +339,16 @@ try {
   const gel = await api("/api/cms/collections/services/items/gel-removal");
   check("new service saved as a draft (expectedRevision 0, version new)", assertEqual(gel.draft?.content, { id: "gel-removal", name: "Gel Removal", price: "$10", category: "Nails", extras: ["Cuticle oil"] }) && gel.version === "new", gel);
   await open("/admin/catalog/services");
-  const listText = await page.locator(".vc-table").innerText();
-  check("list: draft badges + new record", /Spa Pedicure[\s\S]*Draft saved/.test(listText) && /gel-removal[\s\S]*New · not published/.test(listText), listText);
-  await page.getByRole("searchbox").fill("gel");
-  check("list: search filters", (await page.locator(".vc-table tbody tr").count()) === 1 && /1 of 4 services/.test(await page.locator(".vc-count").innerText()));
+  // M8 (Mr Spa): the records on the website, Live + "Unpublished changes" where I have a draft; the new record's draft
+  // is on Drafts (not a row) until it is published.
+  const listText = await page.locator(".vc-list-table").innerText();
+  check("list: Live + Unpublished changes; a new record is not a row yet", /Spa Pedicure[\s\S]*Live\s*Unpublished changes/.test(listText) && !/Gel Removal/.test(listText) && (await page.locator(".vc-list-count").innerText()) === "3 services", listText);
+  await page.getByRole("searchbox").fill("spa");
+  check("list: search filters", (await page.locator(".vc-list-table tbody tr.vc-list-row").count()) === 1 && (await page.locator(".vc-list-count").innerText()) === "1 of 3 services");
+  await page.getByRole("searchbox").fill("");
+  await page.locator('.vc-list-segmented[aria-label="Category"]').getByRole("radio", { name: "Spa" }).click();
+  check("list: the Category filter", (await page.locator(".vc-list-table tbody tr.vc-list-row").count()) === 1);
+  await shot("m8-list");
 
   // ---------------------------------------------------------------- owner: team (image, references)
   const team = data("src/data/team.json");
@@ -513,7 +519,7 @@ try {
   check("unsaved changes: leaving asks, staying keeps them", /You have 1 unsaved change on /.test(asked) && page.url().endsWith("/admin/catalog/services/classic-manicure") && (await input("name").inputValue()) === "Classic Manicure (changed)", { asked, url: page.url() });
   await page.locator(".vc-nav-list").getByRole("link", { name: "Team" }).click();
   await page.getByRole("alertdialog", { name: "Leave without saving?" }).getByRole("button", { name: "Discard changes" }).click();
-  await page.locator(".vc-table").waitFor();
+  await page.locator(".vc-list-table").waitFor();
 
   // ---------------------------------------------------------------- P8: review every draft, publish them in one commit
   check("navigation counts my drafts", (await page.locator(".vc-badge").textContent()) === "6");

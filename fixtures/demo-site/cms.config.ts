@@ -81,6 +81,8 @@ export default defineCmsConfig({
       icon: "tag",
       store: { kind: "json-array", path: "src/data/services.json", idField: "id" },
       preview: "/services/",
+      // M8: the list (the Mr Spa CMS's Products): Category and Price after the name, a Category filter, ⋯ Duplicate.
+      list: { columns: [{ field: "category" }, { field: "price" }], filters: [{ field: "category", label: "Category" }], duplicate: true },
       // P12d: the site's own rule (the plugin seam) — runs at build, on save and at publish: a price starts with "$".
       rules: (service) => (typeof service.price === "string" && service.price && !service.price.startsWith("$") ? [{ path: "price", message: "a price starts with $", hint: "e.g. $25 or $5+" }] : []),
       fields: {
@@ -113,10 +115,13 @@ export default defineCmsConfig({
       icon: "pencil",
       store: { kind: "markdown-dir", dir: "src/content/posts", slugField: "slug" },
       preview: "/blog/{slug}/",
-      status: { field: "status", live: "published", draft: "draft" },
+      status: { field: "status", live: "published", draft: "draft", archived: "archived" },
+      // M8: All · Live · Draft · Archived above the list; the tags after the name; "New post" as the button.
+      list: { columns: [{ field: "tags" }], filters: [{ field: "status" }] },
+      labels: { add: "New post" },
       fields: {
         title: f.text({ label: "Title", required: true, maxLength: 80 }),
-        status: f.select({ label: "Status", options: ["published", "draft"] }),
+        status: f.select({ label: "Status", options: ["published", "draft", "archived"] }),
         cover: f.image({ label: "Cover image" }),
         tags: f.list(f.text({ label: "Tag" }), { label: "Tags", itemLabel: "Tag", max: 5 }),
       },

@@ -254,6 +254,35 @@ priority: f.number({ label: "Order", integer: true, min: 1, max: 99 }),   // a J
 id: f.text({ label: "ID", from: "name", pattern: "[a-z0-9]+(?:-[a-z0-9]+)*" }),  // made from "name" while the item is new
 ```
 
+## Collection lists (M8)
+
+A collection's list is the Mr Spa CMS's Products / Projects / Blog list: a 44 px thumbnail and the name, the columns
+you choose, the status (**Live** / **Draft** / **Archived**, plus "Unpublished changes" when you have a saved draft),
+and a ⋯ per record (**Edit**, **Duplicate** when allowed, **View on website** when Live). Above it: the search box,
+the filters and the count ("83 products" / "12 of 83 products"); the top bar has **Add product**.
+
+```ts
+{
+  key: "products", label: "Products", itemLabel: "Product",
+  status: { field: "status", live: "published", draft: "draft", archived: "archived" },
+  list: {
+    columns: [{ field: "categoryIds", label: "Category" }, { field: "price" }],
+    filters: [{ field: "categoryIds", label: "Category", all: "All categories" }, { field: "status" }],
+    search: ["sku"],                 // read by the search box, besides the name, the id and the columns
+    detail: "SKU {sku}",             // a second line under the name, when every {field} has a value
+    duplicate: { clear: ["sku"] },   // ⋯ Duplicate: an unpublished "Copy of …"; these fields start empty
+  },
+  labels: { add: "Add product", search: "Search by name or SKU" },
+}
+```
+
+- A column shows a field's value: the labels of a reference, `values` to rename stored values
+  (`{ en: "English" }`), `format: "date"` for "Oct 25, 2024", Yes / No for a toggle, "—" when empty.
+- A filter is a select, toggle or reference field, or the status (All · Live · Draft · Archived). Up to 5 choices are
+  buttons, more are a dropdown (`all` = its first choice).
+- New records are not rows until they are published (they are on Drafts); `labels.many` sets the plural when "s"
+  is not right.
+
 ## Pages, site-wide areas, Search & sharing (M7)
 
 ```ts
