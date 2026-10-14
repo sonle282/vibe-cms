@@ -54,7 +54,8 @@ that version — no `.npmrc`, no `NODE_AUTH_TOKEN`, on your machine or in Cloudf
    npx vibe-cms init
    ```
 
-   Every JSON object becomes a page (its sections = its groups; `preview` when `src/pages` has a page of that name;
+   Every JSON object becomes a page (its sections = its groups; `preview` when `src/pages` has a page of that name —
+   `/about/`, or `/about` when `astro.config` has `build: { format: "file" }`;
    policies in "Policies"; header / footer / popup "Across the whole site"; `seo.json` the Search & sharing screen),
    every list of records with a unique `id` / `slug` a collection, and every value a field guessed from its key and
    values (text, multiline, date, rich text, image, link, phone, number, toggle, opening hours, objects, lists). The

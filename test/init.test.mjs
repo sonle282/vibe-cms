@@ -144,6 +144,25 @@ test("M15 init: never replaces cms.config.ts without --force; --dry-run writes n
   assert.match(readFileSync(join(odd, "cms.config.ts"), "utf8"), /url: "https:\/\/example\.com" \}, \/\/ TODO: the website's real address/);
 });
 
+test("M15 init: a site that builds its pages as files (build.format \"file\") gets previews without the trailing slash", async () => {
+  const root = tempSite({
+    "astro.config.mjs": "export default { site: 'https://filesite.example', build: { format: \"file\" } };\n",
+    "src/data/home.json": { title: "Hi" },
+    "src/data/privacy-policy.json": { title: "Privacy" },
+    "src/data/about.json": { title: "About us" },
+    "src/data/faqs.json": [{ id: "a", q: "Q?", a: "A." }],
+    "src/pages/privacy-policy.astro": "<h1>Privacy</h1>\n",
+  });
+  const { code, err } = await cli(root, ["--repo", "me/filesite"]);
+  assert.equal(code, 0, err);
+  const config = readFileSync(join(root, "cms.config.ts"), "utf8");
+  assert.match(config, /key: "privacy-policy", .*preview: "\/privacy-policy", group: "Policies",/);
+  assert.match(config, /key: "home", .*preview: "\/",/, "home stays /");
+  assert.match(config, /\{ \/\/ TODO: preview: the address of the page that shows it \(e\.g\. "\/about"\)\n\s+key: "about"/);
+  assert.match(config, /\/\/ TODO: preview: the address of one record's page \(e\.g\. "\/blog\/\{id\}"\)/);
+  assert.equal((await checkSite(join(root, "cms.config.ts"))).files.find((file) => file.key === "privacy-policy").preview, "/privacy-policy");
+});
+
 test("M15 init on the demo site: a draft that loads and checks with no warning", async () => {
   const root = mkdtempSync(join(here, ".tmp-init-"));
   made.push(root);
