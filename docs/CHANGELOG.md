@@ -3,7 +3,9 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## Unreleased
+## 0.26.0 — 2026-10-14 (P20: stores for content that is not one list per file — json-object, pointer, keep; round-trip in vibe-cms check)
+
+- **Site action:** none — no data change, no D1 migration. New optional settings: `store.kind: "json-object"`, `pointer` (stores and files), `keep`, `f.image({ caption: true })`, `redirectsCheck({ allow })`; `npx vibe-cms check` now also round-trips every record.
 
 **P20 (package part) — stores for content that is not one list per file.** Nothing to do on a site.
 
