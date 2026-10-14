@@ -12,6 +12,7 @@
  *    otherwise by equal content, then by position.
  * 4. An item whose locked fields hold a value may not be removed.
  */
+import { storeIdField } from "../config/store.js";
 import type { CmsCollection, CmsConfig, Field } from "../config/index.js";
 import { isAdminOnly } from "../config/roles.js";
 import { isRecord, pathStep, toTree, type FieldTree } from "../config/tree.js";
@@ -133,7 +134,7 @@ const collectionOf = (config: CmsConfig, key: string): CmsCollection => {
   if (!found) throw new RangeError(`no collection "${key}"`);
   return found;
 };
-const idFieldOf = (collection: CmsCollection) => (collection.store.kind === "json-array" ? collection.store.idField : collection.store.slugField);
+const idFieldOf = (collection: CmsCollection) => storeIdField(collection.store);
 
 /** One collection record: before undefined = new record, after undefined = removed record. */
 const compareRecord = (ctx: Ctx, tree: FieldTree, before: unknown, after: unknown, path: string) => {

@@ -6,6 +6,7 @@
  *                   on KV is not safe); KV keeps sessions only.
  * Nothing here writes to GitHub (P5).
  */
+import { storeRecords } from "../config/store.js";
 import type { CmsConfig } from "../config/index.js";
 import { parseMarkdown } from "../writer/markdown.js";
 
@@ -69,12 +70,13 @@ export const createContentReader = (config: CmsConfig, source: ContentSource) =>
     },
     async items(key: string): Promise<SourceRecord[]> {
       const entry = collection(key);
-      if (entry.store.kind === "json-array") {
-        const { path, idField } = entry.store;
-        const text = await source.read(path);
+      if (entry.store.kind !== "markdown-dir") {
+        const store = entry.store;
+        const text = await source.read(store.path);
         if (text === undefined) return [];
-        const list = JSON.parse(text.replace(/^﻿/, "")) as Array<Record<string, unknown>>;
-        return Promise.all(list.map(async (item) => ({ resource: resourceId({ kind: "item", key, id: String(item[idField]) }), path, text, data: item, version: await valueVersion(item) })));
+        const found = storeRecords(store, JSON.parse(text.replace(/^﻿/, "")));
+        if (typeof found === "string") throw new TypeError(`${store.path}: ${found}`);
+        return Promise.all(found.map(async ({ id, record }) => ({ resource: resourceId({ kind: "item", key, id: String(id) }), path: store.path, text, data: record as Record<string, unknown>, version: await valueVersion(record) })));
       }
       const { dir, slugField } = entry.store;
       const records: SourceRecord[] = [];

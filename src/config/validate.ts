@@ -425,17 +425,19 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
       const store = entry.store;
       let idKey: string | undefined;
       if (!isRecord(store)) err(context, `${at}.store`, "required", '{ kind: "json-array", path: "src/data/services.json", idField: "id" } or { kind: "markdown-dir", dir: "src/content/blog", slugField: "slug" }');
-      else if (store.kind === "json-array") {
-        for (const key of Object.keys(store)) if (!["kind", "path", "idField"].includes(key)) err(context, `${at}.store.${key}`, 'unknown setting for "json-array"', "allowed: kind, path, idField");
+      else if (store.kind === "json-array" || store.kind === "json-object") {
+        for (const key of Object.keys(store)) if (!["kind", "path", "idField", "pointer"].includes(key)) err(context, `${at}.store.${key}`, `unknown setting for "${store.kind}"`, "allowed: kind, path, idField, pointer");
         checkPath(context, store.path, `${at}.store.path`, dirs, ".json", "src/data/services.json", paths);
-        if (!filled(store.idField)) err(context, `${at}.store.idField`, 'required for "json-array" — the property that identifies a record', 'e.g. "id"');
+        if (!filled(store.idField)) err(context, `${at}.store.idField`, `required for "${store.kind}" — the property that identifies a record`, 'e.g. "id"');
         else idKey = store.idField;
+        // P20: a list (or object) inside the file's object, by its key path.
+        if (store.pointer !== undefined && (typeof store.pointer !== "string" || !/^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*$/.test(store.pointer))) err(context, `${at}.store.pointer`, `${show(store.pointer)} is not a key path`, 'e.g. pointer: "projects"');
       } else if (store.kind === "markdown-dir") {
         for (const key of Object.keys(store)) if (!["kind", "dir", "slugField"].includes(key)) err(context, `${at}.store.${key}`, 'unknown setting for "markdown-dir"', "allowed: kind, dir, slugField");
         checkPath(context, store.dir, `${at}.store.dir`, dirs, undefined, "src/content/blog", paths);
         if (!filled(store.slugField)) err(context, `${at}.store.slugField`, 'required for "markdown-dir" — the front-matter property with the record\'s slug', 'e.g. "slug"');
         else idKey = store.slugField;
-      } else err(context, `${at}.store.kind`, `unknown store kind ${show(store.kind)}`, 'use "json-array" (one JSON file holding a list) or "markdown-dir" (one .md file per record)');
+      } else err(context, `${at}.store.kind`, `unknown store kind ${show(store.kind)}`, 'use "json-array" (a JSON list), "json-object" (a JSON object keyed by id) or "markdown-dir" (one .md file per record)');
       const fieldType = (key: string) => { const field = isRecord(entry.fields) ? entry.fields[key] : undefined; return isRecord(field) ? field.type : undefined; };
       if (idKey && fieldType(idKey) !== undefined && fieldType(idKey) !== "text") err(context, keyPath(`${at}.fields`, idKey), `is the record id, so it must be a text field (got ${show(fieldType(idKey))})`);
       checkPreview(context, entry.preview, `${at}.preview`, [...new Set([...(idKey ? [idKey] : []), ...fieldKeys.filter((key) => fieldType(key) === "text")])]);

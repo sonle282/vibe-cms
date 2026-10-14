@@ -12,6 +12,7 @@ import { toTree } from "../config/tree.js";
 import { add, checkRecord, describe, isRecord, at, type ValueCtx } from "./values.js";
 import { sanitizeRecord, unsafeOnly } from "./rich-text.js";
 import { ruleContext, runRules } from "./rules.js";
+import { storeIdField, storeRecords } from "../config/store.js";
 import { pluginFiles, runSiteChecks, siteContext } from "./site.js";
 import { mediaSettings } from "../media/index.js";
 import { imageNamesOf, type ImageManifest } from "../media/names.js";
@@ -58,17 +59,21 @@ const loadCollection = (ctx: Ctx, root: string, collection: CmsCollection, index
     if (ids.has(id)) { add(ctx.errors, `${path}.${idName}`, `id ${JSON.stringify(id)} is used twice in "${collection.key}"`, "every record needs its own id"); return undefined; }
     ids.add(id); return id;
   };
-  if (collection.store.kind === "json-array") {
-    const { path: rel, idField } = collection.store;
+  if (collection.store.kind !== "markdown-dir") {
+    const store = collection.store;
+    const { path: rel, idField } = store;
     const data = readJson(ctx, root, rel, `${where}.store.path`);
     if (data === undefined) return undefined;
-    if (!Array.isArray(data)) { add(ctx.errors, rel, `expected a list of records ([ … ]), got ${describe(data)}`, 'a "json-array" collection file holds [ { … }, { … } ]'); return undefined; }
-    data.forEach((item, itemIndex) => {
-      const path = `${rel}[${itemIndex}]`;
-      if (!isRecord(item)) { add(ctx.errors, path, `expected a record ({ … }), got ${describe(item)}`); return; }
+    const found = storeRecords(store, data);
+    if (typeof found === "string") { add(ctx.errors, rel, found, store.kind === "json-array" ? `a "json-array" collection file holds [ { … }, { … } ]${store.pointer ? ` at "${store.pointer}"` : ""}` : `a "json-object" collection file holds { "id": { … } }${store.pointer ? ` at "${store.pointer}"` : ""}`); return undefined; }
+    for (const { id: key, record: item, at: place } of found) {
+      const path = store.kind === "json-array" ? `${rel}${place.startsWith("[") ? "" : "."}${place}` : `${rel} › ${place}`;
+      if (!isRecord(item)) { add(ctx.errors, path, `expected a record ({ … }), got ${describe(item)}`); continue; }
+      // json-object: each record holds its id too, the same as its key.
+      if (store.kind === "json-object" && item[idField] !== key) { add(ctx.errors, `${path}.${idField}`, `must be ${JSON.stringify(key)}, its key in the object (got ${describe(item[idField])})`); continue; }
       const id = addId(item[idField], path, idField);
       records.push({ path: id ? `${path} (${JSON.stringify(id)})` : path, data: item, ...(id ? { id } : {}) });
-    });
+    }
   } else {
     const { dir: rel, slugField } = collection.store;
     const dir = join(root, rel);
@@ -105,7 +110,7 @@ export const checkContent = (config: CmsConfig, root: string): CheckResult => {
   for (const entry of loaded) {
     if (!entry) continue;
     const { collection } = entry;
-    const system = [collection.store.kind === "json-array" ? collection.store.idField : collection.store.slugField, ...(collection.status ? [collection.status.field] : []), ...(collection.store.kind === "markdown-dir" ? ["body"] : [])];
+    const system = [storeIdField(collection.store), ...(collection.status ? [collection.status.field] : []), ...(collection.store.kind === "markdown-dir" ? ["body"] : [])];
     for (const record of entry.records) {
       ctx.root = isRecord(record.data) ? record.data : undefined; ctx.picks = undefined;
       checkRecord(ctx, record.data, toTree(collection.fields), record.path, system);

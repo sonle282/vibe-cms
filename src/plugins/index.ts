@@ -8,9 +8,10 @@
  * They are plain functions of the content (no file system): the same code runs in the build and in the Worker.
  */
 import type { CmsConfig, CmsPlugin, Field, SiteContext, SiteProblem } from "../config/index.js";
+import { storeIdField } from "../config/store.js";
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
-const idOf = (config: CmsConfig, key: string) => { const collection = config.collections.find((entry) => entry.key === key); return collection ? (collection.store.kind === "json-array" ? collection.store.idField : collection.store.slugField) : "id"; };
+const idOf = (config: CmsConfig, key: string) => { const collection = config.collections.find((entry) => entry.key === key); return collection ? storeIdField(collection.store) : "id"; };
 const resourceOf = (config: CmsConfig, key: string, record: Record<string, unknown>) => `item:${key}:${String(record[idOf(config, key)] ?? "")}`;
 const labelOf = (config: CmsConfig, key: string, record: Record<string, unknown>) => {
   const collection = config.collections.find((entry) => entry.key === key);

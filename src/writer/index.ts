@@ -5,6 +5,7 @@
  * whole file was re-written in its own style (content still right, diff bigger) — P5 audits it and tells the user.
  */
 import type { CmsCollection } from "../config/index.js";
+import { emptyStoreFile, withStoreRecord, type JsonStore } from "../config/store.js";
 import { patchJsonDetailed, serializeJson, type WriteResult } from "./json.js";
 import { patchMarkdownDetailed, parseMarkdown } from "./markdown.js";
 
@@ -27,6 +28,15 @@ export const writeArrayItem = (text: string, idField: string, id: string, item: 
   return patchJsonDetailed(text, next);
 };
 
+/**
+ * P20: one record of a JSON store (json-array or json-object, with or without `pointer`): replace, add or remove it.
+ * Only its lines change; the rest of the file (other keys, other records) stays as it is.
+ */
+export const writeStoreItem = (store: JsonStore, text: string | undefined, id: string, item: Record<string, unknown> | null): WriteResult => {
+  const source = text ?? emptyStoreFile(store);
+  return patchJsonDetailed(source, withStoreRecord(store, JSON.parse(source.replace(/^﻿/, "")), id, item));
+};
+
 /** Move one record of a json-array collection to `position` (0-based). Only the moved item's lines change. */
 export const moveArrayItem = (text: string, idField: string, id: string, position: number): WriteResult => {
   const list = JSON.parse(text.replace(/^﻿/, "")) as Array<Record<string, unknown>>;
@@ -46,4 +56,4 @@ export const writeMarkdownItem = (text: string | undefined, content: Record<stri
 };
 
 /** Where a collection keeps one record (for markdown-dir: <dir>/<slug>.md). */
-export const recordPath = (collection: CmsCollection, id: string) => (collection.store.kind === "json-array" ? collection.store.path : `${collection.store.dir}/${id}.md`);
+export const recordPath = (collection: CmsCollection, id: string) => (collection.store.kind !== "markdown-dir" ? collection.store.path : `${collection.store.dir}/${id}.md`);
