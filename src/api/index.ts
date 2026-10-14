@@ -622,11 +622,14 @@ export const createCmsApi = (deps: CmsApiDeps) => {
           if ("conflict" in result) continue;
           commitSha = result.sha;
           // My draft of it follows: the same status, from the version the branch has now.
-          const mine = await drafts.get(user.userId, target.resource);
-          if (mine && mine.content && typeof mine.content === "object") {
-            const after = await onBranch(target, written.text);
-            await drafts.save({ userId: user.userId, resource: target.resource, label: mine.label, content: { ...(mine.content as Record<string, unknown>), [status!.field]: value }, sourceVersion: after.version, expectedRevision: mine.revision });
-          }
+          // The commit has landed: a draft that cannot follow (changed in another tab meanwhile) does not undo it.
+          try {
+            const mine = await drafts.get(user.userId, target.resource);
+            if (mine && mine.content && typeof mine.content === "object") {
+              const after = await onBranch(target, written.text);
+              await drafts.save({ userId: user.userId, resource: target.resource, label: mine.label, content: { ...(mine.content as Record<string, unknown>), [status!.field]: value }, sourceVersion: after.version, expectedRevision: mine.revision });
+            }
+          } catch { /* the draft keeps its old version: publishing it later says it is stale */ }
         }
         await record("succeeded", { commitSha, attempt });
         return json({ resource: target.resource, status: archive ? "archived" : "live", commitSha });
