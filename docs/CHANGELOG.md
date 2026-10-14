@@ -3,7 +3,9 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## Unreleased
+## 0.25.0 — 2026-10-14 (M8–M10, M13, M14, P19: the Mr Spa CMS's lists, record and document editors, menus and prices; admin and site plugins)
+
+- **Site action:** none — no data change, no D1 migration. Visible in every site's admin: the Mr Spa lists (M8), a collection without a `preview` now opens in the record editor (M9), and every rich text has the Mr Spa toolbar and Add link dialog (no "Edit HTML / Markdown" button, M10). New optional settings: `layout`, `sections`, `ready`, `document`, `f.menu`, `f.price`, `sameAs`, `admin.plugins`, `plugins`.
 
 **P19 — site plugins: checks of the whole site.** Nothing to do on a site; new optional `plugins` (README → Site
 plugins).
