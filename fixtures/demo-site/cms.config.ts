@@ -89,6 +89,8 @@ export default defineCmsConfig({
       },
     },
   ],
+  // M14: the site's own admin code (the "call-for-price" control and two panels), bundled into /admin.
+  admin: { plugins: ["./cms/admin-plugin.ts"] },
   collections: [
     {
       key: "services",
@@ -100,10 +102,10 @@ export default defineCmsConfig({
       // M8: the list (the Mr Spa CMS's Products): Category and Price after the name, a Category filter, ⋯ Duplicate.
       list: { columns: [{ field: "category" }, { field: "price" }], filters: [{ field: "category", label: "Category" }], duplicate: true },
       // P12d: the site's own rule (the plugin seam) — runs at build, on save and at publish: a price starts with "$".
-      rules: (service) => (typeof service.price === "string" && service.price && !service.price.startsWith("$") ? [{ path: "price", message: "a price starts with $", hint: "e.g. $25 or $5+" }] : []),
+      rules: (service) => (typeof service.price === "string" && service.price && !service.price.startsWith("$") && service.price !== "Call for price" ? [{ path: "price", message: "a price starts with $", hint: "e.g. $25 or $5+" }] : []),
       fields: {
         name: f.text({ label: "Name", required: true }),
-        price: f.price({ label: "Price", locked: "admin" }),
+        price: f.price({ label: "Price", locked: "admin", control: "call-for-price" }),
         category: f.select({ label: "Category", options: ["Nails", "Spa"] }),
         extras: f.list(f.text({ label: "Extra" }), { label: "Extras", ordered: true, itemLabel: "Extra" }),
         description: f.text({ label: "Description", multiline: true, maxLength: 300 }),

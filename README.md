@@ -283,6 +283,41 @@ the filters and the count ("83 products" / "12 of 83 products"); the top bar has
 - New records are not rows until they are published (they are on Drafts); `labels.many` sets the plural when "s"
   is not right.
 
+## Admin plugins: the site's own controls and panels (M14)
+
+What only one site needs stays in the site's repo, bundled into `/admin`:
+
+```ts
+// cms.config.ts
+admin: { plugins: ["./cms/admin-plugin.ts"] },            // paths from cms.config.ts, or package names
+// … and on a field: price: f.price({ label: "Price", control: "call-for-price" }),
+```
+
+```ts
+// cms/admin-plugin.ts
+import { defineAdminPlugin } from "@sonle282/vibe-cms/admin";
+
+export default defineAdminPlugin({
+  name: "my-site",
+  controls: {
+    // Instead of the standard box: wrap it (standard()), or build your own; set() is an ordinary change.
+    "call-for-price": ({ doc, value, set, standard }) => { const box = standard(); /* … */ return { element, show }; },
+  },
+  panels: [
+    // A card above a collection's list, told its rows; or in the record editor's right column, told the record.
+    { title: "On the Services page", where: "list", collection: "services", render: ({ doc }) => ({ element, update: ({ rows }) => { /* … */ } }) },
+    { title: "Profile", where: "record", collection: "team", render: ({ doc }) => ({ element, update: ({ record }) => { /* … */ } }) },
+  ],
+});
+```
+
+- Record panels show in the record and document editors' right column (after "Ready to publish"), for a `collection`
+  or a `file`, or everywhere when neither is set.
+- A check that must hold on the server stays a `rules` function in cms.config.ts (it runs at build, on save and at
+  publish); a plugin only changes what the admin shows.
+- A plugin that throws never stops the CMS: its place says "The my-site plugin could not show this: …". A missing
+  plugin file stops the build with its path. The demo's plugin is `fixtures/demo-site/cms/admin-plugin.ts`.
+
 ## Menus, prices, a field that copies another (M13)
 
 ```ts

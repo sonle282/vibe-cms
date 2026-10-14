@@ -5,7 +5,7 @@
  * prerendering; only the injected routes run on demand (the site uses @astrojs/cloudflare).
  */
 import { existsSync, openSync, readSync, closeSync, readdirSync, lstatSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AstroIntegration } from "astro";
 import { normalizePath, type Plugin } from "vite";
@@ -25,6 +25,18 @@ const RESOLVED_VIRTUAL_CONFIG = `\0${VIRTUAL_CONFIG}`;
 /** Every content file the config declares, as raw text keyed by its project path — the Worker's ContentSource (P3). */
 export const VIRTUAL_CONTENT = "virtual:vibe-cms/content";
 const RESOLVED_VIRTUAL_CONTENT = `\0${VIRTUAL_CONTENT}`;
+
+/** M14: the site's admin plugins (cms.config.ts `admin.plugins`), as one module for the admin's script. */
+export const VIRTUAL_ADMIN_PLUGINS = "virtual:vibe-cms/admin-plugins";
+const RESOLVED_VIRTUAL_ADMIN_PLUGINS = `\0${VIRTUAL_ADMIN_PLUGINS}`;
+
+/** M14: where each plugin is — a path from cms.config.ts's folder ("./cms/admin-plugin.ts"), or a package name as is. */
+export const adminPluginModules = (cms: CmsConfig, configFile: string) => (cms.admin?.plugins ?? []).map((entry) => {
+  if (!entry.startsWith(".") && !entry.startsWith("/")) return entry;
+  const path = resolve(dirname(configFile), entry);
+  if (!existsSync(path)) throw new Error(`cms.config.ts admin.plugins: ${entry} is not a file (looked for ${path})`);
+  return normalizePath(path);
+});
 
 /** Project-relative paths of the declared content: files, json-array files, and the .md files of markdown-dir folders. */
 export const contentPaths = (config: CmsConfig, root: string) => [
@@ -65,9 +77,13 @@ export const siteImages = (root: string, limit = 3000) => {
 
 const virtualModules = (file: string, root: string, paths: string[], cms: CmsConfig): Plugin => ({
   name: "vibe-cms:virtual",
-  resolveId: (id) => (id === VIRTUAL_CONFIG ? RESOLVED_VIRTUAL_CONFIG : id === VIRTUAL_CONTENT ? RESOLVED_VIRTUAL_CONTENT : id === VIRTUAL_IMAGES ? RESOLVED_VIRTUAL_IMAGES : undefined),
+  resolveId: (id) => (id === VIRTUAL_CONFIG ? RESOLVED_VIRTUAL_CONFIG : id === VIRTUAL_CONTENT ? RESOLVED_VIRTUAL_CONTENT : id === VIRTUAL_IMAGES ? RESOLVED_VIRTUAL_IMAGES : id === VIRTUAL_ADMIN_PLUGINS ? RESOLVED_VIRTUAL_ADMIN_PLUGINS : undefined),
   load: (id) => {
     if (id === RESOLVED_VIRTUAL_CONFIG) return `export { default } from ${JSON.stringify(normalizePath(file))};`;
+    if (id === RESOLVED_VIRTUAL_ADMIN_PLUGINS) {
+      const modules = adminPluginModules(cms, file);
+      return `${modules.map((entry, index) => `import p${index} from ${JSON.stringify(entry)};`).join("\n")}\nexport default [${modules.map((_, index) => `p${index}`).join(", ")}];`;
+    }
     if (id === RESOLVED_VIRTUAL_IMAGES) {
       // P12h: images by name — the library lists the manifest, and the Worker gets the manifest to convert names.
       const names = readImageNames(cms, root);
@@ -90,6 +106,9 @@ export const vibeCms = (options: VibeCmsOptions = {}): AstroIntegration => ({
       const cms = await checkSite(file, { onWarnings: (warnings, where) => logger.warn(formatWarnings(where, warnings)) });
       const { files, collections } = countConfig(cms);
       logger.info(`config OK: ${files} files, ${collections} collections, content checked (${cms.repo.owner}/${cms.repo.name} → ${cms.repo.branch})`);
+      // M14: a plugin file that is not there stops the build here, with its path.
+      const plugins = adminPluginModules(cms, file);
+      if (plugins.length) logger.info(`admin plugins: ${plugins.length}`);
       updateConfig({ vite: { plugins: [virtualModules(file, root, contentPaths(cms, root), cms)] } });
       // M1: one route for every screen of the admin (/admin, /admin/pages/home, /admin/catalog/services/…).
       injectRoute({ pattern: "/admin/[...path]", entrypoint: "@sonle282/vibe-cms/routes/admin.astro", prerender: false });

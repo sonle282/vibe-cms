@@ -73,7 +73,7 @@ const stops = [];
 try {
   // 2. A site that does not have the CMS yet: the demo's pages + config, astro + wrangler only.
   const site = join(work, "site");
-  for (const name of ["src", "public", "astro.config.mjs", "cms.config.ts", "tsconfig.json", "wrangler.jsonc"]) cpSync(join(demo, name), join(site, name), { recursive: true });
+  for (const name of ["src", "public", "cms", "astro.config.mjs", "cms.config.ts", "tsconfig.json", "wrangler.jsonc"]) cpSync(join(demo, name), join(site, name), { recursive: true });
   writeFileSync(join(site, "package.json"), `${JSON.stringify({ name: "install-test-site", private: true, type: "module", scripts: { build: "astro build" }, dependencies: { astro: locked("astro") }, devDependencies: { wrangler: locked("wrangler") } }, null, 2)}\n`);
 
   // README → Install step 1: npm i <release URL> @astrojs/cloudflare

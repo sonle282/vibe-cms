@@ -313,6 +313,12 @@ try {
   await input("name").fill("Spa Pedicure Deluxe");
   // P12d: the demo's own rule (cms.config.ts `rules`) runs in the built Worker: a price without "$" is refused, with its message.
   // M13: a plain amount gets its "$" (f.price); words without one are kept as typed — and refused by the rule.
+  // M14: the demo's own plugin (cms/admin-plugin.ts, bundled into /admin) wraps the price box: "Call for price".
+  const callForPrice = field("price").getByLabel("Show “Call for price” instead");
+  await callForPrice.check();
+  check("plugin control (M14): ticking “Call for price” hides the box and says what shoppers see", (await field("price").locator(".vc-plugin-standard").isHidden()) && /Shoppers see “Call for price” instead of a price\./.test(await field("price").innerText()), await field("price").innerText());
+  await shot("m14-control");
+  await callForPrice.uncheck();
   await input("price").fill("40 and up");
   await page.getByRole("button", { name: "Save draft" }).click();
   const ruleShown = await page.waitForFunction(() => /a price starts with \$/.test(document.querySelector(".vc-form")?.textContent ?? ""), null, { timeout: 10_000 }).then(() => true, () => false);
@@ -366,6 +372,7 @@ try {
   await page.locator('.vc-list-segmented[aria-label="Category"]').getByRole("radio", { name: "Spa" }).click();
   check("list: the Category filter", (await page.locator(".vc-list-table tbody tr.vc-list-row").count()) === 1);
   await shot("m8-list");
+  check("plugin panel (M14): above the Services list, told the rows", (await page.locator(".vc-list-panels .vc-plugin-panel").innerText()).includes("3 services in 2 categories, in this order."), await page.locator(".vc-list-panels").innerText());
 
   // ---------------------------------------------------------------- owner: team (image, references)
   const team = data("src/data/team.json");
@@ -378,6 +385,7 @@ try {
     && (await page.locator(".vc-record-side-card h2").nth(1).textContent()) === "Ready to publish",
   { toc: await page.locator(".vc-record-toc-link").allTextContents(), ready: await page.locator(".vc-record-side-card h2").allTextContents() });
   await shot("m9-record");
+  check("plugin panel (M14): Profile in the team member's right column", /Profile\s+4 of 4 details filled in\./.test(await page.locator('.vc-record-side .vc-plugin-panel[data-plugin="demo"]').innerText()), await page.locator(".vc-record-side").innerText());
   await pickImage("photo", "Photo", "/images/hero.svg");
   await field("photo").getByLabel("Image description").fill("Alex at work");
   await input("specialty").selectOption("spa-pedicure");

@@ -27,6 +27,8 @@ type Base = {
    * that goes to the other field, and follows it.
    */
   sameAs?: string;
+  /** M14: the name of a control an admin plugin gives (`admin.plugins`) — shown instead of the standard box. */
+  control?: string;
 };
 
 /**
@@ -245,6 +247,11 @@ export type CmsConfig = {
   contentDirs?: string[];
   files: CmsFile[];
   collections: CmsCollection[];
+  /**
+   * M14: the site's own admin code — browser modules (paths from cms.config.ts, or package names) bundled into /admin;
+   * each default-exports defineAdminPlugin({ name, controls, panels }) from "@sonle282/vibe-cms/admin".
+   */
+  admin?: { plugins?: string[] };
   /**
    * P10: uploaded images. `dir` = where they are committed in the site's repo (default "public/assets/uploads"; served
    * at the same path without "public"); `maxBytes` = largest file after the browser has prepared it (default 10 MiB).

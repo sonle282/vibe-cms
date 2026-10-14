@@ -5,6 +5,19 @@ migration that is not automatic. Each entry says what a site has to do.
 
 ## Unreleased
 
+**M14 — admin plugins.** Nothing to do on a site; a site may add its own admin code (README → Admin plugins).
+
+- `admin: { plugins: [...] }` in cms.config.ts: browser modules (paths from cms.config.ts, or package names) bundled
+  into `/admin` through `virtual:vibe-cms/admin-plugins`; a missing file stops the build with its path.
+- `defineAdminPlugin({ name, controls, panels })` from `@sonle282/vibe-cms/admin`:
+  - `controls`: a field with `control: "<name>"` is shown by the plugin's control. It gets the field, its value,
+    `set`, `record()` and `standard()` (the standard box, to wrap).
+  - `panels`: cards above a collection's list (`where: "list"`, told the rows) or in the record / document editor's
+    right column after "Ready to publish" (`where: "record"`, told the record after every change).
+- A plugin that throws is shown as "The <name> plugin could not show this: …" in its place; the rest of the CMS works.
+- The demo's plugin: the Mr Spa CMS's "Show “Call for price” instead" on a service's price (its rule accepts "Call for
+  price"), "On the Services page" above the list, "Profile" in a team member's column.
+
 **M13 — shared blocks like the Mr Spa CMS.** Nothing to do on a site; new optional field builders (README → Menus,
 prices, a field that copies another).
 
