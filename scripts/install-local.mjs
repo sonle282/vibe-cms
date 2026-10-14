@@ -94,7 +94,7 @@ try {
 
   const checked = await vibe(["check"], site);
   assert.equal(checked.status, 0, `vibe-cms check:\n${checked.stdout}\n${checked.stderr}`);
-  assert.match(checked.stdout, /check OK: 4 files, 3 collections, content checked; wiring for site "demo"/);
+  assert.match(checked.stdout, /check OK: 4 files, 3 collections, content checked, \d+ records round-trip byte for byte \(\d+ files\); wiring for site "demo"/);
   ok(await sh("npm", ["run", "build"], site), "astro build");
   const built = JSON.parse(readFileSync(join(site, "dist/server/wrangler.json"), "utf8"));
   assert.deepEqual([built.d1_databases?.[0]?.binding, built.kv_namespaces?.find((kv) => kv.binding === "SESSION")?.id, built.r2_buckets?.[0]?.bucket_name, built.ratelimits?.length, built.images], ["CMS_DB", "local-demo-session", "demo-media", 2, undefined], "the built Worker carries the bindings setup wrote (and no IMAGES)");

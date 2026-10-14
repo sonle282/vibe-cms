@@ -75,6 +75,11 @@ export const check = async ({ root, site, config, cmsConfig = "cms.config.ts", l
   try {
     const loaded = await checkSite(join(root, cmsConfig), { onWarnings: (found, file) => warnings.push(...found.map((item) => ({ where: item.path || file, message: item.message, hint: item.hint }))) });
     summary = `${loaded.files.length} files, ${loaded.collections.length} collections, content checked`;
+    // P20: every record written back unchanged gives its file byte for byte (what a publish would do to the rest).
+    const { checkRoundTrip } = await import("../check/roundtrip.js");
+    const trip = checkRoundTrip(loaded, root);
+    errors.push(...trip.problems.map((item) => ({ where: item.path, message: item.message, hint: "keep the file as the writer writes it (e.g. JSON.stringify(…, null, 2)), or tell us" })));
+    if (!trip.problems.length) summary += `, ${trip.records} records round-trip byte for byte (${trip.files} files)`;
   } catch (error) {
     const problems = (error as { problems?: Array<{ path: string; message: string; hint?: string }> }).problems;
     if (problems) errors.push(...problems.map((item) => ({ where: item.path || cmsConfig, message: item.message, hint: item.hint })));

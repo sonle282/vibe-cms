@@ -133,3 +133,14 @@ test("M13 sameAs (Mr Spa): the footer's phone is the salon's — its value, wher
   assert.equal(value.footerPhone, value.phone, "it follows");
   assert.equal(card.querySelector(".vc-same-value").textContent, value.phone);
 });
+
+test("P20 image caption: { src, alt, caption } edited under the image (Mr Spa's project gallery)", () => {
+  const { window, document } = dom();
+  let value;
+  const form = createForm({ doc: document, fields: { photo: f.image({ label: "Gallery image", alt: true, caption: true }) }, value: { photo: { src: "/a.webp", alt: "A", caption: "Front desk" } }, role: "owner", onChange: (next) => { value = next; } });
+  const caption = form.element.querySelector(".vc-image-caption input");
+  assert.equal(form.element.querySelector(".vc-image-caption label").textContent, "Caption");
+  assert.equal(caption.value, "Front desk");
+  caption.value = "Reception"; caption.dispatchEvent(new window.Event("input", { bubbles: true }));
+  assert.deepEqual(value.photo, { src: "/a.webp", alt: "A", caption: "Reception" });
+});

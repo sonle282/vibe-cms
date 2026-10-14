@@ -39,14 +39,14 @@ export const adminPluginModules = (cms: CmsConfig, configFile: string) => (cms.a
 });
 
 /** Project-relative paths of the declared content: files, json-array files, and the .md files of markdown-dir folders. */
-export const contentPaths = (config: CmsConfig, root: string) => [
+export const contentPaths = (config: CmsConfig, root: string) => [...new Set([
   ...config.files.map((file) => file.path),
   ...config.collections.flatMap((collection) => {
     if (collection.store.kind !== "markdown-dir") return [collection.store.path];
     const dir = collection.store.dir;
     return existsSync(join(root, dir)) ? readdirSync(join(root, dir)).filter((name) => name.endsWith(".md")).sort().map((name) => `${dir}/${name}`) : [];
   }),
-];
+])];
 
 /** P10: the site's own images (public/…) for the image library — path, size, pixels; at most 3000, SVG included. */
 export const VIRTUAL_IMAGES = "virtual:vibe-cms/images";

@@ -42,7 +42,7 @@ const BASE_OPTIONS = ["type", "label", "help", "required", "locked", "bind", "sa
 const FIELD_OPTIONS: Record<string, string[]> = {
   text: ["maxLength", "multiline", "pattern", "patternHint", "tokens", "from", "format"],
   richText: ["allow"],
-  image: ["alt", "mobile"],
+  image: ["alt", "mobile", "caption"],
   select: ["options"],
   hours: [],
   object: ["fields", "flat"],
@@ -234,7 +234,7 @@ const checkPath = (context: Context, value: unknown, at: string, dirs: readonly 
     err(context, at, yaml ? "YAML is not supported" : `must be a ${ext} file (got ${show(value)})`, yaml ? "store the content as JSON" : `e.g. "${example}"`);
     return;
   }
-  const first = paths.get(value);
+  const first = paths.get(value) ?? [...paths.entries()].find(([slot]) => slot.startsWith(`${value}#`))?.[1];
   if (first) err(context, at, `${show(value)} is already used by ${first}`, "each file or folder belongs to one entry");
   else paths.set(value, at.replace(/\.(path|dir|store\.path|store\.dir)$/, ""));
 };
@@ -380,7 +380,7 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     config.files.forEach((entry, index) => {
       const at = `files[${index}]`;
       if (!isRecord(entry)) { err(context, at, "must be an object", '{ key, label, path, format: "json", fields }'); return; }
-      const FILE_SETTINGS = ["key", "label", "path", "format", "preview", "sections", "access", "rules", "fields", "group", "area", "description", "outline", "toggle", "layout", "seo", "document"];
+      const FILE_SETTINGS = ["key", "label", "path", "pointer", "keep", "format", "preview", "sections", "access", "rules", "fields", "group", "area", "description", "outline", "toggle", "layout", "seo", "document"];
       for (const key of Object.keys(entry)) if (!FILE_SETTINGS.includes(key)) err(context, `${at}.${key}`, "unknown setting", `allowed: ${FILE_SETTINGS.join(", ")}`);
       checkRules(context, entry, at);
       checkAccess(context, entry, at);
@@ -389,10 +389,22 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
       if (!filled(entry.label)) err(context, `${at}.label`, "required — the name editors see", 'e.g. "Salon info"');
       if (entry.format !== undefined && entry.format !== "json") err(context, `${at}.format`, entry.format === "yaml" || entry.format === "yml" ? "YAML is not supported" : `must be "json" (got ${show(entry.format)})`, 'write format: "json" and store the content as JSON');
       if (entry.path === undefined) err(context, `${at}.path`, "required — the content file", 'e.g. "src/data/site.json"');
-      else checkPath(context, entry.path, `${at}.path`, dirs, ".json", "src/data/site.json", paths);
+      else if (entry.pointer === undefined) checkPath(context, entry.path, `${at}.path`, dirs, ".json", "src/data/site.json", paths);
+      else {
+        // P20: several entries may share a file, each with its own key path (none inside another, no whole-file entry).
+        if (typeof entry.pointer !== "string" || !/^[A-Za-z0-9_$][\w$-]*(\.[A-Za-z0-9_$][\w$-]*)*$/.test(entry.pointer)) err(context, `${at}.pointer`, `${show(entry.pointer)} is not a key path`, 'e.g. pointer: "header"');
+        else if (typeof entry.path === "string") {
+          const whole = paths.get(entry.path);
+          const clash = [...paths.entries()].find(([slot]) => slot.startsWith(`${entry.path}#`) && (slot.slice(String(entry.path).length + 1) === entry.pointer || slot.slice(String(entry.path).length + 1).startsWith(`${entry.pointer}.`) || String(entry.pointer).startsWith(`${slot.slice(String(entry.path).length + 1)}.`)));
+          if (whole) err(context, `${at}.path`, `${show(entry.path)} is already used by ${whole} as a whole`, "give every entry on this file a pointer");
+          else if (clash) err(context, `${at}.pointer`, `${show(entry.pointer)} overlaps ${clash[1]} on the same file`, "each entry edits its own key");
+          else { checkPath(context, entry.path, `${at}.path`, dirs, ".json", "src/data/site.json", new Map()); paths.set(`${entry.path}#${entry.pointer}`, at); }
+        }
+      }
       checkPreview(context, entry.preview, `${at}.preview`, []);
       checkFields(context, entry.fields, `${at}.fields`);
       checkSameAs(context, entry.fields, `${at}.fields`);
+      checkKeep(context, entry, at);
       checkSections(context, entry, at);
       checkPageSettings(context, entry, at);
     });
@@ -404,7 +416,7 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     collections.forEach((entry, index) => {
       const at = `collections[${index}]`;
       if (!isRecord(entry)) { err(context, at, "must be an object", "{ key, label, itemLabel, store, fields }"); return; }
-      for (const key of Object.keys(entry)) if (!["key", "label", "itemLabel", "icon", "under", "store", "status", "preview", "order", "access", "fixed", "rules", "list", "labels", "layout", "sections", "ready", "document", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, itemLabel, icon, under, store, status, preview, order, access, fixed, rules, fields");
+      for (const key of Object.keys(entry)) if (!["key", "label", "itemLabel", "icon", "under", "store", "status", "preview", "order", "access", "fixed", "rules", "list", "labels", "layout", "sections", "ready", "document", "keep", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, itemLabel, icon, under, store, status, preview, order, access, fixed, rules, fields");
       if (entry.under !== undefined) {
         const parent = collections.find((other) => isRecord(other) && other.key === entry.under);
         if (!filled(entry.under) || !isRecord(parent)) err(context, `${at}.under`, `${show(entry.under)} is not a collection of this config`, 'the key of the collection whose tabs it joins, e.g. "products"');
@@ -421,6 +433,7 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
       if (!filled(entry.itemLabel)) err(context, `${at}.itemLabel`, "required — the name of one record", 'e.g. "Service"');
       checkFields(context, entry.fields, `${at}.fields`);
       checkSameAs(context, entry.fields, `${at}.fields`);
+      checkKeep(context, entry, at);
       const fieldKeys = isRecord(entry.fields) ? Object.keys(entry.fields) : [];
       const store = entry.store;
       let idKey: string | undefined;
@@ -431,7 +444,7 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
         if (!filled(store.idField)) err(context, `${at}.store.idField`, `required for "${store.kind}" — the property that identifies a record`, 'e.g. "id"');
         else idKey = store.idField;
         // P20: a list (or object) inside the file's object, by its key path.
-        if (store.pointer !== undefined && (typeof store.pointer !== "string" || !/^[A-Za-z_$][\w$]*(\.[A-Za-z_$][\w$]*)*$/.test(store.pointer))) err(context, `${at}.store.pointer`, `${show(store.pointer)} is not a key path`, 'e.g. pointer: "projects"');
+        if (store.pointer !== undefined && (typeof store.pointer !== "string" || !/^[A-Za-z0-9_$][\w$-]*(\.[A-Za-z0-9_$][\w$-]*)*$/.test(store.pointer))) err(context, `${at}.store.pointer`, `${show(store.pointer)} is not a key path`, 'e.g. pointer: "projects"');
       } else if (store.kind === "markdown-dir") {
         for (const key of Object.keys(store)) if (!["kind", "dir", "slugField"].includes(key)) err(context, `${at}.store.${key}`, 'unknown setting for "markdown-dir"', "allowed: kind, dir, slugField");
         checkPath(context, store.dir, `${at}.store.dir`, dirs, undefined, "src/content/blog", paths);
@@ -486,6 +499,16 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
  * M13: `sameAs` names another field of the same record (a path from the record, not into a list), of the same type,
  * that does not copy a third one.
  */
+/** P20: `keep` = key paths ("sizeGuide", "hero.imageAlt", "items[].id"), none of them a declared field. */
+function checkKeep(context: Context, entry: Record<string, unknown>, at: string) {
+  if (entry.keep === undefined) return;
+  if (!Array.isArray(entry.keep)) { err(context, `${at}.keep`, "must be a list of key paths", '["sizeGuide", "hero.imageAlt"]'); return; }
+  entry.keep.forEach((key, index) => {
+    if (typeof key !== "string" || !/^[A-Za-z0-9_$][\w$-]*(\[\])?(\.[A-Za-z0-9_$][\w$-]*(\[\])?)*$/.test(key)) err(context, `${at}.keep[${index}]`, `${show(key)} is not a key path`, 'e.g. "sizeGuide" or "items[].id"');
+    else if (fieldTypeAt(entry.fields, key) !== undefined) err(context, `${at}.keep[${index}]`, `${show(key)} is a field of this entry`, "keep is for keys the CMS does not show");
+  });
+}
+
 function checkSameAs(context: Context, fields: unknown, at: string) {
   const walk = (level: unknown, prefix: string, where: string) => {
     if (!isRecord(level)) return;

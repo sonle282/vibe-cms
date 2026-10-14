@@ -395,8 +395,27 @@ export const createForm = (options: FormOptions): Form => {
       });
       return h(doc, "div", { class: "vc-subfield vc-image-alt" }, h(doc, "label", { for: id, class: "vc-sublabel" }, "Image description"), h(doc, "p", { class: "vc-help", id: helpId }, "Describe the image for people using a screen reader."), alt);
     })() : null;
-    const show = () => { card.refresh(); const value = read(); if (alt) alt.value = isRecord(value) && typeof value.alt === "string" ? value.alt : ""; };
-    return { control: h(doc, "div", { class: "vc-image" }, card.element, altPart), show };
+    // P20: a caption under the image (Mr Spa's project gallery).
+    let caption: HTMLInputElement | undefined;
+    const captionPart = field.caption ? (() => {
+      const id = uid("f");
+      caption = h(doc, "input", { id, type: "text", class: "vc-input", disabled, autocomplete: "off" });
+      caption.value = typeof record.caption === "string" ? record.caption : "";
+      caption.addEventListener("input", () => {
+        const now = read();
+        const object: Record<string, unknown> = isRecord(now) ? { ...now } : { src: typeof now === "string" ? now : "" };
+        object.caption = caption!.value;
+        set(path, object);
+      });
+      return h(doc, "div", { class: "vc-subfield vc-image-caption" }, h(doc, "label", { for: id, class: "vc-sublabel" }, "Caption"), caption);
+    })() : null;
+    const show = () => {
+      card.refresh();
+      const value = read();
+      if (alt) alt.value = isRecord(value) && typeof value.alt === "string" ? value.alt : "";
+      if (caption) caption.value = isRecord(value) && typeof value.caption === "string" ? value.caption : "";
+    };
+    return { control: h(doc, "div", { class: "vc-image" }, card.element, altPart, captionPart), show };
   };
 
   const hoursInput = (path: Path, disabled: boolean) => {
