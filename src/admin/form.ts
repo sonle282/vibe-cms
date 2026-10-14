@@ -517,7 +517,12 @@ export const createForm = (options: FormOptions): Form => {
       const close = () => { menu.hidden = true; button.setAttribute("aria-expanded", "false"); };
       button.addEventListener("click", (event) => { event.preventDefault(); menu.hidden = !menu.hidden; button.setAttribute("aria-expanded", String(!menu.hidden)); if (!menu.hidden) menu.querySelector<HTMLElement>(".vc-row-menu-item:not([disabled])")?.focus(); });
       menu.addEventListener("keydown", (event) => { if (event.key === "Escape") { close(); button.focus(); } });
-      doc.addEventListener("pointerdown", (event) => { if (!menu.hidden && !menu.contains(event.target as Node) && event.target !== button) close(); });
+      // Cards are redrawn often: a menu that is gone stops listening.
+      const outside = (event: Event) => {
+        if (!menu.isConnected) { doc.removeEventListener("pointerdown", outside); return; }
+        if (!menu.hidden && !menu.contains(event.target as Node) && event.target !== button) close();
+      };
+      doc.addEventListener("pointerdown", outside);
       return h(doc, "div", { class: "vc-row-menu" }, button, menu);
     };
     const render = () => {
