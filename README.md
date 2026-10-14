@@ -283,6 +283,28 @@ the filters and the count ("83 products" / "12 of 83 products"); the top bar has
 - New records are not rows until they are published (they are on Drafts); `labels.many` sets the plural when "s"
   is not right.
 
+## Document editor (M10)
+
+A blog post or a policy page is edited like the Mr Spa CMS's Blog post / Policy: the text on a sheet of paper, and on
+the right **On the website**, **Post details** (the other fields and the **Web address**), **In Google** (the title and
+the first lines, as Google shows them) and **Ready to publish**.
+
+```ts
+// A blog: the formatting bar on top of the paper, the cover, the title in large type, the text.
+{ key: "posts", label: "Blog", itemLabel: "Post", layout: "document", document: { title: "title", body: "body", cover: "cover" }, … }
+// A policy (a file): plain text — its sections stay as they are — with a word count.
+{ key: "privacy", label: "Privacy policy", group: "Policies", layout: "document", document: { title: "title", body: "sections", plain: true }, … }
+```
+
+- `title` is a text field, `cover` an image field; `body` is rich text (or `"body"` of a Markdown collection), or with
+  `plain: true` a text field or a list of sections.
+- A new post's Web address comes from its title until it is shortened by hand; once it exists it is fixed. Saving keeps
+  the post Live (or Archived when hidden), as in the record editor.
+- Every rich text field has the Mr Spa toolbar: Paragraph · Heading 2 · Heading 3 · B · I · Bulleted list · Numbered
+  list · Add link · Insert image (Quote only when the field's `allow` has `blockquote`). **Add link** takes a page of
+  the site or a secure `https://` address. There is no "Edit HTML / Markdown" button any more: a Markdown post the visual
+  editor cannot keep still opens as Markdown.
+
 ## Record editor (M9)
 
 A record without a page of its own (a team member, a product) is edited in the Mr Spa CMS's record editor: its

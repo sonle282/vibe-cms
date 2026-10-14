@@ -6,12 +6,17 @@
  *
  * Values: rich text stays HTML; a Markdown body stays Markdown (src/admin/markdown.ts, loaded only when needed). An
  * untouched field is never re-written: the value changes only after an edit. A Markdown post that the editor could not
- * show without changing it opens as Markdown, with a note. "Edit HTML" / "Edit Markdown" shows the source either way.
+ * show without changing it opens as Markdown, with a note.
+ *
+ * M10: the toolbar is the Mr Spa CMS's — Paragraph · Heading 2 · Heading 3 · B · I · Bulleted list · Numbered list ·
+ * Add link · Insert image, plain text buttons; Quote only when the field's `allow` asks for blockquote. Add link opens
+ * the Mr Spa dialog ("Choose a page" / "Or enter a secure HTTPS URL").
  *
  * The editor uses the browser's editing commands (execCommand) so Ctrl+Z / Ctrl+Y keep working; what they write is
  * cleaned (src/admin/clean.ts) before it becomes the value, and the server cleans again (P8c).
  */
 import { cleanRichDom, isEmptyRich, normalizeBlocks } from "./clean.js";
+import { openDialog } from "./dialog.js";
 import { h } from "./dom.js";
 
 type MarkdownModule = typeof import("./markdown.js");
@@ -32,6 +37,8 @@ export type RichEditorOptions = {
   loadMarkdown?: () => Promise<MarkdownModule>;
   /** P12d: the tags this field may hold; tools that need other tags are not shown. */
   allow?: readonly string[];
+  /** M10: the site's pages for Add link ([path, name]). */
+  pages?: ReadonlyArray<readonly [string, string]>;
 };
 
 export type RichEditor = {
@@ -40,6 +47,8 @@ export type RichEditor = {
   area: HTMLElement;
   /** The source box (HTML / Markdown). */
   source: HTMLTextAreaElement;
+  /** M10: the formatting bar (the document layout puts it on top of the paper). */
+  toolbar: HTMLElement;
   /** Resolves once the editor shows the value (Markdown: after the converter loaded). */
   ready: Promise<void>;
   mode: () => "loading" | "visual" | "source";
@@ -51,7 +60,14 @@ export type RichEditor = {
 
 const MIN_WIDTH = 40;
 const MAX_WIDTH = 4000;
-const LINK = /^(https?:\/\/|mailto:|tel:|\/|#|\?)/i;
+
+/** M10 (Mr Spa): Add link takes a page of the site or a secure (https) address; the problem, in its words. */
+export const linkProblem = (page: string, url: string) => {
+  if (page) return null;
+  const typed = url.trim();
+  if (!typed) return "Choose a page or enter an HTTPS URL.";
+  try { return new URL(typed).protocol === "https:" ? null : "Use a valid HTTPS URL."; } catch { return "Use a valid HTTPS URL."; }
+};
 
 export const createRichEditor = (options: RichEditorOptions): RichEditor => {
   const { doc, id, label, format } = options;
@@ -145,33 +161,33 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
 
   // ---------------------------------------------------------------- toolbar
 
-  const tool = (name: string, text: string, title: string, run: () => void, extra: Record<string, string> = {}) => {
-    const button = h(doc, "button", { type: "button", class: `vc-tool vc-tool-${name}`, "aria-label": title, title, disabled, "data-command": name, ...extra }, text);
+  const tool = (name: string, text: string | Node, run: () => void, extra: Record<string, string> = {}) => {
+    const button = h(doc, "button", { type: "button", class: `vc-tool vc-tool-${name}`, disabled, "data-command": name, ...extra }, text);
     // Keep the selection in the editor while the button is pressed.
     button.addEventListener("mousedown", (event) => event.preventDefault());
     button.addEventListener("click", () => { if (mode === "visual") run(); });
     return button;
   };
   const block = (tag: string) => () => exec("formatBlock", `<${tag}>`);
-  const bold = tool("bold", "B", "Bold", () => exec("bold"), { "aria-pressed": "false" });
-  const italic = tool("italic", "I", "Italic", () => exec("italic"), { "aria-pressed": "false" });
+  // Mr Spa: B and I are bold / italic letters named "Bold" / "Italic"; the others say what they do.
+  const bold = tool("bold", h(doc, "strong", {}, "B"), () => exec("bold"), { "aria-label": "Bold" });
+  const italic = tool("italic", h(doc, "em", {}, "I"), () => exec("italic"), { "aria-label": "Italic" });
   /** P12d: the tags each tool writes — a tool is shown only when the field allows all of them. */
-  const NEEDS: Record<string, string[]> = { paragraph: ["p"], heading: ["h2"], subheading: ["h3"], bold: ["strong"], italic: ["em"], bullets: ["ul", "li"], numbers: ["ol", "li"], quote: ["blockquote"], link: ["a"], unlink: ["a"], image: ["img"] };
+  const NEEDS: Record<string, string[]> = { paragraph: ["p"], heading: ["h2"], subheading: ["h3"], bold: ["strong"], italic: ["em"], bullets: ["ul", "li"], numbers: ["ol", "li"], quote: ["blockquote"], link: ["a"], image: ["img"] };
   const allowed = (button: HTMLButtonElement) => !options.allow || (NEEDS[button.dataset.command ?? ""] ?? []).every((tag) => options.allow!.includes(tag));
   const formatting = [
-    tool("paragraph", "¶", "Paragraph", block("p")),
-    tool("heading", "H2", "Heading", block("h2")),
-    tool("subheading", "H3", "Subheading", block("h3")),
+    tool("paragraph", "Paragraph", block("p")),
+    tool("heading", "Heading 2", block("h2")),
+    tool("subheading", "Heading 3", block("h3")),
     bold, italic,
-    tool("bullets", "• List", "Bulleted list", () => exec("insertUnorderedList")),
-    tool("numbers", "1. List", "Numbered list", () => exec("insertOrderedList")),
-    tool("quote", "“ ”", "Quote", () => exec("formatBlock", closest("blockquote") ? "<p>" : "<blockquote>")),
-    tool("link", "Link", "Add a link", () => openLink()),
-    tool("unlink", "Unlink", "Remove the link", () => exec("unlink")),
-    ...(options.pickImage ? [tool("image", "Image", "Insert an image", () => insertImage())] : []),
+    tool("bullets", "Bulleted list", () => exec("insertUnorderedList")),
+    tool("numbers", "Numbered list", () => exec("insertOrderedList")),
+    // Not in the Mr Spa set: only for a field whose `allow` asks for quotes.
+    ...(options.allow?.includes("blockquote") ? [tool("quote", "Quote", () => exec("formatBlock", closest("blockquote") ? "<p>" : "<blockquote>"))] : []),
+    tool("link", "Add link", () => openLink()),
+    ...(options.pickImage ? [tool("image", "Insert image", () => insertImage())] : []),
   ].filter(allowed);
-  const toggle = h(doc, "button", { type: "button", class: "vc-tool vc-tool-source", "aria-pressed": "false", disabled, onclick: () => (mode === "source" ? toVisual() : toSource()) }, `Edit ${sourceName}`);
-  const toolbar = h(doc, "div", { class: "vc-rich-toolbar", role: "toolbar", "aria-label": `${label}: formatting`, "aria-controls": id }, ...formatting, h(doc, "span", { class: "vc-tool-gap" }), toggle);
+  const toolbar = h(doc, "div", { class: "vc-rich-toolbar", role: "toolbar", "aria-label": `${label} formatting`, "aria-controls": id }, ...formatting);
 
   const closest = (tag: string) => {
     const node = win?.getSelection?.()?.anchorNode;
@@ -179,22 +195,12 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
     while (element && element !== area) { if (element.tagName?.toLowerCase() === tag) return element; element = element.parentElement; }
     return undefined;
   };
-  const refreshState = () => {
-    for (const [button, command] of [[bold, "bold"], [italic, "italic"]] as const) {
-      let on = false;
-      try { on = typeof doc.queryCommandState === "function" && doc.queryCommandState(command); } catch { on = false; }
-      button.setAttribute("aria-pressed", String(on));
-    }
-  };
+  /** M10: Mr Spa's toolbar has no on / off states. */
+  const refreshState = () => {};
 
-  // ---------------------------------------------------------------- links
+  // ---------------------------------------------------------------- links (M10: the Mr Spa CMS's Add link dialog)
 
-  const linkInput = h(doc, "input", { type: "text", class: "vc-input", id: `${id}-link`, placeholder: "https://… or /page", autocomplete: "off" });
-  const linkNote = h(doc, "span", { class: "vc-rich-bar-note" });
-  const applyLink = () => {
-    const href = linkInput.value.trim();
-    if (!LINK.test(href)) { linkNote.textContent = "Use an address starting with https://, /, mailto: or tel:."; linkInput.focus(); return; }
-    linkBar.hidden = true;
+  const insertLink = (href: string) => {
     restore();
     const selection = win?.getSelection?.();
     if (selection && selection.rangeCount && selection.getRangeAt(0).collapsed) {
@@ -203,20 +209,36 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
       a.textContent = href;
       if (!exec("insertHTML", a.outerHTML)) { savedRange?.insertNode(a); changed(); }
     } else if (!exec("createLink", href)) changed();
+    return [...area.querySelectorAll("a")].some((link) => link.getAttribute("href") === href);
   };
-  const linkBar = h(doc, "div", { class: "vc-rich-bar", hidden: true, role: "group", "aria-label": "Link" },
-    h(doc, "label", { for: `${id}-link`, class: "vc-sublabel" }, "Link address"), linkInput,
-    h(doc, "button", { type: "button", class: "vc-button", onclick: applyLink }, "Apply"),
-    h(doc, "button", { type: "button", class: "vc-button vc-quiet", onclick: () => { linkBar.hidden = true; restore(); } }, "Cancel"),
-    linkNote);
-  linkInput.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); applyLink(); } if (event.key === "Escape") { event.preventDefault(); linkBar.hidden = true; restore(); } });
   const openLink = () => {
     remember();
-    const existing = closest("a");
-    linkInput.value = existing?.getAttribute("href") ?? "";
-    linkNote.textContent = "";
-    linkBar.hidden = false;
-    linkInput.focus();
+    if (!savedRange || !inArea(savedRange.commonAncestorContainer)) { status.textContent = "Select the words to link first."; return; }
+    status.textContent = "";
+    const pageId = `${id}-link-page`; const urlId = `${id}-link-url`;
+    const select = h(doc, "select", { id: pageId, class: "vc-input" }, h(doc, "option", { value: "" }, "Choose a page…"), ...(options.pages ?? []).map(([path, name]) => h(doc, "option", { value: path }, name)));
+    const url = h(doc, "input", { id: urlId, class: "vc-input", type: "url", inputmode: "url", placeholder: "https://example.com/page", autocomplete: "off" });
+    const problem = h(doc, "p", { class: "vc-link-dialog-status", role: "status", "aria-live": "polite" });
+    // Mr Spa: choosing a page puts its address in the box.
+    select.addEventListener("change", () => { if (select.value) url.value = select.value; problem.textContent = ""; });
+    url.addEventListener("input", () => { problem.textContent = ""; });
+    const dialog = openDialog(doc, {
+      title: "Add link",
+      body: [h(doc, "div", { class: "vc-link-dialog" },
+        h(doc, "label", { for: pageId, class: "vc-label" }, "Choose a page"), select,
+        h(doc, "label", { for: urlId, class: "vc-label" }, "Or enter a secure HTTPS URL"), url,
+        h(doc, "p", { class: "vc-help" }, "Select the words to link first. Internal pages are safer and easier to maintain."), problem)],
+      buttons: [{ label: "Cancel", value: "cancel", kind: "plain" }, { label: "Insert link", value: "insert", kind: "primary" }],
+      dismiss: "cancel",
+      onButton: (value) => {
+        if (value !== "insert") return;
+        const wrong = linkProblem(select.value, url.value);
+        if (wrong) { problem.textContent = wrong; (select.value || !url.value.trim() ? select : url).focus(); return false; }
+        if (!insertLink(select.value || url.value.trim())) { problem.textContent = "The link could not be inserted."; return false; }
+      },
+    });
+    select.focus();
+    void dialog.done.then((value) => { if (value !== "insert") restore(); });
   };
 
   // ---------------------------------------------------------------- images
@@ -373,32 +395,17 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
     area.hidden = next !== "visual";
     source.hidden = next !== "source";
     for (const button of formatting) (button as HTMLButtonElement).disabled = disabled || next !== "visual";
-    toggle.textContent = next === "source" ? "Visual editor" : `Edit ${sourceName}`;
-    toggle.setAttribute("aria-pressed", String(next === "source"));
-    (toggle as HTMLButtonElement).disabled = disabled || next === "loading";
-    if (next !== "visual") { deselect(); linkBar.hidden = true; }
+    if (next !== "visual") deselect();
   };
   const visualSafe = (value: string) => !markdown || (md ? md.canEditVisually(value, (html) => inert(html)) : false);
+  /** Only when the visual editor cannot show the value (M10: no "Edit HTML / Markdown" button, as in Mr Spa). */
   const toSource = () => {
     source.value = current;
     status.textContent = "";
     setMode("source");
-    source.focus();
-  };
-  const toVisual = () => {
-    if (!visualSafe(current)) {
-      status.textContent = "This text uses formatting the visual editor can't keep (for example HTML blocks or footnotes), so it stays in Markdown.";
-      return;
-    }
-    if (markdown && md) style = md.markdownStyle(current);
-    paragraphs = blocky(current);
-    status.textContent = "";
-    render(current);
-    setMode("visual");
-    area.focus();
   };
 
-  const element = h(doc, "div", { class: `vc-rich-editor${disabled ? " vc-rich-disabled" : ""}`, "data-format": format }, toolbar, linkBar, imageBar, area, source, frame, handle, status);
+  const element = h(doc, "div", { class: `vc-rich-editor${disabled ? " vc-rich-disabled" : ""}`, "data-format": format }, toolbar, imageBar, area, source, frame, handle, status);
   setMode(mode);
 
   const ready = (async () => {
@@ -413,7 +420,7 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
   })();
 
   return {
-    element, area, source, ready,
+    element, area, source, toolbar, ready,
     mode: () => mode,
     selectedImage: () => selected,
     setValue: (value: string) => {

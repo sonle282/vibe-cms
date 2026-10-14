@@ -72,6 +72,18 @@ export default defineCmsConfig({
         image: f.image({ label: "Social sharing image" }),
       },
     },
+    // M10 (the Mr Spa CMS's Policy page): plain text on the paper — its sections stay as they are — and a word count.
+    {
+      key: "privacy", label: "Privacy policy", path: "src/data/privacy.json", format: "json", preview: "/privacy/", group: "Policies",
+      layout: "document", document: { title: "title", body: "sections", plain: true },
+      fields: {
+        title: f.text({ label: "Title" }),
+        sections: f.list(f.object({ label: "Section", fields: {
+          heading: f.text({ label: "Heading" }),
+          paragraphs: f.list(f.text({ label: "Paragraph", multiline: true }), { label: "Paragraphs", itemLabel: "Paragraph", fixed: true }),
+        } }), { label: "Sections", itemLabel: "Section", fixed: true }),
+      },
+    },
   ],
   collections: [
     {
@@ -123,6 +135,8 @@ export default defineCmsConfig({
       // M8: All · Live · Draft · Archived above the list; the tags after the name; "New post" as the button.
       list: { columns: [{ field: "tags" }], filters: [{ field: "status" }] },
       labels: { add: "New post" },
+      // M10: the Mr Spa CMS's Blog post — the paper (bar, cover, title, text) and Post details / In Google / Ready.
+      layout: "document", document: { title: "title", body: "body", cover: "cover" },
       fields: {
         title: f.text({ label: "Title", required: true, maxLength: 80 }),
         status: f.select({ label: "Status", options: ["published", "draft", "archived"] }),

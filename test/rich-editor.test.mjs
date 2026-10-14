@@ -80,20 +80,17 @@ test("editor (HTML): untouched never changes the value; an edit is cleaned; load
   editor.area.querySelector("p").append(" you");
   editor.area.dispatchEvent(new window.Event("input"));
   assert.deepEqual(changes, ['<p>Hi <strong>there</strong> you</p><p><img src="/x"></p>'], "an image loose among paragraphs gets its own paragraph");
-  // Toolbar: labelled, controls the area; every format button names itself.
+  // M10: the Mr Spa CMS's toolbar — plain text buttons (B / I named Bold / Italic), labelled, controls the area; no
+  // "Edit HTML", no Quote unless the field allows it, no Unlink.
   const toolbar = editor.element.querySelector("[role=toolbar]");
   assert.equal(toolbar.getAttribute("aria-controls"), "e1");
-  assert.deepEqual([...toolbar.querySelectorAll("button")].map((button) => button.getAttribute("aria-label") ?? button.textContent), ["Paragraph", "Heading", "Subheading", "Bold", "Italic", "Bulleted list", "Numbered list", "Quote", "Add a link", "Remove the link", "Edit HTML"]);
-  // Source view and back.
-  editor.element.querySelector(".vc-tool-source").click();
-  assert.equal(editor.mode(), "source");
-  assert.equal(editor.source.value, '<p>Hi <strong>there</strong> you</p><p><img src="/x"></p>');
-  editor.source.value = "<p>Typed <i>source</i></p>";
-  editor.source.dispatchEvent(new window.Event("input"));
-  assert.equal(changes.at(-1), "<p>Typed <i>source</i></p>", "source is taken as typed (the server cleans it)");
-  editor.element.querySelector(".vc-tool-source").click();
-  assert.equal(editor.mode(), "visual");
-  assert.equal(editor.area.innerHTML, "<p>Typed <em>source</em></p>");
+  assert.equal(toolbar.getAttribute("aria-label"), "Text formatting");
+  assert.deepEqual([...toolbar.querySelectorAll("button")].map((button) => [button.textContent, button.getAttribute("aria-label"), button.getAttribute("title")]), [
+    ["Paragraph", null, null], ["Heading 2", null, null], ["Heading 3", null, null], ["B", "Bold", null], ["I", "Italic", null],
+    ["Bulleted list", null, null], ["Numbered list", null, null], ["Add link", null, null]]);
+  assert.equal(editor.element.querySelector(".vc-tool-source"), null);
+  const quoted = createRichEditor({ doc: document, id: "e1q", label: "Quote", value: "", format: "html", allow: ["p", "blockquote", "a"], onChange: () => {} });
+  assert.deepEqual([...quoted.toolbar.querySelectorAll("button")].map((button) => button.textContent), ["Paragraph", "Quote", "Add link"], "a tool outside the Mr Spa set only when allow asks for it");
   // Emptying the editor gives "".
   editor.area.innerHTML = "<p><br></p>";
   editor.area.dispatchEvent(new window.Event("input"));
@@ -180,14 +177,51 @@ test("editor: paste keeps only the text; links must be web, mail, phone or site 
   editor.area.dispatchEvent(paste);
   assert.equal(paste.defaultPrevented, true);
   assert.equal(changes.at(-1), "<p>Start pasted &lt;b&gt;text&lt;/b&gt;</p>", "the text, never the HTML");
-  editor.element.querySelector('[data-command="link"]').click();
-  const linkBar = editor.element.querySelector('[aria-label="Link"]');
-  assert.equal(linkBar.hidden, false);
-  const input = linkBar.querySelector("input");
-  input.value = "javascript:alert(1)";
-  linkBar.querySelector("button").click();
-  assert.match(linkBar.textContent, /Use an address starting with https:\/\/, \/, mailto: or tel:/);
-  assert.equal(linkBar.hidden, false);
+});
+
+test("M10 editor: Add link (Mr Spa) — a page of the site or a secure HTTPS address, in its words", async () => {
+  const { window, document } = dom();
+  const changes = [];
+  const editor = createRichEditor({ doc: document, id: "e8", label: "Text", value: "<p>Start</p>", format: "html", pages: [["/", "Salon info"], ["/team/", "Team"]], onChange: (next) => changes.push(next) });
+  document.body.append(editor.element);
+  await editor.ready;
+  const link = editor.element.querySelector('[data-command="link"]');
+  // No place in the text yet: say so, no dialog.
+  link.click();
+  assert.equal(document.querySelector(".vc-dialog"), null);
+  assert.equal(editor.element.querySelector(".vc-rich-status").textContent, "Select the words to link first.");
+  const range = document.createRange();
+  range.selectNodeContents(editor.area.querySelector("p"));
+  range.collapse(false);
+  window.getSelection().removeAllRanges();
+  window.getSelection().addRange(range);
+  editor.area.dispatchEvent(new window.Event("mouseup"));
+  link.click();
+  const dialog = document.querySelector(".vc-dialog");
+  assert.equal(dialog.querySelector(".vc-dialog-title").textContent, "Add link");
+  assert.deepEqual([...dialog.querySelectorAll("label")].map((label) => label.textContent), ["Choose a page", "Or enter a secure HTTPS URL"]);
+  const select = dialog.querySelector("select"); const url = dialog.querySelector("input");
+  assert.deepEqual([...select.options].map((option) => [option.value, option.textContent]), [["", "Choose a page…"], ["/", "Salon info"], ["/team/", "Team"]]);
+  assert.equal(url.placeholder, "https://example.com/page");
+  assert.equal(dialog.querySelector(".vc-help").textContent, "Select the words to link first. Internal pages are safer and easier to maintain.");
+  assert.equal(document.activeElement, select, "the page list first");
+  assert.deepEqual([...dialog.querySelectorAll(".vc-dialog-actions button")].map((button) => button.textContent), ["Cancel", "Insert link"]);
+  const insert = () => [...dialog.querySelectorAll(".vc-dialog-actions button")].find((button) => button.textContent === "Insert link").click();
+  const status = () => dialog.querySelector(".vc-link-dialog-status").textContent;
+  insert(); await settle();
+  assert.equal(status(), "Choose a page or enter an HTTPS URL.");
+  for (const typed of ["http://example.com", "javascript:alert(1)", "/team/", "example.com"]) {
+    url.value = typed; url.dispatchEvent(new window.Event("input"));
+    insert(); await settle();
+    assert.equal(status(), "Use a valid HTTPS URL.", typed);
+  }
+  assert.equal(dialog.isConnected, true, "still open");
+  // A page puts its address in the box; Insert link writes it.
+  select.value = "/team/"; select.dispatchEvent(new window.Event("change"));
+  assert.equal(url.value, "/team/");
+  insert(); await settle();
+  assert.equal(dialog.isConnected, false);
+  assert.match(changes.at(-1), /<a href="\/team\/">\/team\/<\/a>/);
 });
 
 test("editor (Markdown): loads the converter, keeps the post until it is edited, writes Markdown; HTML-heavy posts open as Markdown", async () => {
@@ -206,7 +240,6 @@ test("editor (Markdown): loads the converter, keeps the post until it is edited,
   editor.area.insertAdjacentHTML("beforeend", '<p><img src="/a.webp" alt="Chair" width="300"></p>');
   editor.area.dispatchEvent(new window.Event("input"));
   assert.equal(changes.at(-1), 'This post has **bold** text.\n\n* one\n* two\n\n<img src="/a.webp" alt="Chair" width="300">\n', "the post's * bullets kept");
-  assert.equal(editor.element.querySelector(".vc-tool-source").textContent, "Edit Markdown");
 
   const raw = '<div class="note">Raw block</div>\n\nAfter\n';
   const other = createRichEditor({ doc: document, id: "e5", label: "Text", value: raw, format: "markdown", onChange: (next) => changes.push(next), loadMarkdown });
@@ -215,9 +248,6 @@ test("editor (Markdown): loads the converter, keeps the post until it is edited,
   assert.equal(other.mode(), "source");
   assert.equal(other.source.value, raw);
   assert.match(other.element.querySelector(".vc-rich-status").textContent, /opens as Markdown/);
-  other.element.querySelector(".vc-tool-source").click();
-  assert.equal(other.mode(), "source", "the visual editor is refused for this post");
-  assert.match(other.element.querySelector(".vc-rich-status").textContent, /stays in Markdown/);
 
   // The converter could not load: Markdown, said plainly.
   const offline = createRichEditor({ doc: document, id: "e6", label: "Text", value, format: "markdown", onChange: () => {}, loadMarkdown: async () => { throw new Error("offline"); } });

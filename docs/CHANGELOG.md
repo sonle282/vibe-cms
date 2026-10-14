@@ -5,6 +5,26 @@ migration that is not automatic. Each entry says what a site has to do.
 
 ## Unreleased
 
+**M10 — the document editor like the Mr Spa CMS.** Nothing to do on a site; new optional settings (README → Document
+editor). Rich text everywhere gets the Mr Spa toolbar.
+
+- `layout: "document"` with `document: { title, body, cover?, plain? }`, for collections and files: the paper (760 px;
+  the formatting bar on top, sticky; the cover; the title in 34 px; the text in 17 px; "Pasting keeps text only; HTML
+  code is not accepted.") and a 340 px column: **On the website**, **Post details** / **Page details** (the other fields
+  and **Web address** — fixed, or for a new post filled in from the title until shortened: "Page address" on the Ready
+  list), **In Google** (`host › blog › slug`, "<title> | <site name>", the first lines, 217 characters + "…"), **Ready to
+  publish**. No ID or Status box; no page on the canvas.
+- `plain: true` (a policy): no formatting bar; "Plain text · the sections stay as they are" and "N words" above the
+  title; the sections' text boxes as the page's text; "No empty section" on the Ready list.
+- The rich text toolbar is the Mr Spa CMS's: Paragraph · Heading 2 · Heading 3 · B · I · Bulleted list · Numbered list
+  · Add link · Insert image, plain text buttons. Quote only for a field whose `allow` has `blockquote`; Unlink and the
+  "Edit HTML / Edit Markdown" button are gone (a Markdown post the visual editor cannot keep still opens as Markdown).
+- **Add link** is the Mr Spa dialog: "Choose a page" (the site's pages) or "Or enter a secure HTTPS URL"; "Choose a
+  page or enter an HTTPS URL." / "Use a valid HTTPS URL."; Cancel / Insert link.
+- Fixed: saving in the record editor (M9) a record that is a draft on the website left its status as one unsaved change.
+- The change lists (Review changes, Drafts, history) name the status "Status" for records whose editor has no Status
+  box. The demo's blog uses the document editor and gains a plain "Privacy policy" page (group Policies).
+
 **M9 — the record editor like the Mr Spa CMS.** Nothing to do on a site; new optional settings (README → Record
 editor).
 

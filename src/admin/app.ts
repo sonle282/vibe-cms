@@ -7,7 +7,7 @@
  * bottom), the top bar (breadcrumb, Laptop / Tablet / Mobile, the one save state, View live / Version history /
  * Discard draft / Reload and keep my changes / Check again — folded into ⋯ on a narrow bar —, Save draft, Publish).
  */
-import type { Field } from "../config/index.js";
+import type { DocumentLayout, Field } from "../config/index.js";
 import type { PickChoices } from "../check/picks.js";
 import { checkRecordValues } from "../check/values.js";
 import { createClient, humanMessage, xhrUpload, type ApiFail, type Client, type Fetch } from "./api.js";
@@ -28,6 +28,7 @@ import { openChangePassword, peopleScreen, rowMenu, type ScreenKit } from "./peo
 import { activityScreen } from "./activity.js";
 import { openHistory, type HistoryTarget } from "./history.js";
 import { createRecordSide, createRecordToc } from "./record.js";
+import { createDetailsCard, createDocBar, createGoogleCard, excerptOf, googlePath, plainTextOf, stringsIn, wordCount } from "./document.js";
 import { ADMIN_BASE, adminHref, legacyHashPath, parseAdminPath, type AdminRoute } from "./routes.js";
 import { applyLeafChanges, buildFailedText, deriveSaveState, elapsedText, publishBlockReason, unsavedLeafChanges, type LeafChange, type PublishedState, type SaveState } from "./save-state.js";
 import { createRecovery, forgetAllRecovery, forgetRecovery, readRecovery, recoveryQuestion, type Recovery } from "./recovery.js";
@@ -64,24 +65,43 @@ export type AdminOptions = {
 /** M9: a collection's records are edited in the record editor ("record") or the page editor ("page"). */
 export const recordLayoutOf = (collection: BootCollection) => (collection.layout ?? (collection.preview ? "page" : "record")) === "record";
 
+/** M10: the document layout of a file or collection (`layout: "document"` with its `document`), if it has one. */
+export const documentOf = (target: { kind: "file"; file: BootFile } | { kind: "item"; collection: BootCollection }) => {
+  const owner = target.kind === "file" ? target.file : target.collection;
+  return owner.layout === "document" ? owner.document : undefined;
+};
+/** M10: the paper's title wraps over lines (Mr Spa: a text box that grows), so it is a multi-line text box. */
+const withDocumentTitle = (fields: Record<string, Field>, spec: DocumentLayout | undefined) => {
+  const field = spec ? fields[spec.title] : undefined;
+  return field?.type === "text" ? { ...fields, [spec!.title]: { ...field, multiline: true } } : fields;
+};
+
 export const editorFields = (target: { kind: "file"; file: BootFile } | { kind: "item"; collection: BootCollection; isNew: boolean }) => {
-  if (target.kind === "file") return target.file.fields;
+  if (target.kind === "file") return withDocumentTitle(target.file.fields, documentOf(target));
   const { collection, isNew } = target;
   const fields: Record<string, Field> = {};
   // M9 (Mr Spa): the record editor has no ID or Status box of its own: the id comes from the name, the status from
-  // Publish and Hide from website / Show on website again.
-  const record = recordLayoutOf(collection);
+  // Publish and Hide from website / Show on website again. M10: the document layout neither.
+  const record = recordLayoutOf(collection) || collection.layout === "document";
   if (record) {
     Object.assign(fields, collection.fields);
     if (collection.status) delete fields[collection.status.field];
-    if (collection.markdown && !("body" in fields)) fields.body = { type: "richText", label: "Text", help: "Format with the toolbar; “Edit Markdown” shows the text as Markdown." };
-    return fields;
+    if (collection.markdown && !("body" in fields)) fields.body = { type: "richText", label: "Text" };
+    return withDocumentTitle(fields, documentOf({ kind: "item", collection }));
   }
   if (!(collection.idField in collection.fields)) fields[collection.idField] = { type: "text", label: "ID", required: true, help: isNew ? "Used in the page address: lowercase letters, numbers and dashes. It can't be changed later." : undefined };
   if (collection.status && !(collection.status.field in collection.fields)) fields[collection.status.field] = { type: "select", label: "Status", options: [collection.status.live, collection.status.draft, ...(collection.status.archived ? [collection.status.archived] : [])] };
   Object.assign(fields, collection.fields);
-  if (collection.markdown && !("body" in fields)) fields.body = { type: "richText", label: "Text", help: "Format with the toolbar; “Edit Markdown” shows the text as Markdown." };
+  if (collection.markdown && !("body" in fields)) fields.body = { type: "richText", label: "Text" };
   return fields;
+};
+
+/** M9 / M10: what the change lists name — the editor's fields, plus the status that Publish and Hide set. */
+export const changeFields = (target: { kind: "file"; file: BootFile } | { kind: "item"; collection: BootCollection; isNew: boolean }) => {
+  const fields = editorFields(target);
+  if (target.kind === "file" || !target.collection.status || target.collection.status.field in fields) return fields;
+  const { status } = target.collection;
+  return { [status.field]: { type: "select", label: "Status", options: [status.live, status.draft, ...(status.archived ? [status.archived] : [])] } as Field, ...fields };
 };
 
 type DraftRow = { resource: string; kind: "file" | "item"; key: string; id: string | null; label: string; group: string; updatedAt: string; revision: number; isNew: boolean; stale: boolean };
@@ -796,7 +816,7 @@ export const startAdmin = (options: AdminOptions) => {
       return describeField(file.fields, path, section?.label ?? file.label);
     }
     const collection = boot.collections.find((entry) => entry.key === key);
-    return collection ? describeField(editorFields({ kind: "item", collection, isNew: false }), path, collection.itemLabel) : path.join(".");
+    return collection ? describeField(changeFields({ kind: "item", collection, isNew: false }), path, collection.itemLabel) : path.join(".");
   };
   const keyMatches = (key: string, path: Path) => key.split(".").every((part, index) => path[index] === part);
   const sectionKeyOf = (owner: PreviewOwner, path: Path) => {
@@ -837,6 +857,7 @@ export const startAdmin = (options: AdminOptions) => {
 
     // Fields the form shows: the config's, plus for records the id, the status (when not declared) and the Markdown body.
     const fields = input.kind === "file" ? editorFields(input) : editorFields({ kind: "item", collection: input.collection, isNew });
+    const listedFields = input.kind === "file" ? fields : changeFields({ kind: "item", collection: input.collection, isNew });
     const readOnly: Record<string, string> = collection && !isNew ? { [collection.idField]: "The ID is fixed so existing links keep working." } : {};
 
     let version = view?.version ?? "new";
@@ -896,7 +917,7 @@ export const startAdmin = (options: AdminOptions) => {
     const referenceLabels = (): ReferenceLabels => Object.fromEntries(Object.entries(references).map(([key, target]) => [key, Object.fromEntries(target.items.map((item) => [item.id, item.label]))]));
     const changesToPublish = () => {
       const labels = referenceLabels();
-      return summarizeChanges({ fields, before: live, after: saved, references: labels, choiceLabels: choiceLabelsOf(view?.choices), ...(collection && !live ? { newRecord: { itemLabel: collection.itemLabel, title: titleText() } } : {}) });
+      return summarizeChanges({ fields: listedFields, before: live, after: saved, references: labels, choiceLabels: choiceLabelsOf(view?.choices), ...(collection && !live ? { newRecord: { itemLabel: collection.itemLabel, title: titleText() } } : {}) });
     };
     const stale = Boolean(view?.draft?.stale);
     /** M9: redraws the record editor's right column (set once it exists). */
@@ -935,6 +956,8 @@ export const startAdmin = (options: AdminOptions) => {
     };
 
     const seoLayout = input.kind === "file" && input.file.layout === "seo" && Boolean(input.file.seo);
+    const documentSpec = input.kind === "file" ? documentOf(input) : documentOf({ kind: "item", collection: input.collection });
+    const plain = Boolean(documentSpec?.plain);
     const seoSections = seoLayout && input.kind === "file" ? seoSectionsOf(input.file) : undefined;
     const form: Form = createForm({
       doc, fields, value: start, role: user.role, references, readOnly, pickImage, choices: view?.choices, notify: (text, action) => say(text, "info", action),
@@ -954,10 +977,10 @@ export const startAdmin = (options: AdminOptions) => {
       },
       // M4: Link fields offer the site's pages and say where a link goes; Phone fields follow site.phone.country.
       links: { pages: boot.site.pages ?? [], host: siteHost(), ...(boot.site.phone ? { country: boot.site.phone.country } : {}) },
-      previewNotes: Boolean((input.kind === "file" ? input.file.preview : input.collection.preview) && options.preview !== false && !seoLayout),
+      previewNotes: Boolean((input.kind === "file" ? input.file.preview : input.collection.preview) && options.preview !== false && !seoLayout && !documentSpec),
       // M7: an area's on / off toggle is the Mr Spa CMS's switch, against what the website shows now.
       ...(input.kind === "file" && input.file.toggle ? { switchField: { path: input.file.toggle, noun: input.file.label.toLowerCase(), live: live === undefined || live === null ? undefined : getAt(live, keyPath(input.file.toggle)) === true } } : {}),
-      sections: seoLayout ? seoSections : input.kind === "file" ? input.file.sections : collection && recordLayoutOf(collection) ? recordSectionsOf(collection, fields) : undefined,
+      sections: documentSpec ? undefined : seoLayout ? seoSections : input.kind === "file" ? input.file.sections : collection && recordLayoutOf(collection) ? recordSectionsOf(collection, fields) : undefined,
       onChange: (value, path) => {
         if (collection && isNew && path.length === 1 && path[0] === collection.idField && !autoId) idTouched = true;
         if (collection && isNew && !idTouched && path[0] !== collection.idField) {
@@ -985,7 +1008,9 @@ export const startAdmin = (options: AdminOptions) => {
     let suppressScroll = false;
     let lastFocused = "";
     const recordLayout = Boolean(collection && recordLayoutOf(collection));
-    if (pattern && options.preview !== false && !recordLayout) {
+    /** M9 / M10: the right column ("On the website", "Ready to publish") instead of the page on the canvas. */
+    const sideLayout = recordLayout || Boolean(documentSpec);
+    if (pattern && options.preview !== false && !sideLayout) {
       const placeholders = /\{[^}]+\}/.test(pattern);
       const url = isNew && placeholders ? undefined : previewUrl(pattern, saved) ?? (placeholders ? undefined : pattern);
       preview = createPreview({
@@ -1068,11 +1093,13 @@ export const startAdmin = (options: AdminOptions) => {
       return value === collection.status.draft ? "draft" : collection.status.archived !== undefined && value === collection.status.archived ? "archived" : "live";
     };
     const webStateOf = (count: number) => {
-      const path = collection?.preview && live ? previewUrl(collection.preview, live as Record<string, unknown>) : undefined;
+      const shownAt = input.kind === "file" ? input.file.preview : collection?.preview;
+      const path = shownAt && live ? previewUrl(shownAt, live as Record<string, unknown>) : undefined;
       return { status: statusOfLive(), isNew, dirty: count > 0, hasDraft, ...(path ? { link: { href: path, text: `${siteHost()}${path.replace(/\/$/, "")}` } } : {}) };
     };
     const readyItemsOf = () => {
-      if (!collection || !recordLayout) return [];
+      if (!sideLayout) return [];
+      const readyFields = input.kind === "file" ? input.file.fields : input.collection.fields;
       const value = form.value();
       const filled = (field: Field | undefined, entry: unknown) => {
         if (entry === undefined || entry === null) return false;
@@ -1082,25 +1109,96 @@ export const startAdmin = (options: AdminOptions) => {
         return true;
       };
       const jump = (path: string) => () => { const box = form.element.querySelector<HTMLElement>(`[data-path="${path}"]`); box?.scrollIntoView?.({ block: "center" }); form.focus(path); };
-      const chosen = collection.ready ?? Object.entries(collection.fields).filter(([, field]) => field.required || (field.type === "list" && (field.min ?? 0) > 0)).map(([key]): { field: string; label?: string } => ({ field: key }));
+      const chosen = collection?.ready ?? Object.entries(readyFields).filter(([, field]) => field.required || (field.type === "list" && (field.min ?? 0) > 0)).map(([key]): { field: string; label?: string } => ({ field: key }));
       const items = chosen.map(({ field: key, label }) => {
-        const field = collection.fields[key];
+        const field = readyFields[key];
         const words = label ?? (field?.type === "list" && !field.required ? `At least ${(field.min ?? 1) === 1 ? "one" : field.min} ${(field.itemLabel ?? field.of.label).toLowerCase()}` : field?.label ?? key);
         return { label: words, done: filled(field, getAt(value, keyPath(key))), go: jump(key) };
       });
+      // M10 (Mr Spa's Blog post): a new post's address; (Policy) no section left empty.
+      if (documentSpec && collection && isNew && addressPrefix !== undefined) {
+        const id = String(value[collection.idField] ?? "");
+        items.push({ label: "Page address", done: ID_PATTERN.test(id) && id.length <= 160 && id !== "new", go: () => { addressBox?.focus(); } });
+      }
+      const bodyField = documentSpec ? fields[documentSpec.body] : undefined;
+      if (plain && bodyField?.type === "list") {
+        const sections = getAt(value, keyPath(documentSpec!.body));
+        items.push({ label: "No empty section", done: Array.isArray(sections) && sections.every((section) => stringsIn(section).some((text) => text.trim())), go: jump(documentSpec!.body) });
+      }
       const problems = validate();
       items.push({ label: "No errors", done: problems.length === 0, go: () => { if (!problems.length) return; form.showErrors(problems); form.focus(problems[0].path.replace(/\[\d+\].*$/, "")) || form.focus(problems[0].path); } });
       return items;
     };
-    const recordSide = collection && recordLayout ? createRecordSide(doc, {
+    // ---- M10: the document layout's parts (the paper is put together with the layout, below)
+    const documentNoun = collection ? collection.itemLabel.toLowerCase() : "page";
+    const detailsCard = documentSpec ? createDetailsCard(doc, collection ? `${collection.itemLabel} details` : "Page details") : undefined;
+    const googleCard = documentSpec ? createGoogleCard(doc, `Worked out from the title and the first lines of the ${documentNoun}.`) : undefined;
+    const docBar = plain && documentSpec ? createDocBar(doc, fields[documentSpec.body]?.type !== "list" || (fields[documentSpec.body] as { fixed?: boolean }).fixed ? "Plain text · the sections stay as they are" : "Plain text") : undefined;
+    const markdownBody = Boolean(collection?.markdown && documentSpec?.body === "body" && !("body" in collection.fields));
+    // Mr Spa: "Web address" — fixed once the record exists; a new post's comes from its title (it can be shortened).
+    const addressPattern = documentSpec ? (input.kind === "file" ? input.file.preview : collection?.preview) : undefined;
+    const addressPrefix = collection && isNew && addressPattern?.includes(`{${collection.idField}}`) ? addressPattern.split(`{${collection.idField}}`)[0] : undefined;
+    const addressPath = () => (addressPattern ? (previewUrl(addressPattern, form.value()) ?? (/\{/.test(addressPattern) ? undefined : addressPattern)) : undefined);
+    const addressBox = addressPattern && (addressPrefix !== undefined || !isNew) ? h(doc, "input", { id: uid("address"), class: "vc-input", autocomplete: "off", spellcheck: "false", ...(addressPrefix === undefined ? { readonly: true } : {}) }) as HTMLInputElement : undefined;
+    const showAddress = () => {
+      if (!addressBox || doc.activeElement === addressBox) return;
+      const path = addressPath() ?? "";
+      addressBox.value = input.kind === "file" ? `${siteHost()}${path.replace(/\/$/, "")}` : addressPrefix !== undefined ? `${addressPrefix}${String(form.value()[collection!.idField] ?? "")}` : path.replace(/\/$/, "");
+    };
+    if (addressBox && addressPrefix !== undefined && collection) {
+      const typed = () => slugify(addressBox.value.startsWith(addressPrefix) ? addressBox.value.slice(addressPrefix.length) : addressBox.value);
+      addressBox.addEventListener("input", () => { idTouched = true; form.setValue([collection.idField], typed()); });
+      addressBox.addEventListener("change", () => { addressBox.value = `${addressPrefix}${typed()}`; });
+    }
+    const addressRow = addressBox ? h(doc, "div", { class: "vc-field vc-doc-address" },
+      h(doc, "label", { class: "vc-label", for: addressBox.id }, "Web address"), addressBox,
+      h(doc, "p", { class: "vc-help" }, addressPrefix !== undefined ? "Filled in from the title. You can shorten it; it can't be changed after publishing." : "Fixed so existing links keep working.")) : null;
+    const updateDocument = () => {
+      if (!documentSpec || !googleCard) return;
+      const value = form.value();
+      const titleValue = String(getAt(value, keyPath(documentSpec.title)) ?? "").trim();
+      const bodyValue = getAt(value, keyPath(documentSpec.body));
+      const text = plain || typeof bodyValue !== "string" ? stringsIn(bodyValue).join(" ").replace(/\s+/g, " ").trim() : plainTextOf(doc, bodyValue, markdownBody);
+      googleCard.update({ path: googlePath(siteHost(), addressPath() ?? ""), title: `${titleValue || (collection ? `Untitled ${documentNoun}` : "")} | ${boot.site.name}`, text: excerptOf(text) });
+      docBar?.setCount(wordCount([titleValue, ...stringsIn(bodyValue)]));
+      showAddress();
+    };
+    const recordSide = collection && sideLayout ? createRecordSide(doc, {
       noun: collection.itemLabel.toLowerCase(), nounTitle: collection.itemLabel,
+      ...(documentSpec ? { extra: [detailsCard!.element, googleCard!.element], label: `${collection.itemLabel} details` } : {}),
       ...(collection.list?.duplicate && !collection.fixed ? { duplicate: () => {
         if (dirty()) { say(`Save or discard your changes before duplicating this ${collection.itemLabel.toLowerCase()}.`); return; }
         void duplicateRecord(collection, { id: input.kind === "item" ? input.id ?? "" : "", label: titleText(), resource: resourceOf(), version, hasDraft });
       } } : {}),
       ...(collection.status?.archived ? { visibility: (archive: boolean) => { void changeVisibility(archive); } } : {}),
-    }) : undefined;
-    if (recordSide) recordUpdate = (count, blocked) => recordSide.update(webStateOf(count), readyItemsOf(), blocked ?? undefined);
+    }) : documentSpec ? createRecordSide(doc, { noun: "page", nounTitle: "Page", extra: [detailsCard!.element, googleCard!.element], label: "Page details" }) : undefined;
+    if (recordSide) recordUpdate = (count, blocked) => { recordSide.update(webStateOf(count), readyItemsOf(), blocked ?? undefined); updateDocument(); };
+    /** M10: the paper — the formatting bar (or a policy's bar), the cover, the title, the body; the rest goes right. */
+    const documentPaper = () => {
+      const spec = documentSpec!;
+      const boxOf = (key: string | undefined) => (key ? form.element.querySelector<HTMLElement>(`:scope > [data-path="${key}"]`) : null);
+      const cover = boxOf(spec.cover); const titleBox = boxOf(spec.title); const bodyBox = boxOf(spec.body);
+      const onPaper = [cover, titleBox, bodyBox].filter((box): box is HTMLElement => Boolean(box));
+      for (const box of onPaper) form.element.append(box);
+      for (const child of [...form.element.children]) if (child.classList.contains("vc-field") && !onPaper.includes(child as HTMLElement)) detailsCard!.body.append(child);
+      if (addressRow) detailsCard!.body.append(addressRow);
+      detailsCard!.element.hidden = !detailsCard!.body.children.length;
+      titleBox?.classList.add("vc-doc-title-field");
+      titleBox?.querySelector(".vc-label")?.classList.add("vc-sr-only");
+      const titleInput = titleBox?.querySelector<HTMLTextAreaElement>("textarea");
+      if (titleInput) {
+        titleInput.rows = 1;
+        titleInput.classList.add("vc-doc-title");
+        // Mr Spa: "Give the post a title" for a new post; "Title" on a page.
+        titleInput.placeholder = collection ? (isNew ? `Give the ${documentNoun} a title` : "") : "Title";
+        titleInput.addEventListener("keydown", (event) => { if (event.key === "Enter") event.preventDefault(); });
+      }
+      bodyBox?.classList.add("vc-doc-body");
+      bodyBox?.querySelector(":scope > .vc-label")?.classList.add("vc-sr-only");
+      const toolbar = plain ? null : bodyBox?.querySelector<HTMLElement>(".vc-rich-toolbar") ?? null;
+      return h(doc, "div", { class: `vc-doc-paper${plain ? " is-plain" : ""}` }, docBar?.element ?? null, toolbar, form.element,
+        plain ? null : h(doc, "p", { class: "vc-help vc-doc-paste" }, "Pasting keeps text only; HTML code is not accepted."));
+    };
     /** M9 (Mr Spa): Hide from website / Show on website again — at once, outside Save draft and Publish. */
     const changeVisibility = async (archive: boolean) => {
       if (!collection || input.kind !== "item" || !input.id) return;
@@ -1133,9 +1231,11 @@ export const startAdmin = (options: AdminOptions) => {
       form.clearErrors();
       problem = "";
       const value = form.value();
-      if (collection?.status && recordLayout) {
+      if (collection?.status && sideLayout) {
         const archived = collection.status.archived !== undefined && (visibilityOverride.get(resourceOf()) ?? value[collection.status.field]) === collection.status.archived;
         value[collection.status.field] = archived ? collection.status.archived : collection.status.live;
+        // The form holds it too, or the saved draft would differ from the form by its status.
+        if (form.value()[collection.status.field] !== value[collection.status.field]) form.setValue([collection.status.field], value[collection.status.field]);
       }
       const id = collection ? String(value[collection.idField]) : undefined;
       const url = input.url ?? `/api/cms/collections/${encodeURIComponent(collection!.key)}/items/${encodeURIComponent(id!)}`;
@@ -1182,7 +1282,7 @@ export const startAdmin = (options: AdminOptions) => {
     const publishHere = async () => {
       if (publish.disabled || dirty() || publishing) return;
       const name = titleText();
-      const changes = summarizeChanges({ fields, before: live, after: saved, references: referenceLabels(), choiceLabels: choiceLabelsOf(view?.choices), full: true, ...(collection && !live ? { newRecord: { itemLabel: collection.itemLabel, title: name } } : {}) });
+      const changes = summarizeChanges({ fields: listedFields, before: live, after: saved, references: referenceLabels(), choiceLabels: choiceLabelsOf(view?.choices), full: true, ...(collection && !live ? { newRecord: { itemLabel: collection.itemLabel, title: name } } : {}) });
       if (!changes.length) { problem = "There are no changes to publish."; refresh(); return; }
       if (!(await confirmPublish(name, reviewGroups(changes, sectionList, name)))) return;
       publishing = true;
@@ -1228,19 +1328,21 @@ export const startAdmin = (options: AdminOptions) => {
     const crumbsFor: Array<[string, string?]> = [...input.crumbs, [titleText() || "…"]];
     // M7 (Mr Spa): Search & sharing has its title in the top bar only.
     if (seoLayout) title.classList.add("vc-sr-only");
-    if (recordLayout) title.classList.add("vc-sr-only");
+    if (sideLayout) title.classList.add("vc-sr-only");
     const content = inspector ? [inspector.element] : seoLayout && input.kind === "file" ? [title, banner, seoScreen(input.file, form)]
+      : documentSpec && recordSide ? [title, h(doc, "div", { class: "vc-doc-editor" }, recordRequiredNote(fields), banner, documentPaper(), recordSide.element)]
       : recordLayout && recordToc && recordSide ? [title, h(doc, "div", { class: "vc-record-editor" }, recordToc.element, h(doc, "div", { class: "vc-record-form" }, recordRequiredNote(fields), banner, form.element), recordSide.element)]
       : [title, fieldsRequiredNote(fields), banner, form.element];
     if (recordLayout) { body.classList.add("vc-body-record"); body.addEventListener("scroll", recordScroll, { passive: true }); }
     if (seoLayout) body.classList.add("vc-body-seo");
+    if (documentSpec) body.classList.add("vc-body-document");
     const split = preview ? h(doc, "div", { class: "vc-editor-split vc-preview-on" }, h(doc, "div", { class: "vc-editor-main" }, ...content), preview.element) : undefined;
     if (preview) {
       body.classList.add("vc-body-wide");
       // U2: the device switch in the middle of the top bar.
       topCenter.append(preview.devices);
     }
-    show({ title: titleText(), crumbs: crumbsFor, dirty, save: doSave, refreshState: refresh, resource: resourceOf(), leave: () => { body.classList.remove("vc-body-seo"); body.classList.remove("vc-body-record"); body.removeEventListener("scroll", recordScroll); recovery?.stop(); if (flushRecovery === recovery?.flush) flushRecovery = undefined; if (dirty()) forgetRecovery(storage, resourceOf()); preview?.destroy(); inspector?.destroy(); body.classList.remove("vc-body-wide"); } }, split ? [split] : content);
+    show({ title: titleText(), crumbs: crumbsFor, dirty, save: doSave, refreshState: refresh, resource: resourceOf(), leave: () => { body.classList.remove("vc-body-seo"); body.classList.remove("vc-body-record"); body.classList.remove("vc-body-document"); body.removeEventListener("scroll", recordScroll); recovery?.stop(); if (flushRecovery === recovery?.flush) flushRecovery = undefined; if (dirty()) forgetRecovery(storage, resourceOf()); preview?.destroy(); inspector?.destroy(); body.classList.remove("vc-body-wide"); } }, split ? [split] : content);
     preview?.start();
     refresh();
     // M4: a Link field turning invalid / valid turns Save off / on.
@@ -1288,15 +1390,15 @@ export const startAdmin = (options: AdminOptions) => {
   /** P12c: what the History screen needs for a resource id ("file:site", "item:services:<id>"). */
   const historyTarget = (resource: string): HistoryTarget | undefined => {
     const [kind, key, ...rest] = resource.split(":");
-    if (kind === "file") { const file = boot.files.find((entry) => entry.key === key); return file ? { label: file.label, fields: editorFields({ kind: "file", file }), href: adminHref.file(key) } : undefined; }
+    if (kind === "file") { const file = boot.files.find((entry) => entry.key === key); return file ? { label: file.label, fields: changeFields({ kind: "file", file }), href: adminHref.file(key) } : undefined; }
     const collection = kind === "item" ? collectionOf(key) : undefined;
     const id = rest.join(":");
-    return collection && id ? { label: `${collection.itemLabel} · ${id}`, fields: editorFields({ kind: "item", collection, isNew: false }), href: adminHref.item(key, id) } : undefined;
+    return collection && id ? { label: `${collection.itemLabel} · ${id}`, fields: changeFields({ kind: "item", collection, isNew: false }), href: adminHref.item(key, id) } : undefined;
   };
   const fieldsOfDraft = (row: DraftRow) => {
-    if (row.kind === "file") { const file = boot.files.find((entry) => entry.key === row.key); return file ? editorFields({ kind: "file", file }) : undefined; }
+    if (row.kind === "file") { const file = boot.files.find((entry) => entry.key === row.key); return file ? changeFields({ kind: "file", file }) : undefined; }
     const collection = collectionOf(row.key);
-    return collection ? editorFields({ kind: "item", collection, isNew: row.isNew }) : undefined;
+    return collection ? changeFields({ kind: "item", collection, isNew: row.isNew }) : undefined;
   };
 
   /** Each draft against the live content, compared through the editor's fields, with record names for references. */

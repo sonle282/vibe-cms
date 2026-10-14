@@ -187,6 +187,8 @@ export const createForm = (options: FormOptions): Form => {
       ...(options.pickImage ? { pickImage: options.pickImage } : {}),
       ...(options.loadMarkdown ? { loadMarkdown: options.loadMarkdown } : {}),
       ...(field.allow ? { allow: field.allow } : {}),
+      // M10: Add link offers the site's pages.
+      ...(options.links ? { pages: options.links.pages } : {}),
     });
     editor.area.setAttribute("aria-labelledby", `${id}-label`);
     editors.set(pathText(path), editor);

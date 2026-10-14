@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { f, loadCmsConfig } from "../dist/index.js";
-import { adminBoot, describeChange, editorFields, formatHours, summarizeChanges } from "../dist/admin/index.js";
+import { adminBoot, changeFields, describeChange, formatHours, summarizeChanges } from "../dist/admin/index.js";
 
 const demoRoot = fileURLToPath(new URL("../fixtures/demo-site/", import.meta.url));
 let config; let site; let services; let team; let boot;
@@ -101,7 +101,7 @@ test("lists: a re-order is one change; items added / removed / changed are named
 
 test("records: a new record is one line; a Markdown body change uses the editor's fields; keys the form does not know are mentioned", () => {
   const posts = boot.collections.find((collection) => collection.key === "posts");
-  const fields = editorFields({ kind: "item", collection: posts, isNew: false });
+  const fields = changeFields({ kind: "item", collection: posts, isNew: false });
   const welcome = { slug: "welcome", title: "Welcome", status: "published", body: "Old body\n" };
   assert.deepEqual(lines(summarizeChanges({ fields, before: welcome, after: { ...welcome, status: "draft", body: "New body\n" } })), ["Status: published → draft", "Text: Old body → New body"]);
   const gel = { id: "gel", name: "Gel Removal" };
