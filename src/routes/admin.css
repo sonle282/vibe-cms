@@ -987,3 +987,39 @@ button.vc-media-place:hover { background: var(--surface-hover); }
 .vc-activity-result.is-failed { background: var(--danger-bg); color: var(--danger); }
 .vc-activity-empty { color: var(--text-secondary) !important; text-align: center !important; }
 @media (max-width: 1100px) { .vc-people-layout { grid-template-columns: minmax(0, 1fr); } .vc-people-panel { border-top: 1px solid var(--hairline); border-left: 0; } }
+
+/* ---------------------------------------------------------------- M8: a collection's list (the Mr Spa CMS's Products / Projects / Blog) */
+.vc-body.vc-body-list { padding: 38px 48px; }
+.vc-body.vc-body-list .vc-page-inner { max-width: none; }
+.vc-list-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 16px; }
+.vc-list-search input { width: 280px; min-height: 36px; height: 36px; padding-left: 34px; background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 11px center; }
+.vc-list-select { min-height: 36px; }
+.vc-list-segmented { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--hairline); border-radius: 7px; background: var(--canvas); }
+.vc-list-segment { min-height: 30px; padding: 0 12px; border: 0; border-radius: 6px; background: none; color: var(--text-secondary); font: inherit; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.vc-list-segment:hover { color: var(--text); }
+.vc-list-segment[aria-checked="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(15 23 42 / .08); font-weight: 600; }
+.vc-list-segment:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vc-list-count { margin-left: auto; color: var(--text-secondary); font-size: 13px; white-space: nowrap; }
+.vc-list-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.vc-list-table th, .vc-list-table td { padding: 13px 15px; border-bottom: 1px solid var(--surface-off); text-align: left; }
+.vc-list-table th { background: var(--canvas); color: var(--text-secondary); font-size: 12px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
+.vc-list-table th:first-child { border-top-left-radius: var(--radius-14); }
+.vc-list-table th:last-child { border-top-right-radius: var(--radius-14); }
+.vc-list-table td { color: var(--text-secondary); vertical-align: middle; }
+.vc-list-row td { padding-top: 8px; padding-bottom: 8px; }
+.vc-list-row:hover td { background: var(--canvas); }
+.vc-list-name-cell { width: 100%; min-width: 260px; }
+.vc-list-name { display: flex; width: 100%; align-items: center; gap: 12px; border-radius: 6px; color: var(--text); text-align: left; text-decoration: none; }
+.vc-list-name:hover strong { color: var(--accent); }
+.vc-list-name:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vc-list-name .vc-list-thumb { display: block; border: 1px solid var(--hairline); border-radius: 6px; background: var(--surface-off); }
+.vc-list-name-words { display: grid; min-width: 0; gap: 2px; }
+.vc-list-name-words strong { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.vc-list-name-detail { color: var(--text-secondary); font-size: 12px; }
+.vc-list-secondary { white-space: nowrap; }
+.vc-list-status-cell { white-space: nowrap; }
+.vc-content-status.is-archived { background: var(--surface-off); color: var(--text-off); }
+.vc-list-status-note { display: block; margin-top: 4px; color: var(--warning); font-size: 12px; white-space: nowrap; }
+.vc-list-menu-cell { width: 44px; text-align: right; }
+.vc-list-empty p { margin: 0; padding: 42px; color: var(--text-secondary); font-size: 14px; text-align: center; }
+a.vc-row-menu-item { display: flex; align-items: center; color: var(--text); text-decoration: none; }

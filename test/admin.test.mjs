@@ -327,7 +327,7 @@ test("shell: Pages lists the files (U4: one row each, with its address and statu
   assert.equal(h.root.querySelector("h1").textContent, "Pages");
   await h.go("/admin/catalog/services");
   assert.equal(h.root.querySelector('.vc-nav-list a[aria-current="page"]').textContent, "Services");
-  assert.deepEqual([...h.root.querySelectorAll(".vc-table tbody tr")].map((row) => row.dataset.id), ["classic-manicure", "spa-pedicure", "nail-art"]);
+  assert.deepEqual([...h.root.querySelectorAll(".vc-list-table tbody tr")].map((row) => row.dataset.id), ["classic-manicure", "spa-pedicure", "nail-art"]);
   assert.equal(h.document.title, "Demo Salon CMS");
   // M1: the breadcrumb's parent is a button back to its screen.
   await h.go("/admin/catalog/services/spa-pedicure");
@@ -432,7 +432,7 @@ test("shell: leaving with unsaved changes asks; saying no keeps the page and the
   assert.ok(h.root.querySelector('[data-path="tagline"]'), "still on the form");
   answer = true;
   await h.go("/admin/catalog/team");
-  assert.ok(h.root.querySelector(".vc-table"));
+  assert.ok(h.root.querySelector(".vc-list-table"));
 });
 
 // ------------------------------------------------------------------ P8: review + publish + live, against the real API and a fake GitHub

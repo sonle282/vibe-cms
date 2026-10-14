@@ -5,6 +5,22 @@ migration that is not automatic. Each entry says what a site has to do.
 
 ## Unreleased
 
+**M8 — collection lists like the Mr Spa CMS.** Nothing to do on a site; new optional settings (README → Collection
+lists).
+
+- The list: a 44 px thumbnail and the name (+ an optional second line, `list.detail: "SKU {sku}"`), the columns of
+  `list.columns`, the status **Live** / **Draft** / **Archived** with "Unpublished changes" (and its "Draft saved …"
+  tooltip) when you have a draft, a ⋯ per record: **Edit**, **Duplicate** (`list.duplicate`), **View on website**
+  (only when Live). The ID column is gone; a new record's draft is on Drafts, not a row, until it is published.
+- The toolbar: search (every word, in the name, id, columns and `list.search`), the filters of `list.filters`
+  (buttons up to 5 choices, a dropdown above), the count "3 services" / "1 of 3 services"; empty: "No services yet." /
+  "No services match these filters.". The top bar's button reads **Add service** (`labels.add`, e.g. "New post").
+- Duplicate: asks first ("Create a new, unpublished service from …? … Create copy"), then opens a draft named
+  "Copy of …" (id from that name, unique), status draft, without the `clear` fields.
+- `status.archived`: a third status value (a record hidden from the website, kept in the CMS). The API's list answers
+  each record's `status`, the `values` its list shows and `draftSavedAt`.
+
+
 - **`npx vibe-cms init`:** a site whose `astro.config` builds its pages as files (`build: { format: "file" }`, pages at
   `/about` with no trailing slash) gets previews written the same way (`preview: "/about"`); other sites keep
   `"/about/"`. The `TODO: preview` examples follow the site's format too. Found on Modern Nails Lounge (P24).

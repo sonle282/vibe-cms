@@ -317,6 +317,34 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     return json({ files, collections });
   };
 
+  /**
+   * M8: the fields a collection's list shows or reads (columns, filters, search, the detail line, the preview address,
+   * the status), each record's values for them, and its status on the website: live / draft / archived.
+   */
+  const listFieldsOf = (collection: CmsCollection) => {
+    const list = collection.list ?? {};
+    const names = new Set<string>([
+      ...(list.columns ?? []).map((column) => column.field), ...(list.filters ?? []).map((filter) => filter.field), ...(list.search ?? []),
+      ...[...(list.detail ?? "").matchAll(/\{([^}]+)\}/g)].map((match) => match[1]), ...[...(collection.preview ?? "").matchAll(/\{([^}]+)\}/g)].map((match) => match[1]),
+      ...(collection.status ? [collection.status.field] : []),
+    ]);
+    names.delete(idFieldOf(collection));
+    return [...names];
+  };
+  const valueAtPath = (data: unknown, path: string) => {
+    if (!data || typeof data !== "object") return undefined;
+    const record = data as Record<string, unknown>;
+    if (path in record) return record[path];
+    let at: unknown = record;
+    for (const part of path.split(".")) at = at && typeof at === "object" ? (at as Record<string, unknown>)[part] : undefined;
+    return at;
+  };
+  const listStatus = (collection: CmsCollection, data: unknown): "live" | "draft" | "archived" => {
+    if (!collection.status) return "live";
+    const value = valueAtPath(data, collection.status.field);
+    return value === collection.status.draft ? "draft" : collection.status.archived !== undefined && value === collection.status.archived ? "archived" : "live";
+  };
+
   const listItems = async (user: Identity, key: string) => {
     const collection = collectionOf(key);
     if (!mayOpen(user, collection)) fail(403, "owner_only", `Only an admin can open or change ${collection.label}.`);
@@ -327,7 +355,13 @@ export const createCmsApi = (deps: CmsApiDeps) => {
       const parsed = parseResourceId(record.resource);
       const id = parsed.kind === "item" ? parsed.id : "";
       const image = recordImage(collection, record.data);
-      return { id, resource: record.resource, label: recordLabel(collection, record.data, id), version: record.version, hasDraft: mine.some((row) => row.resource === record.resource), ...(image ? { image } : {}) };
+      const draft = mine.find((row) => row.resource === record.resource);
+      const values = Object.fromEntries(listFieldsOf(collection).map((name) => [name, valueAtPath(record.data, name) ?? null]));
+      return {
+        id, resource: record.resource, label: recordLabel(collection, record.data, id), version: record.version, hasDraft: Boolean(draft), ...(image ? { image } : {}),
+        // M8: what the list shows: the website status, the values of its columns / filters, when my draft was saved.
+        status: listStatus(collection, record.data), values, ...(draft ? { draftSavedAt: draft.updatedAt } : {}),
+      };
     });
     const known = new Set(items.map((item) => item.resource));
     const newDrafts = mine.filter((row) => !known.has(row.resource)).map((row) => ({ id: row.itemId, resource: row.resource, label: row.label, version: null, hasDraft: true, isNew: true }));

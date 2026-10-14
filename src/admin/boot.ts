@@ -3,7 +3,7 @@
  * is signed in. Nothing secret: no token, no binding, no password hash. Runs on the server (admin.astro) and is
  * typed for the browser side (app.ts). P12b: files / collections with access: "admin" are left out for editors.
  */
-import type { CmsConfig, CmsFile, CollectionIcon, Field, Section } from "../config/index.js";
+import type { CmsCollection, CmsConfig, CmsFile, CollectionIcon, Field, Section } from "../config/index.js";
 import { isAdminOnly } from "../config/roles.js";
 import type { Role } from "../locks/index.js";
 import { mediaSettings } from "../media/index.js";
@@ -13,7 +13,9 @@ export type BootFile = { key: string; label: string; preview?: string; sections?
   group?: string; area?: boolean; description?: string; outline?: string; toggle?: string; layout?: "seo"; seo?: CmsFile["seo"] };
 export type BootCollection = {
   key: string; label: string; itemLabel: string; preview?: string; fields: Record<string, Field>;
-  idField: string; markdown: boolean; status?: { field: string; live: string; draft: string };
+  idField: string; markdown: boolean; status?: { field: string; live: string; draft: string; archived?: string };
+  /** M8: the list screen (columns, filters, search, detail, duplicate) and its words. */
+  list?: CmsCollection["list"]; labels?: CmsCollection["labels"];
   /** P12b: no new record can be added. */
   fixed?: boolean;
   /** U2: its icon on the rail. */
@@ -56,6 +58,8 @@ export const adminBoot = (config: CmsConfig, user: BootUser, options: { uploads?
     ...(collection.fixed ? { fixed: true } : {}),
     ...(collection.icon ? { icon: collection.icon } : {}),
     ...(collection.under ? { under: collection.under } : {}),
+    ...(collection.list ? { list: collection.list } : {}),
+    ...(collection.labels ? { labels: collection.labels } : {}),
   })),
 });
 

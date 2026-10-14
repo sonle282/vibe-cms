@@ -24,7 +24,7 @@ import { configBinds, fieldAt, type PreviewOwner } from "./bridge.js";
 import { createPreview, previewUrl, type Preview } from "./preview.js";
 import { openMediaScreen } from "./media-screen.js";
 import { createInspector, inspectorSections, sectionOfPath, type Inspector, type InspectorSection } from "./inspector.js";
-import { openChangePassword, peopleScreen, type ScreenKit } from "./people.js";
+import { openChangePassword, peopleScreen, rowMenu, type ScreenKit } from "./people.js";
 import { activityScreen } from "./activity.js";
 import { openHistory, type HistoryTarget } from "./history.js";
 import { ADMIN_BASE, adminHref, legacyHashPath, parseAdminPath, type AdminRoute } from "./routes.js";
@@ -65,7 +65,7 @@ export const editorFields = (target: { kind: "file"; file: BootFile } | { kind: 
   const { collection, isNew } = target;
   const fields: Record<string, Field> = {};
   if (!(collection.idField in collection.fields)) fields[collection.idField] = { type: "text", label: "ID", required: true, help: isNew ? "Used in the page address: lowercase letters, numbers and dashes. It can't be changed later." : undefined };
-  if (collection.status && !(collection.status.field in collection.fields)) fields[collection.status.field] = { type: "select", label: "Status", options: [collection.status.live, collection.status.draft] };
+  if (collection.status && !(collection.status.field in collection.fields)) fields[collection.status.field] = { type: "select", label: "Status", options: [collection.status.live, collection.status.draft, ...(collection.status.archived ? [collection.status.archived] : [])] };
   Object.assign(fields, collection.fields);
   if (collection.markdown && !("body" in fields)) fields.body = { type: "richText", label: "Text", help: "Format with the toolbar; “Edit Markdown” shows the text as Markdown." };
   return fields;
@@ -84,7 +84,9 @@ type Screen = { title: string; crumbs: Array<[string, string?]>; dirty?: () => n
 type FileView = { resource: string; label: string; content: unknown; version: string; draft: null | { content: unknown; revision: number; sourceVersion: string; stale: boolean; updatedAt: string }; choices?: PickChoices };
 /** P12g: pick values in plain words in the review ("packages/the-essential-reset" → "The Essential Reset"). */
 const choiceLabelsOf = (choices: PickChoices | undefined) => Object.fromEntries(Object.values(choices ?? {}).flat().map((choice) => [choice.value, choice.label]));
-type ListView = { key: string; label: string; itemLabel: string; items: Array<{ id: string; resource: string; label: string; version: string | null; hasDraft: boolean; isNew?: boolean; image?: string }> };
+type ListView = { key: string; label: string; itemLabel: string; items: Array<{ id: string; resource: string; label: string; version: string | null; hasDraft: boolean; isNew?: boolean; image?: string;
+  /** M8: the record's status on the website, the values its list shows, when my draft was saved. */
+  status?: "live" | "draft" | "archived"; values?: Record<string, unknown>; draftSavedAt?: string }> };
 type ContentView = { files: Array<{ key: string; label: string; hasDraft: boolean; off?: boolean }>; collections: Array<{ key: string; label: string; itemLabel: string; count: number; drafts: number }> };
 
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
@@ -541,6 +543,28 @@ export const startAdmin = (options: AdminOptions) => {
     return head ? [[head.label, adminHref.list(head.key)], [collection.label, adminHref.list(collection.key)]] : [[collection.label, adminHref.list(collection.key)]];
   };
 
+  // ---------------------------------------------------------------- M8: a collection's list (the Mr Spa CMS's Products)
+
+  /** The field a list setting names: a key, a path into objects ("seo.title"), or the status field. */
+  const listFieldOf = (collection: BootCollection, name: string): Field | undefined => {
+    if (collection.fields[name]) return collection.fields[name];
+    if (collection.status && name === collection.status.field) return { type: "select", label: "Status", options: [collection.status.live, collection.status.draft, ...(collection.status.archived ? [collection.status.archived] : [])] };
+    const parts = name.split(".");
+    for (let end = parts.length - 1; end > 0; end -= 1) {
+      const field = collection.fields[parts.slice(0, end).join(".")];
+      if (field?.type === "object") return listFieldOf({ ...collection, fields: field.fields, status: undefined }, parts.slice(end).join("."));
+    }
+    return undefined;
+  };
+  /** "Oct 25, 2024" (the Mr Spa CMS's list dates). */
+  const listDate = (value: unknown) => {
+    const date = typeof value === "string" ? new Date(value) : undefined;
+    return date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) : "";
+  };
+  /** "post" → "posts", "category" → "categories", "box" → "boxes". */
+  const pluralWord = (word: string) => (/[^aeiou]y$/i.test(word) ? `${word.slice(0, -1)}ies` : /(s|x|z|ch|sh)$/i.test(word) ? `${word}es` : `${word}s`);
+  const STATUS_WORDS = { live: "Live", draft: "Draft", archived: "Archived" } as const;
+
   const listCollection = async (key: string, stillHere: () => boolean) => {
     const collection = collectionOf(key);
     const crumbsFor: Array<[string, string?]> = collection ? crumbsOfCollection(collection) : [[key]];
@@ -548,34 +572,157 @@ export const startAdmin = (options: AdminOptions) => {
     const result = await api.get<ListView>(`/api/cms/collections/${encodeURIComponent(key)}`);
     if (!stillHere()) return;
     if (!result.ok) return failed(result, crumbsFor);
-    const items = result.data.items;
-    const noun = collection.itemLabel.toLowerCase();
-    const count = h(doc, "p", { class: "vc-count", "aria-live": "polite" });
-    const tbody = h(doc, "tbody");
-    const search = searchBox(`Search ${collection.label.toLowerCase()}`);
-    const hasImage = Object.values(collection.fields).some((field) => field.type === "image");
-    const render = () => {
-      const query = search.value.trim().toLowerCase();
-      const shown = items.filter((item) => !query || item.label.toLowerCase().includes(query) || item.id.toLowerCase().includes(query));
-      clear(tbody);
-      for (const item of shown) {
-        const status = item.isNew ? h(doc, "span", { class: "vc-pill vc-pill-draft" }, "New · not published")
-          : h(doc, "span", { class: "vc-status" }, h(doc, "span", { class: "vc-pill vc-pill-live" }, "Live"), item.hasDraft ? h(doc, "span", { class: "vc-unpublished" }, "Draft saved") : null);
-        const thumb = hasImage ? h(doc, "span", { class: "vc-list-thumb", "aria-hidden": "true" }, item.image ? h(doc, "img", { src: item.image, alt: "", loading: "lazy", decoding: "async" }) : icon(doc, "image")) : null;
-        tbody.append(h(doc, "tr", { "data-id": item.id }, h(doc, "td", {}, h(doc, "a", { href: adminHref.item(key, item.id), class: "vc-list-name" }, thumb, h(doc, "span", {}, item.label || item.id))), h(doc, "td", { class: "vc-mono" }, item.id), h(doc, "td", {}, status)));
+    // The Mr Spa CMS lists the records on the website; a new record's draft is on Drafts until it is published.
+    const items = result.data.items.filter((item) => !item.isNew);
+    const list = collection.list ?? {};
+    const one = collection.itemLabel.toLowerCase();
+    const many = collection.labels?.many ?? pluralWord(one);
+    const columns = list.columns ?? [];
+    const filters = list.filters ?? [];
+    const referenceFields: Record<string, Field> = {};
+    for (const entry of [...columns, ...filters]) { const field = listFieldOf(collection, entry.field); if (field?.type === "reference") referenceFields[entry.field] = field; }
+    const references = Object.keys(referenceFields).length ? await loadReferences(referenceFields) : {};
+    if (!stillHere()) return;
+    const statusField = collection.status?.field;
+
+    /** A stored value as the list shows it (labels of references, words of `values`, dates, Yes / No). */
+    const shown = (spec: { field: string; values?: Readonly<Record<string, string>>; format?: "date" }, value: unknown): string => {
+      const field = listFieldOf(collection, spec.field);
+      const single = (entry: unknown): string => {
+        if (entry === null || entry === undefined || entry === "") return "";
+        if (spec.values && String(entry) in spec.values) return spec.values[String(entry)];
+        if (field?.type === "reference") return references[field.to]?.items.find((item) => item.id === entry)?.label ?? String(entry);
+        if (typeof entry === "boolean") return entry ? "Yes" : "No";
+        if (spec.format === "date") return listDate(entry) || String(entry);
+        return typeof entry === "object" ? "" : String(entry);
+      };
+      return Array.isArray(value) ? value.map(single).filter(Boolean).join(", ") : single(value);
+    };
+    const detailOf = (item: ListView["items"][number]) => {
+      if (!list.detail) return "";
+      let empty = false;
+      const text = list.detail.replace(/\{([^}]+)\}/g, (_match, name: string) => { const words = shown({ field: name }, item.values?.[name]); if (!words || words === "—") empty = true; return words; });
+      return empty || text === item.label ? "" : text;
+    };
+
+    // ---- the toolbar: search, the filters, the count
+    const search = h(doc, "input", { type: "search", class: "vc-input vc-list-search-input", placeholder: collection.labels?.search ?? `Search ${many}`, autocomplete: "off" });
+    const chosen = new Map<string, string>();
+    const filterControls = filters.map((filter) => {
+      const field = listFieldOf(collection, filter.field);
+      const name = filter.label ?? field?.label ?? filter.field;
+      const choices: Array<[string, string]> = filter.field === statusField
+        ? [["", "All"], ["live", "Live"], ["draft", "Draft"], ...(collection.status?.archived ? [["archived", "Archived"] as [string, string]] : [])]
+        : field?.type === "select" ? [["", filter.all ?? "All"], ...field.options.map((option): [string, string] => [option, filter.values?.[option] ?? option])]
+        : field?.type === "toggle" ? [["", "All"], ["true", filter.values?.true ?? "Yes"], ["false", filter.values?.false ?? "No"]]
+        : field?.type === "reference" ? [["", filter.all ?? "All"], ...(references[field.to]?.items ?? []).map((item): [string, string] => [item.id, item.label])]
+        : [["", "All"]];
+      chosen.set(filter.field, "");
+      // A few choices are buttons (All · Live · Draft · Archived); more are a dropdown (Mr Spa: Category).
+      if (choices.length <= 5) {
+        const group = h(doc, "div", { class: "vc-list-segmented", role: "radiogroup", "aria-label": name });
+        const buttons = choices.map(([value, words], index) => h(doc, "button", { type: "button", class: "vc-list-segment", role: "radio", "data-value": value, "aria-checked": String(index === 0), tabindex: index === 0 ? "0" : "-1" }, words));
+        const pick = (button: HTMLElement) => {
+          for (const other of buttons) { const on = other === button; other.setAttribute("aria-checked", String(on)); other.tabIndex = on ? 0 : -1; }
+          chosen.set(filter.field, button.dataset.value ?? "");
+          render();
+        };
+        buttons.forEach((button, index) => {
+          button.addEventListener("click", () => pick(button));
+          button.addEventListener("keydown", (event) => {
+            if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+            event.preventDefault();
+            const next = buttons[(index + (event.key === "ArrowRight" ? 1 : -1) + buttons.length) % buttons.length];
+            pick(next); next.focus();
+          });
+        });
+        group.append(...buttons);
+        return group;
       }
-      if (!shown.length) tbody.append(h(doc, "tr", {}, h(doc, "td", { colspan: "3", class: "vc-empty" }, items.length ? `No ${noun} matches “${search.value.trim()}”.` : `No ${noun} yet.`)));
-      count.textContent = query ? `${shown.length} of ${plural(items.length, noun)}` : plural(items.length, noun);
+      const select = h(doc, "select", { class: "vc-input vc-list-select" }, ...choices.map(([value, words]) => h(doc, "option", { value }, words)));
+      select.addEventListener("change", () => { chosen.set(filter.field, select.value); render(); });
+      return h(doc, "label", { class: "vc-list-filter" }, h(doc, "span", { class: "vc-sr-only" }, name), select);
+    });
+    const count = h(doc, "span", { class: "vc-list-count", role: "status", "aria-live": "polite" });
+    const tbody = h(doc, "tbody");
+    const hasImage = Object.values(collection.fields).some((field) => field.type === "image");
+    const headers = [collection.itemLabel, ...columns.map((column) => column.label ?? listFieldOf(collection, column.field)?.label ?? column.field), "Status"];
+
+    const rowText = (item: ListView["items"][number]) => [item.label, item.id, detailOf(item), ...columns.map((column) => shown(column, item.values?.[column.field])), ...(list.search ?? []).map((name) => shown({ field: name }, item.values?.[name]))].join(" ").toLocaleLowerCase();
+    const matches = (item: ListView["items"][number]) => [...chosen].every(([field, value]) => {
+      if (!value) return true;
+      if (field === statusField) return (item.status ?? "live") === value;
+      const stored = item.values?.[field];
+      return Array.isArray(stored) ? stored.map(String).includes(value) : String(stored ?? "") === value;
+    });
+
+    const render = () => {
+      const words = search.value.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+      const visible = items.filter((item) => matches(item) && (!words.length || words.every((word) => rowText(item).includes(word))));
+      clear(tbody);
+      for (const item of visible) {
+        const name = item.label || item.id;
+        const detail = detailOf(item);
+        const thumb = hasImage ? h(doc, "span", { class: `vc-list-thumb${item.image ? "" : " is-empty"}`, "aria-hidden": "true" }, item.image ? h(doc, "img", { src: item.image, alt: "", loading: "lazy", decoding: "async" }) : null) : null;
+        const status = item.status ?? "live";
+        const saved = item.draftSavedAt ? new Date(item.draftSavedAt) : undefined;
+        const note = item.hasDraft ? h(doc, "span", { class: "vc-list-status-note", title: saved && !Number.isNaN(saved.getTime()) ? `Draft saved ${saved.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "Draft saved" }, "Unpublished changes") : null;
+        const live = status === "live" ? previewUrl(collection.preview, { ...(item.values ?? {}), [collection.idField]: item.id }) : undefined;
+        const menu = rowMenu(doc, `More actions for ${name}`, [
+          { text: "Edit", run: () => { void go(adminHref.item(key, item.id)); } },
+          ...(list.duplicate && !collection.fixed ? [{ text: "Duplicate", run: () => { void duplicateRecord(collection, item); } }] : []),
+          ...(live ? [{ text: "View on website", href: live }] : []),
+        ], "More");
+        tbody.append(h(doc, "tr", { class: "vc-list-row", "data-id": item.id },
+          h(doc, "td", { class: "vc-list-name-cell" }, h(doc, "a", { href: adminHref.item(key, item.id), class: "vc-list-name" }, thumb,
+            h(doc, "span", { class: "vc-list-name-words" }, h(doc, "strong", {}, name), detail ? h(doc, "span", { class: "vc-list-name-detail" }, detail) : null))),
+          ...columns.map((column) => { const text = shown(column, item.values?.[column.field]); return h(doc, "td", { class: "vc-list-secondary" }, text || "—"); }),
+          h(doc, "td", { class: "vc-list-status-cell" }, h(doc, "span", { class: `vc-content-status${status === "draft" ? " is-draft" : status === "archived" ? " is-archived" : ""}` }, STATUS_WORDS[status]), note),
+          h(doc, "td", { class: "vc-list-menu-cell" }, menu)));
+      }
+      if (!visible.length) tbody.append(h(doc, "tr", {}, h(doc, "td", { colspan: String(headers.length + 1), class: "vc-list-empty" }, h(doc, "p", {}, items.length ? `No ${many} match these filters.` : `No ${many} yet.`))));
+      count.textContent = visible.length === items.length ? plural(items.length, one, many) : `${visible.length} of ${plural(items.length, one, many)}`;
     };
     search.addEventListener("input", render);
     render();
-    if (!collection.fixed) actions.append(h(doc, "a", { href: adminHref.newItem(key), class: "vc-button vc-primary" }, icon(doc, "plus"), `New ${noun}`));
-    show({ title: collection.label, crumbs: crumbsFor }, [
+    if (!collection.fixed) actions.append(h(doc, "a", { href: adminHref.newItem(key), class: "vc-button vc-primary" }, icon(doc, "plus"), collection.labels?.add ?? `Add ${one}`));
+    // Mr Spa: the list uses the whole workspace (38 px / 48 px around it), not the editor's column.
+    body.classList.add("vc-body-list");
+    show({ title: collection.label, crumbs: crumbsFor, leave: () => body.classList.remove("vc-body-list") }, [
       quietHeading(collection.label),
       tabsOf(collection) ?? h(doc, "span", { hidden: true }),
-      h(doc, "div", { class: "vc-toolbar" }, search, count),
-      h(doc, "table", { class: "vc-table" }, h(doc, "thead", {}, h(doc, "tr", {}, h(doc, "th", { scope: "col" }, collection.itemLabel), h(doc, "th", { scope: "col" }, "ID"), h(doc, "th", { scope: "col" }, "Status"))), tbody),
+      h(doc, "div", { class: "vc-list-toolbar" }, h(doc, "label", { class: "vc-list-search" }, h(doc, "span", { class: "vc-sr-only" }, search.placeholder), search), ...filterControls, count),
+      h(doc, "div", { class: "vc-workspace-card" },
+        h(doc, "table", { class: "vc-list-table" }, h(doc, "thead", {}, h(doc, "tr", {}, ...headers.map((text) => h(doc, "th", { scope: "col" }, text)), h(doc, "th", { scope: "col" }, h(doc, "span", { class: "vc-sr-only" }, "Actions")))), tbody)),
     ]);
+  };
+
+  /** M8 (Mr Spa: Duplicate product): a new, unpublished record named "Copy of …", opened in the editor. */
+  const duplicateRecord = async (collection: BootCollection, item: ListView["items"][number]) => {
+    const one = collection.itemLabel.toLowerCase();
+    const name = item.label || item.id;
+    const settings = typeof collection.list?.duplicate === "object" ? collection.list.duplicate : {};
+    const clearNames = (settings.clear ?? []).map((field) => (listFieldOf(collection, field)?.label ?? field).toLowerCase());
+    const fresh = clearNames.length ? `, and the ${clearNames.length > 1 ? `${clearNames.slice(0, -1).join(", ")} and ${clearNames[clearNames.length - 1]}` : clearNames[0]} start${clearNames.length > 1 ? "" : "s"} fresh` : "";
+    if (!(await ask(`Duplicate ${one}\n\nCreate a new, unpublished ${one} from "${name}"? The name starts as "Copy of …"${fresh}; everything else is kept. The original ${one} is not changed.`, { confirm: "Create copy" }))) return;
+    const view = await api.get<FileView>(`/api/cms/collections/${encodeURIComponent(collection.key)}/items/${encodeURIComponent(item.id)}`);
+    if (!view.ok) { say(view.message || "The copy could not be created."); return; }
+    const copy = clone((view.data.draft?.content ?? view.data.content) as Record<string, unknown>);
+    const labelKey = Object.keys(collection.fields).find((field) => collection.fields[field].type === "text" && field !== collection.idField && typeof copy[field] === "string" && copy[field]);
+    const labelField = labelKey ? collection.fields[labelKey] : undefined;
+    const copyName = `Copy of ${name}`.slice(0, labelField?.type === "text" && labelField.maxLength ? labelField.maxLength : 500);
+    if (labelKey) copy[labelKey] = copyName;
+    for (const field of settings.clear ?? []) delete copy[field];
+    if (collection.status) copy[collection.status.field] = collection.status.draft;
+    const taken = new Set<string>();
+    const list = await api.get<ListView>(`/api/cms/collections/${encodeURIComponent(collection.key)}`);
+    if (list.ok) for (const entry of list.data.items) taken.add(entry.id);
+    const base = slugify(copyName) || `copy-of-${item.id}`;
+    let id = base; for (let n = 2; taken.has(id); n += 1) id = `${base}-${n}`;
+    copy[collection.idField] = id;
+    const saved = await api.request<unknown>("PUT", `/api/cms/collections/${encodeURIComponent(collection.key)}/items/${encodeURIComponent(id)}`, { content: copy, expectedRevision: 0, sourceVersion: "new" });
+    if (!saved.ok) { say(saved.message || "The copy could not be created."); return; }
+    await go(adminHref.item(collection.key, id));
   };
 
   // ---------------------------------------------------------------- editor (file or record)

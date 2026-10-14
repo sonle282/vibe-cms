@@ -373,7 +373,7 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     collections.forEach((entry, index) => {
       const at = `collections[${index}]`;
       if (!isRecord(entry)) { err(context, at, "must be an object", "{ key, label, itemLabel, store, fields }"); return; }
-      for (const key of Object.keys(entry)) if (!["key", "label", "itemLabel", "icon", "under", "store", "status", "preview", "order", "access", "fixed", "rules", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, itemLabel, icon, under, store, status, preview, order, access, fixed, rules, fields");
+      for (const key of Object.keys(entry)) if (!["key", "label", "itemLabel", "icon", "under", "store", "status", "preview", "order", "access", "fixed", "rules", "list", "labels", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, itemLabel, icon, under, store, status, preview, order, access, fixed, rules, fields");
       if (entry.under !== undefined) {
         const parent = collections.find((other) => isRecord(other) && other.key === entry.under);
         if (!filled(entry.under) || !isRecord(parent)) err(context, `${at}.under`, `${show(entry.under)} is not a collection of this config`, 'the key of the collection whose tabs it joins, e.g. "products"');
@@ -413,14 +413,17 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
       }
       const status = entry.status;
       if (status !== undefined) {
-        if (!isRecord(status) || !filled(status.field) || !filled(status.live) || !filled(status.draft)) err(context, `${at}.status`, "must be { field, live, draft }", '{ field: "status", live: "published", draft: "draft" }');
+        if (!isRecord(status) || !filled(status.field) || !filled(status.live) || !filled(status.draft) || (status.archived !== undefined && !filled(status.archived))) err(context, `${at}.status`, "must be { field, live, draft, archived? }", '{ field: "status", live: "published", draft: "draft", archived: "archived" }');
         else {
+          for (const key of Object.keys(status)) if (!["field", "live", "draft", "archived"].includes(key)) err(context, `${at}.status.${key}`, "unknown setting", "allowed: field, live, draft, archived");
           if (status.live === status.draft) err(context, `${at}.status.draft`, `must differ from live (both ${show(status.live)})`);
+          if (status.archived !== undefined && (status.archived === status.live || status.archived === status.draft)) err(context, `${at}.status.archived`, `must differ from live and draft (got ${show(status.archived)})`);
           const statusField = isRecord(entry.fields) ? entry.fields[status.field] : undefined;
           const options = isRecord(statusField) && statusField.type === "select" && Array.isArray(statusField.options) ? (statusField.options as unknown[]) : undefined;
-          if (options) for (const name of ["live", "draft"] as const) if (!options.includes(status[name])) err(context, `${at}.status.${name}`, `${show(status[name])} is not an option of the "${status.field}" select`, `add it to options or use one of ${options.map((option) => show(option)).join(", ")}`);
+          if (options) for (const name of (status.archived !== undefined ? ["live", "draft", "archived"] : ["live", "draft"]) as Array<"live" | "draft" | "archived">) if (!options.includes(status[name])) err(context, `${at}.status.${name}`, `${show(status[name])} is not an option of the "${status.field}" select`, `add it to options or use one of ${options.map((option) => show(option)).join(", ")}`);
         }
       }
+      checkCollectionList(context, entry, at);
     });
     checkUniqueKeys(context, collections, "collections", keys);
   }
@@ -442,6 +445,63 @@ const fieldTypeAt = (fields: unknown, name: string): string | undefined => {
 };
 
 /** M7: group / area / description / outline / toggle / layout "seo" of a file (the Mr Spa CMS's Pages and areas). */
+/** M8: `list` (columns, filters, search, detail, duplicate) and `labels` (add, search, many) of a collection. */
+function checkCollectionList(context: Context, entry: Record<string, unknown>, at: string) {
+  const labels = entry.labels;
+  if (labels !== undefined) {
+    if (!isRecord(labels)) err(context, `${at}.labels`, "must be { add?, search?, many? }", '{ add: "Add product", search: "Search by name or SKU" }');
+    else for (const [key, value] of Object.entries(labels)) {
+      if (!["add", "search", "many"].includes(key)) err(context, `${at}.labels.${key}`, "unknown setting", "allowed: add, search, many");
+      else if (!filled(value)) err(context, `${at}.labels.${key}`, "must be a word or a few words", key === "add" ? '"Add product"' : key === "many" ? '"posts"' : '"Search posts"');
+    }
+  }
+  const list = entry.list;
+  if (list === undefined) return;
+  if (!isRecord(list)) { err(context, `${at}.list`, "must be { columns?, filters?, search?, detail?, duplicate? }"); return; }
+  for (const key of Object.keys(list)) if (!["columns", "filters", "search", "detail", "duplicate"].includes(key)) err(context, `${at}.list.${key}`, "unknown setting", "allowed: columns, filters, search, detail, duplicate");
+  const status = isRecord(entry.status) ? entry.status : undefined;
+  const isField = (name: unknown) => typeof name === "string" && (fieldTypeAt(entry.fields, name) !== undefined || name === status?.field);
+  const hint = isRecord(entry.fields) ? `use one of ${Object.keys(entry.fields).join(", ")}` : undefined;
+  const values = (value: unknown, where: string) => {
+    if (value === undefined) return;
+    if (!isRecord(value) || !Object.values(value).every(filled)) err(context, where, "must map a stored value to the words shown", '{ en: "English", vi: "Tiếng Việt" }');
+  };
+  for (const name of ["columns", "filters"] as const) {
+    const entries = list[name];
+    if (entries === undefined) continue;
+    if (!Array.isArray(entries)) { err(context, `${at}.list.${name}`, "must be a list", '[{ field: "category" }]'); continue; }
+    entries.forEach((item, index) => {
+      const where = `${at}.list.${name}[${index}]`;
+      if (!isRecord(item)) { err(context, where, "must be { field, label? }", '{ field: "category" }'); return; }
+      const allowed = name === "columns" ? ["field", "label", "values", "format"] : ["field", "label", "values", "all"];
+      for (const key of Object.keys(item)) if (!allowed.includes(key)) err(context, `${where}.${key}`, "unknown setting", `allowed: ${allowed.join(", ")}`);
+      if (!isField(item.field)) { err(context, `${where}.field`, `${show(item.field)} is not a field of this collection`, hint); return; }
+      if (item.label !== undefined && !filled(item.label)) err(context, `${where}.label`, "must be a word or a few words");
+      values(item.values, `${where}.values`);
+      if (name === "columns" && item.format !== undefined && item.format !== "date") err(context, `${where}.format`, `${show(item.format)} is not a format`, 'use "date"');
+      if (name === "filters") {
+        const type = item.field === status?.field ? "status" : fieldTypeAt(entry.fields, String(item.field));
+        if (!["status", "select", "toggle", "reference"].includes(String(type))) err(context, `${where}.field`, `a ${type} field cannot be a filter`, "filter by a select, toggle or reference field, or by the status");
+        if (item.all !== undefined && !filled(item.all)) err(context, `${where}.all`, "must be a word or a few words", '"All categories"');
+      }
+    });
+  }
+  if (list.search !== undefined) {
+    if (!Array.isArray(list.search)) err(context, `${at}.list.search`, "must be a list of fields", '["sku"]');
+    else list.search.forEach((name, index) => { if (!isField(name)) err(context, `${at}.list.search[${index}]`, `${show(name)} is not a field of this collection`, hint); });
+  }
+  if (list.detail !== undefined) {
+    if (!filled(list.detail) || !/\{[^}]+\}/.test(list.detail)) err(context, `${at}.list.detail`, "must be words with at least one {field}", '"SKU {sku}"');
+    else for (const match of list.detail.matchAll(/\{([^}]+)\}/g)) if (!isField(match[1])) err(context, `${at}.list.detail`, `{${match[1]}} is not a field of this collection`, hint);
+  }
+  const duplicate = list.duplicate;
+  if (duplicate !== undefined && typeof duplicate !== "boolean") {
+    if (!isRecord(duplicate) || Object.keys(duplicate).some((key) => key !== "clear") || (duplicate.clear !== undefined && !Array.isArray(duplicate.clear))) err(context, `${at}.list.duplicate`, "must be true or { clear: [fields] }", '{ clear: ["sku"] }');
+    else (duplicate.clear as unknown[] | undefined)?.forEach((name, index) => { if (!isField(name)) err(context, `${at}.list.duplicate.clear[${index}]`, `${show(name)} is not a field of this collection`, hint); });
+  }
+  if (duplicate && entry.fixed === true) err(context, `${at}.list.duplicate`, "a fixed collection gets no new record, so no copy either", "remove duplicate or fixed");
+}
+
 function checkPageSettings(context: Context, entry: Record<string, unknown>, at: string) {
   if (entry.group !== undefined && !filled(entry.group)) err(context, `${at}.group`, "must be the name of a group on Pages", 'e.g. group: "Policies"');
   checkBoolean(context, entry, "area", at);
