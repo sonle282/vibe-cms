@@ -3,6 +3,17 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## Unreleased
+
+**P20 (package part) — stores for content that is not one list per file.** Nothing to do on a site.
+
+- `store: { kind: "json-object", path, idField }`: records keyed by id in one object (`{ "privacy-policy": { "slug":
+  "privacy-policy", … } }`); each record holds its id too, and the build says so when it does not match its key.
+- `pointer: "projects"` on "json-array" and "json-object": the list (or object) inside the file's object; the other
+  keys of the file stay as they are.
+- The store, the build check, the API (read, save, publish, history, Hide / Show) and the format-keeping writer use
+  them: a publish changes only the record's lines (line endings and the rest of the file byte for byte).
+
 ## 0.25.0 — 2026-10-14 (M8–M10, M13, M14, P19: the Mr Spa CMS's lists, record and document editors, menus and prices; admin and site plugins)
 
 - **Site action:** none — no data change, no D1 migration. Visible in every site's admin: the Mr Spa lists (M8), a collection without a `preview` now opens in the record editor (M9), and every rich text has the Mr Spa toolbar and Add link dialog (no "Edit HTML / Markdown" button, M10). New optional settings: `layout`, `sections`, `ready`, `document`, `f.menu`, `f.price`, `sameAs`, `admin.plugins`, `plugins`.

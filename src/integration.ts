@@ -42,7 +42,7 @@ export const adminPluginModules = (cms: CmsConfig, configFile: string) => (cms.a
 export const contentPaths = (config: CmsConfig, root: string) => [
   ...config.files.map((file) => file.path),
   ...config.collections.flatMap((collection) => {
-    if (collection.store.kind === "json-array") return [collection.store.path];
+    if (collection.store.kind !== "markdown-dir") return [collection.store.path];
     const dir = collection.store.dir;
     return existsSync(join(root, dir)) ? readdirSync(join(root, dir)).filter((name) => name.endsWith(".md")).sort().map((name) => `${dir}/${name}`) : [];
   }),

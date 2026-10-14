@@ -3,6 +3,7 @@
  * is signed in. Nothing secret: no token, no binding, no password hash. Runs on the server (admin.astro) and is
  * typed for the browser side (app.ts). P12b: files / collections with access: "admin" are left out for editors.
  */
+import { storeIdField } from "../config/store.js";
 import type { CmsCollection, CmsConfig, CmsFile, CollectionIcon, DocumentLayout, Field, Section } from "../config/index.js";
 import { isAdminOnly } from "../config/roles.js";
 import type { Role } from "../locks/index.js";
@@ -57,7 +58,7 @@ export const adminBoot = (config: CmsConfig, user: BootUser, options: { uploads?
   collections: config.collections.filter((collection) => !isAdminOnly(collection.access) || user.role === "owner").map((collection) => ({
     key: collection.key, label: collection.label, itemLabel: collection.itemLabel, fields: collection.fields,
     ...(collection.preview ? { preview: collection.preview } : {}), ...(collection.status ? { status: collection.status } : {}),
-    idField: collection.store.kind === "json-array" ? collection.store.idField : collection.store.slugField,
+    idField: storeIdField(collection.store),
     markdown: collection.store.kind === "markdown-dir",
     ...(collection.fixed ? { fixed: true } : {}),
     ...(collection.icon ? { icon: collection.icon } : {}),

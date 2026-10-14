@@ -40,7 +40,8 @@ import {
   type ContentSource, type Draft, type DraftStore,
 } from "../store/index.js";
 import { parseMarkdown } from "../writer/markdown.js";
-import { recordPath, writeArrayItem, writeFile, writeMarkdownItem } from "../writer/index.js";
+import { recordPath, writeFile, writeMarkdownItem, writeStoreItem } from "../writer/index.js";
+import { isJsonStore, storeIdField, storePath, storeRecords, type JsonStore } from "../config/store.js";
 import { sameValue, type WriteResult } from "../writer/json.js";
 import { buildState, GitPublishError, type CommitAuthor, type FileContent, type GitPublisher } from "./github.js";
 import { cleanDisplayName, MediaError, repoPathOf, uploadPathsIn, type MediaStore } from "../media/index.js";
@@ -112,14 +113,14 @@ export type CmsApiDeps = {
   /** P12b: names for the Activity screen (id → username / display name). */
   userNames?: () => Promise<Array<{ id: string; username: string; displayName: string }>>;
   /** Test seam: the writer used at publish (default: the P3 writer). */
-  write?: (collectionOrFile: { kind: "file" } | { kind: "json-array"; idField: string } | { kind: "markdown" }, text: string | undefined, id: string | undefined, content: unknown) => WriteResult;
+  write?: (collectionOrFile: { kind: "file" } | { kind: "json"; store: JsonStore } | { kind: "markdown" }, text: string | undefined, id: string | undefined, content: unknown) => WriteResult;
 };
 
 export const DEFAULT_AUTHOR: CommitAuthor = { name: "Vibe CMS", email: "vibe-cms@users.noreply.github.com" };
 
 const defaultWrite: NonNullable<CmsApiDeps["write"]> = (target, text, id, content) => {
   if (target.kind === "file") return writeFile(text, content);
-  if (target.kind === "json-array") return writeArrayItem(text ?? "[]\n", target.idField, id!, content as Record<string, unknown>);
+  if (target.kind === "json") return writeStoreItem(target.store, text, id!, content as Record<string, unknown>);
   return writeMarkdownItem(text, content as Record<string, unknown>);
 };
 
@@ -141,7 +142,9 @@ export const createCmsApi = (deps: CmsApiDeps) => {
   const write = deps.write ?? defaultWrite;
   const reader = createContentReader(config, source);
 
-  const idFieldOf = (collection: CmsCollection) => (collection.store.kind === "json-array" ? collection.store.idField : collection.store.slugField);
+  const idFieldOf = (collection: CmsCollection) => storeIdField(collection.store);
+  /** How the writer writes a resource. */
+  const writeKindOf = (target: Target) => (target.kind === "file" ? { kind: "file" as const } : isJsonStore(target.collection.store) ? { kind: "json" as const, store: target.collection.store } : { kind: "markdown" as const });
   const systemOf = (collection: CmsCollection) => [idFieldOf(collection), ...(collection.status ? [collection.status.field] : []), ...(collection.store.kind === "markdown-dir" ? ["body"] : [])];
   const fileOf = (key: string) => config.files.find((entry) => entry.key === key) ?? fail(404, "not_found", `No file "${key}" in cms.config.`);
   const collectionOf = (key: string) => config.collections.find((entry) => entry.key === key) ?? fail(404, "not_found", `No collection "${key}" in cms.config.`);
@@ -188,7 +191,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
   let liveFiles: Promise<Record<string, string>> | undefined;
   const loadLive = () => (liveFiles ??= (async () => {
     const out: Record<string, string> = {};
-    const paths = [...config.files.map((file) => file.path), ...config.collections.filter((c) => c.store.kind === "json-array").map((c) => (c.store as { path: string }).path)];
+    const paths = [...new Set([...config.files.map((file) => file.path), ...config.collections.map((c) => storePath(c.store)).filter((path): path is string => Boolean(path))])];
     for (const collection of config.collections) if (collection.store.kind === "markdown-dir") paths.push(...(await source.list(collection.store.dir)).filter((path) => path.endsWith(".md")));
     for (const path of paths) { const text = await source.read(path); if (text !== undefined) out[path] = text; }
     return out;
@@ -210,9 +213,9 @@ export const createCmsApi = (deps: CmsApiDeps) => {
   const onBranch = async (target: Target, text: string | undefined): Promise<{ value: unknown; version: string }> => {
     if (target.kind === "file") return text === undefined ? { value: undefined, version: "missing" } : { value: JSON.parse(text.replace(/^﻿/, "")), version: await textVersion(text) };
     const store = target.collection.store;
-    if (store.kind === "json-array") {
-      const list = text === undefined ? [] : (JSON.parse(text.replace(/^﻿/, "")) as Array<Record<string, unknown>>);
-      const item = list.find((entry) => entry?.[store.idField] === target.id);
+    if (isJsonStore(store)) {
+      const found = text === undefined ? [] : storeRecords(store, JSON.parse(text.replace(/^﻿/, "")));
+      const item = typeof found === "string" ? undefined : found.find((entry) => entry.id === target.id)?.record;
       return item ? { value: item, version: await valueVersion(item) } : { value: undefined, version: "new" };
     }
     if (text === undefined) return { value: undefined, version: "new" };
@@ -547,7 +550,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
         for (const warning of site.warnings) warnings.push({ resource: warning.path, code: "site_check", message: warning.message });
         for (const { target, draft } of loaded) {
           const path = pathOf(target);
-          const kind = target.kind === "file" ? { kind: "file" as const } : target.collection.store.kind === "json-array" ? { kind: "json-array" as const, idField: target.collection.store.idField } : { kind: "markdown" as const };
+          const kind = writeKindOf(target);
           const result = write(kind, next[path], target.kind === "item" ? target.id : undefined, draft.content);
           next[path] = result.text;
           if (result.rewroteWholeFile) warnings.push({ resource: target.resource, code: "rewrote_whole_file" });
@@ -649,7 +652,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
         if (site.errors.length) { await record("failed", { code: "site_check_failed" }); return fail(422, "site_check_failed", siteRefusal(site.errors), { errors: site.errors }); }
         let commitSha: string | null = null;
         if (current[status!.field] !== value) {
-          const kind = collection.store.kind === "json-array" ? { kind: "json-array" as const, idField: collection.store.idField } : { kind: "markdown" as const };
+          const kind = writeKindOf(target);
           const written = write(kind, texts[path], target.id, next);
           const message = `cms: ${archive ? "hide" : "show"} ${label} ${archive ? "from" : "on"} the website\n\nBy: ${user.userId} (${user.role}) via Vibe CMS\nResources: ${target.resource}`;
           const result = await publisher.commit({ parent: head.sha, files: { [path]: written.text }, message, author, date: now() });
@@ -942,7 +945,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     const limit = Number.isInteger(asked) && asked >= 1 && asked <= HISTORY_MAX ? asked : HISTORY_LIMIT;
     // M12: ?contents=1 — each version's value and the live one, so the dialog can say what restoring would change.
     const withContents = params.get("contents") === "1";
-    const shared = target.kind === "item" && target.collection.store.kind === "json-array";
+    const shared = target.kind === "item" && isJsonStore(target.collection.store);
     const commits = await publisher.history(pathOf(target), shared ? limit + 1 : limit);
     let kept: Array<{ commit: (typeof commits)[number]; removed: boolean; value?: unknown }> = commits.map((commit) => ({ commit, removed: false }));
     if (shared) {

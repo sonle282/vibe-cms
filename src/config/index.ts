@@ -13,6 +13,7 @@ export type Locked = "admin" | "owner";
 /** P12b: a whole file / collection only admins see and change (editors get 403; it is not in their navigation). */
 export type Access = "admin" | "owner";
 export { isAdminOnly } from "./roles.js";
+export { emptyStoreFile, isJsonStore, storeHolder, storeIdField, storePath, storeRecords, withStoreRecord, type CollectionStore, type JsonStore } from "./store.js";
 
 type Base = {
   label: string;
@@ -185,7 +186,11 @@ export type CmsCollection = {
    * Collections) — the key of a collection that is not itself `under` another.
    */
   under?: string;
-  store: { kind: "json-array"; path: string; idField: string } | { kind: "markdown-dir"; dir: string; slugField: string };
+  /**
+   * Where the records are. P20: `pointer` = a key path to the list (or object) inside the file's object ("projects");
+   * "json-object" = an object keyed by id, each record holding its id (`idField`) too.
+   */
+  store: { kind: "json-array"; path: string; idField: string; pointer?: string } | { kind: "json-object"; path: string; idField: string; pointer?: string } | { kind: "markdown-dir"; dir: string; slugField: string };
   /** M8: `archived` = the value of a record hidden from the website but kept in the CMS (the Mr Spa CMS's "Archived"). */
   status?: { field: string; live: string; draft: string; archived?: string };
   preview?: string;
