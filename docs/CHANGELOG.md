@@ -3,7 +3,9 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## Unreleased (M15)
+## 0.24.0 — 2026-10-14 (M15: `npx vibe-cms init` — a first cms.config.ts from a site's JSON content)
+
+- **Site action:** none — no data change, no D1 migration. New: `npx vibe-cms init` for a site that has no `cms.config.ts` yet.
 
 **M15 — `npx vibe-cms init`: a site without a CMS gets a first `cms.config.ts`.** Nothing to do on a site that has one.
 
