@@ -118,7 +118,7 @@ test("a field in no section is a warning, not an error", () => {
 rule("every field needs a label", (c) => { c.files[0].fields.phone = { type: "text" }; }, "files[0].fields.phone.label", /required — the name editors see/);
 rule("nested fields need a label too", (c) => { delete c.collections[0].fields.items.of.fields.name.label; }, "collections[0].fields.items.of.fields.name.label", /required/);
 rule("unknown field type", (c) => { c.files[0].fields.phone = { type: "colour", label: "Colour" }; }, "files[0].fields.phone.type", /unknown field type "colour" → use one of text, richText/);
-rule("unknown option (typo) on a field", (c) => { c.files[0].fields.phone.lockd = "owner"; }, "files[0].fields.phone.lockd", /unknown option for a text field → allowed: label, help, required, locked, bind, maxLength, multiline/);
+rule("unknown option (typo) on a field", (c) => { c.files[0].fields.phone.lockd = "owner"; }, "files[0].fields.phone.lockd", /unknown option for a text field → allowed: label, help, required, locked, bind, sameAs, maxLength, multiline/);
 rule('locked only accepts "admin" (deep path)', (c) => { c.collections[0].fields.items.of.fields.price.locked = "editor"; }, "collections[0].fields.items.of.fields.price.locked", /only "admin" is allowed \(got "editor"\)/);
 rule("required is true / false", (c) => { c.collections[0].fields.name.required = "yes"; }, "collections[0].fields.name.required", /true or false/);
 rule("text maxLength is a whole number ≥ 1", (c) => { c.files[0].fields.phone.maxLength = 0; }, "files[0].fields.phone.maxLength", /whole number ≥ 1/);

@@ -38,15 +38,15 @@ const FIELD_KEY = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
 const GITHUB_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
 const GITHUB_REPO = /^[A-Za-z0-9._-]{1,100}$/;
 
-const BASE_OPTIONS = ["type", "label", "help", "required", "locked", "bind"];
+const BASE_OPTIONS = ["type", "label", "help", "required", "locked", "bind", "sameAs"];
 const FIELD_OPTIONS: Record<string, string[]> = {
-  text: ["maxLength", "multiline", "pattern", "patternHint", "tokens", "from"],
+  text: ["maxLength", "multiline", "pattern", "patternHint", "tokens", "from", "format"],
   richText: ["allow"],
   image: ["alt", "mobile"],
   select: ["options"],
   hours: [],
   object: ["fields", "flat"],
-  list: ["of", "ordered", "min", "max", "itemLabel", "fixed"],
+  list: ["of", "ordered", "min", "max", "itemLabel", "fixed", "menu"],
   reference: ["to", "multiple", "ordered"],
   tuple: ["items"],
   pick: ["choices"],
@@ -116,6 +116,13 @@ export const checkField = (context: Context, field: unknown, at: string, depth: 
   if (field.locked === "owner") context.oldAdminName.push(`${at}.locked`);
   else if (field.locked !== undefined && field.locked !== "admin") err(context, `${at}.locked`, `only "admin" is allowed (got ${show(field.locked)})`, 'write locked: "admin" or remove it');
 
+  if (type === "text" && field.format !== undefined && field.format !== "price") err(context, `${at}.format`, `unknown format ${show(field.format)}`, 'only "price" (f.price)');
+  // M13: menu cards need a label (a text field) and where it goes (a link field) on every item.
+  if (type === "list" && field.menu !== undefined) {
+    checkBoolean(context, field, "menu", at);
+    const item = isRecord(field.of) && field.of.type === "object" && isRecord(field.of.fields) ? Object.values(field.of.fields).filter(isRecord) : undefined;
+    if (field.menu === true && (!item || !item.some((entry) => entry.type === "text") || !item.some((entry) => entry.type === "link"))) err(context, `${at}.menu`, "menu cards are items with a label (a text field) and where they go (a link field)", "use f.menu({ label: … })");
+  }
   switch (type) {
     case "text":
       checkCount(context, field, "maxLength", at, 1);
@@ -362,6 +369,7 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
       else checkPath(context, entry.path, `${at}.path`, dirs, ".json", "src/data/site.json", paths);
       checkPreview(context, entry.preview, `${at}.preview`, []);
       checkFields(context, entry.fields, `${at}.fields`);
+      checkSameAs(context, entry.fields, `${at}.fields`);
       checkSections(context, entry, at);
       checkPageSettings(context, entry, at);
     });
@@ -389,6 +397,7 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
       if (!filled(entry.label)) err(context, `${at}.label`, "required — the name editors see", 'e.g. "Services"');
       if (!filled(entry.itemLabel)) err(context, `${at}.itemLabel`, "required — the name of one record", 'e.g. "Service"');
       checkFields(context, entry.fields, `${at}.fields`);
+      checkSameAs(context, entry.fields, `${at}.fields`);
       const fieldKeys = isRecord(entry.fields) ? Object.keys(entry.fields) : [];
       const store = entry.store;
       let idKey: string | undefined;
@@ -446,6 +455,41 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
   // M2: "owner" is the old name of the Admin level — it works; one warning names every place.
   if (context.oldAdminName.length) warn(context, context.oldAdminName[0], `"owner" is the old name of "admin" (${context.oldAdminName.length} ${context.oldAdminName.length === 1 ? "place" : "places"}: ${context.oldAdminName.slice(0, 5).join(", ")}${context.oldAdminName.length > 5 ? ", …" : ""})`, 'write locked: "admin" / access: "admin" — it works the same');
   return { errors: context.errors, warnings: context.warnings };
+};
+
+/**
+ * M13: `sameAs` names another field of the same record (a path from the record, not into a list), of the same type,
+ * that does not copy a third one.
+ */
+function checkSameAs(context: Context, fields: unknown, at: string) {
+  const walk = (level: unknown, prefix: string, where: string) => {
+    if (!isRecord(level)) return;
+    for (const [key, field] of Object.entries(level)) {
+      if (!isRecord(field)) continue;
+      const path = prefix ? `${prefix}.${key}` : key;
+      if (field.sameAs !== undefined) {
+        const target = typeof field.sameAs === "string" ? fieldTypeAt(fields, field.sameAs) : undefined;
+        const other = typeof field.sameAs === "string" ? sameAsAt(fields, field.sameAs) : undefined;
+        if (field.sameAs === path) err(context, `${where}.${key}.sameAs`, "cannot name the field itself");
+        else if (!target) err(context, `${where}.${key}.sameAs`, `${show(field.sameAs)} is not a field of this record`, 'a path from the record, e.g. sameAs: "header.phone"');
+        else if (target !== field.type) err(context, `${where}.${key}.sameAs`, `${show(field.sameAs)} is a ${target} field, not ${field.type}`);
+        else if (other !== undefined) err(context, `${where}.${key}.sameAs`, `${show(field.sameAs)} copies ${show(other)} itself`, `name that one: sameAs: ${show(other)}`);
+      }
+      if (field.type === "object") walk(field.fields, path, `${where}.${key}.fields`);
+      else if (field.type === "list" && isRecord(field.of) && JSON.stringify(field.of).includes('"sameAs"')) err(context, `${where}.${key}.of`, "sameAs is not for fields inside a list item", "use it on a field outside lists");
+    }
+  };
+  walk(fields, "", at);
+}
+const sameAsAt = (fields: unknown, name: string): unknown => {
+  if (!isRecord(fields)) return undefined;
+  if (isRecord(fields[name])) return (fields[name] as Record<string, unknown>).sameAs;
+  const parts = name.split(".");
+  for (let end = parts.length - 1; end > 0; end -= 1) {
+    const field = fields[parts.slice(0, end).join(".")];
+    if (isRecord(field) && field.type === "object") return sameAsAt(field.fields, parts.slice(end).join("."));
+  }
+  return undefined;
 };
 
 /** M10: `layout: "document"` and its `document: { title, body, cover?, plain? }`. */

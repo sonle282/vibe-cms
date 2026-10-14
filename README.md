@@ -283,6 +283,23 @@ the filters and the count ("83 products" / "12 of 83 products"); the top bar has
 - New records are not rows until they are published (they are on Drafts); `labels.many` sets the plural when "s"
   is not right.
 
+## Menus, prices, a field that copies another (M13)
+
+```ts
+// The Mr Spa CMS's menu cards: a card per link (its label and "Opens: …"), ↑ ↓, ⋯ Remove, "+ Add link";
+// with `dropdown`, each link may hold a dropdown of links ("Dropdown · 3 links").
+menu: f.menu({ label: "Menu", max: 8, dropdown: { label: "Dropdown", max: 6 } }),
+// "$" in front; 1299 is saved as "$1,299", 1299.5 as "$1,299.50"; words ("From $980") as typed. "Shoppers will see …".
+price: f.price({ label: "Price", locked: "admin" }),
+// The same value as another field of the record: shown as that value, "Phone comes from Contact & hours › Phone" and
+// Edit (which goes to it); it follows the other field.
+footerPhone: f.phone({ label: "Phone", sameAs: "phone" }),
+```
+
+- A menu is saved as `[{ label, href }]` (`links: [...]` inside a link with a dropdown). Remove asks nothing (as in Mr
+  Spa); a list at its `min` says "This list keeps at least 2 links.", at its `max` "+ Add link" is off.
+- `sameAs` is a path from the record (not into a list item), of a field of the same type.
+
 ## Document editor (M10)
 
 A blog post or a policy page is edited like the Mr Spa CMS's Blog post / Policy: the text on a sheet of paper, and on

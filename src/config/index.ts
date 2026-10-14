@@ -21,6 +21,12 @@ type Base = {
   locked?: Locked;
   /** Preview binding by CSS selector when the template has no data-cms-field attribute (design §D). */
   bind?: string;
+  /**
+   * M13 (the Mr Spa CMS's "Phone comes from Header › Store phone number"): this field holds the same value as another
+   * field of the record (its path from the record, e.g. "header.phone"); it is shown as that value with an Edit button
+   * that goes to the other field, and follows it.
+   */
+  sameAs?: string;
 };
 
 /**
@@ -30,7 +36,9 @@ type Base = {
  */
 export type TextField = Base & { type: "text"; maxLength?: number; multiline?: boolean; pattern?: string; patternHint?: string; tokens?: readonly string[];
   /** P16a: an id made from another field of the same object while the item is new ("Classic Manicure" → "classic-manicure"). */
-  from?: string };
+  from?: string;
+  /** M13: "price" = the Mr Spa CMS's price box ("$" in front; 1299 is written "$1,299", "From $980" as typed) — f.price(). */
+  format?: "price" };
 /** P12d: `allow` = the tags this field may hold (a part of the rich-text allow-list, e.g. ["em", "br"]); the toolbar follows. */
 export type RichTextField = Base & { type: "richText"; allow?: readonly string[] };
 export type ImageField = Base & { type: "image"; alt?: boolean; mobile?: boolean };
@@ -40,7 +48,14 @@ export type HoursField = Base & { type: "hours" };
 /** M3c: `flat` — in the page inspector its fields show as the section's own (no group around them), as in the Mr Spa CMS. */
 export type ObjectField = Base & { type: "object"; fields: Record<string, Field>; flat?: boolean };
 /** P12b: fixed = the site's code owns the shape — nobody (owner included) adds, removes or moves items; values inside stay editable. */
-export type ListField = Base & { type: "list"; of: Field; ordered?: boolean; min?: number; max?: number; itemLabel?: string; fixed?: boolean };
+export type ListField = Base & { type: "list"; of: Field; ordered?: boolean; min?: number; max?: number; itemLabel?: string; fixed?: boolean;
+  /** M13: the Mr Spa CMS's menu cards (a label and where it goes per item, ↑ ↓ ⋯ Remove, "+ Add link") — f.menu(). */
+  menu?: boolean };
+
+/** M13: f.menu() — the links of a menu; `dropdown` = each link may hold a dropdown of links (`key`, "links" by default). */
+export type MenuOptions = Omit<Options<ListField>, "of" | "menu" | "ordered"> & {
+  dropdown?: { key?: string; label?: string; itemLabel?: string; min?: number; max?: number };
+};
 export type ReferenceField = Base & { type: "reference"; to: string; multiple?: boolean; ordered?: boolean };
 /** P12d: a fixed-length list stored as a JSON array, one field per place — e.g. ["Manicure", "$17"] = [name, price]. */
 export type TupleField = Base & { type: "tuple"; items: Field[] };
@@ -278,6 +293,17 @@ export const f = {
   link: (options: Options<LinkField>): LinkField => ({ type: "link", ...options }),
   /** M4: a phone number, written and checked for site.phone.country. */
   phone: (options: Options<PhoneField>): PhoneField => ({ type: "phone", ...options }),
+  /** f.price({ label: "Price" }) — M13: a text value with "$" in front; plain amounts are written "$1,299" */
+  price: (options: Omit<Options<TextField>, "format">): TextField => ({ type: "text", format: "price", ...options }),
+  /**
+   * f.menu({ label: "Menu", max: 8, dropdown: { label: "Dropdown", max: 12 } }) — M13: a list of { label, href } (and
+   * `links` for a dropdown) shown as the Mr Spa CMS's menu cards.
+   */
+  menu: ({ dropdown, itemLabel = "Link", ...options }: MenuOptions): ListField => {
+    const link = { label: f.text({ label: "Label" }), href: f.link({ label: "Opens" }) };
+    const inner = dropdown ? { [dropdown.key ?? "links"]: { type: "list", of: { type: "object", label: dropdown.itemLabel ?? "Link", fields: link }, ordered: true, menu: true, label: dropdown.label ?? "Dropdown", itemLabel: dropdown.itemLabel ?? "Link", ...(dropdown.min !== undefined ? { min: dropdown.min } : {}), ...(dropdown.max !== undefined ? { max: dropdown.max } : {}) } as ListField } : {};
+    return { type: "list", of: { type: "object", label: itemLabel, fields: { ...link, ...inner } }, ordered: true, menu: true, itemLabel, ...options };
+  },
 };
 
 export { assertCmsConfig, branchProblem, checkCmsConfig, CmsConfigError, countConfig, DEFAULT_CONTENT_DIRS, formatProblem, formatWarnings, MAX_DEPTH, pathProblem } from "./validate.js";
