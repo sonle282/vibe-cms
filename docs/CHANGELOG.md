@@ -3,6 +3,28 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## Unreleased (M15)
+
+**M15 — `npx vibe-cms init`: a site without a CMS gets a first `cms.config.ts`.** Nothing to do on a site that has one.
+
+- Reads every JSON file of `src/data` and `src/content` (or `--data <folders>`, written into `contentDirs`). A JSON
+  object → a page: key and label from the file name, `preview` when `src/pages` has a page of that name, policies in
+  the "Policies" group, header / footer / popup / banner files "Across the whole site" (`area: true`), `seo.json` with a
+  title and a description → Search & sharing (`layout: "seo"`), sections = its groups. A list of records with a unique
+  `id` / `slug` / `key` → a collection (`json-array`).
+- Every value → a field, guessed from its key and values: text (multiline past 160 characters or with a line break, a
+  date pattern for 2026-10-14), rich text (HTML), image (a path or `{ src }`), link, phone (US numbers set
+  `site.phone.country`), number (integer), toggle, opening hours, object, list. Labels from keys ("heroTitle" → "Hero
+  title", "seo" → "SEO").
+- The draft is checked against the content as it is (the build's check): a guess the content does not fit becomes
+  plain text; empty values, mixed kinds and keys that cannot be a field name are left out — all listed at the top of
+  the file and in the output. Only a draft the config check accepts is written.
+- Preview hints: where a template prints a value of an imported JSON file (`{home.hero.title}`), the
+  `data-cms-field="home.hero.title"` to add there; elements bound already are left alone.
+- `--dry-run` prints the draft; `--name`, `--url`, `--repo <owner/name>`, `--branch` (default: package.json,
+  `site:` of astro.config, git's origin and its default branch). It never replaces `cms.config.ts` without `--force`.
+- README → Install: step 3 is now `npx vibe-cms init`.
+
 ## 0.23.0 — 2026-10-13 (M7, M11, M12: Pages, Media, Drafts, People, Activity and Version history like the Mr Spa CMS)
 
 - **Site action:** none — no data change, no D1 migration. Optional: the new file settings `group`, `area` + `description`, `outline`, `toggle` and `layout: "seo"` (M7, README).
