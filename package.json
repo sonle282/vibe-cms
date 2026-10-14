@@ -41,6 +41,10 @@
       "types": "./dist/admin/index.d.ts",
       "default": "./dist/admin/index.js"
     },
+    "./plugins": {
+      "types": "./dist/plugins/index.d.ts",
+      "default": "./dist/plugins/index.js"
+    },
     "./media": {
       "types": "./dist/media/index.d.ts",
       "default": "./dist/media/index.js"

@@ -185,7 +185,8 @@ test("checkSite stops on content errors with every problem listed", async () => 
     cpSync(join(demoRoot, "src/data"), join(root, "src/data"), { recursive: true });
     cpSync(join(demoRoot, "src/content"), join(root, "src/content"), { recursive: true });
     const configModule = fileURLToPath(new URL("../dist/config/index.js", import.meta.url)).replace(/\\/g, "/");
-    writeFileSync(join(root, "cms.config.ts"), readFileSync(join(demoRoot, "cms.config.ts"), "utf8").replace("@sonle282/vibe-cms/config", configModule));
+    const pluginsModule = fileURLToPath(new URL("../dist/plugins/index.js", import.meta.url)).replace(/\\/g, "/");
+    writeFileSync(join(root, "cms.config.ts"), readFileSync(join(demoRoot, "cms.config.ts"), "utf8").replace("@sonle282/vibe-cms/config", configModule).replace("@sonle282/vibe-cms/plugins", pluginsModule));
     const list = services(); list[0].price = 20; list[1].category = "Hair";
     json(root, "src/data/services.json", list);
     const warnings = [];

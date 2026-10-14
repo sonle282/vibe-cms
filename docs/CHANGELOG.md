@@ -5,6 +5,21 @@ migration that is not automatic. Each entry says what a site has to do.
 
 ## Unreleased
 
+**P19 — site plugins: checks of the whole site.** Nothing to do on a site; new optional `plugins` (README → Site
+plugins).
+
+- `plugins: [...]` in cms.config.ts: `{ name, files?, check(site) }`, run on the whole site as it will be — at build,
+  at publish (the drafts being published put in; the plugins' `files` read from the branch) and at Hide / Show.
+  Errors stop the build / refuse with 422 `site_check_failed` ("The site's checks refused this: …", nothing
+  committed); warnings come back with the publish. A plugin that throws is an error naming it.
+- `@sonle282/vibe-cms/plugins`:
+  - `catalogPlugin({ listed?, liveReferences?, references? })`: every Live record of a collection listed (once) in
+    given places ("Table Two is Live but not on the Products page."), Live records pointing to hidden ones (warning),
+    and at publish the other records' references still leading somewhere.
+  - `redirectsCheck({ file?, statuses?, trailingSlash?, limits? })`: the Mr Spa `_redirects` rules (form, 301,
+    duplicates, exact before dynamic, one hop, destinations Live, no rule hiding a Live page) and Cloudflare's limits.
+- The demo uses both, with a small `public/_redirects`.
+
 **M14 — admin plugins.** Nothing to do on a site; a site may add its own admin code (README → Admin plugins).
 
 - `admin: { plugins: [...] }` in cms.config.ts: browser modules (paths from cms.config.ts, or package names) bundled

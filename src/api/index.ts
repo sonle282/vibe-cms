@@ -32,6 +32,7 @@ import { checkRecordValues } from "../check/values.js";
 import { checkFixedLists } from "../check/structure.js";
 import { pickChoices } from "../check/picks.js";
 import { ruleContext, runRules } from "../check/rules.js";
+import { pluginFiles, runSiteChecks, siteContext } from "../check/site.js";
 import { describeCleaned, RICH_TEXT_MAX_CHARS, sanitizeRecord, unsafeOnly, type CleanedField } from "../check/rich-text.js";
 import { checkPublishLocks, LockedFieldError, lockedFieldBody, saveDraftChecked, type AuditEntry, type AuditLog, type Role } from "../locks/index.js";
 import {
@@ -225,14 +226,39 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     return ids;
   };
   // P12d: the site's rules read the content this Worker serves (loaded once, only when a rule exists).
-  let rulesContent: Promise<ReturnType<typeof ruleContext>> | undefined;
-  const loadRulesContent = () => (rulesContent ??= (async () => {
+  let siteMaps: Promise<{ files: Map<string, unknown>; items: Map<string, Array<Record<string, unknown>>> }> | undefined;
+  const loadSiteMaps = () => (siteMaps ??= (async () => {
     const files = new Map<string, unknown>();
     for (const file of config.files) { const record = await reader.file(file.key); if (record) files.set(file.key, record.data); }
     const items = new Map<string, Array<Record<string, unknown>>>();
     for (const collection of config.collections) items.set(collection.key, (await reader.items(collection.key)).map((record) => record.data as Record<string, unknown>));
-    return ruleContext(files, items);
+    return { files, items };
   })());
+  let rulesContent: Promise<ReturnType<typeof ruleContext>> | undefined;
+  const loadRulesContent = () => (rulesContent ??= loadSiteMaps().then(({ files, items }) => ruleContext(files, items)));
+  /**
+   * P19: the site plugins, on the site as it will be — the content this Worker serves with `changes` put in (a file's
+   * new value, or a record replaced / added by its id) — and the repo files they asked for, read from the branch.
+   */
+  const siteCheck = async (changes: Array<{ target: Target; content: unknown }>, sha: string) => {
+    if (!config.plugins?.length) return { errors: [], warnings: [] };
+    const base = await loadSiteMaps();
+    const files = new Map(base.files);
+    const items = new Map([...base.items].map(([key, records]) => [key, [...records]]));
+    for (const { target, content } of changes) {
+      if (target.kind === "file") { files.set(target.file.key, content); continue; }
+      const key = idFieldOf(target.collection);
+      const records = items.get(target.collection.key) ?? [];
+      const record = { ...(content as Record<string, unknown>), [key]: target.id };
+      const at = records.findIndex((entry) => entry[key] === target.id);
+      if (at >= 0) records[at] = record; else records.push(record);
+      items.set(target.collection.key, records);
+    }
+    const paths = pluginFiles(config);
+    const texts = paths.length ? await need(deps.publisher, "publisher").readFiles(sha, paths) : {};
+    return runSiteChecks(config, siteContext(config, files, items, texts, changes.map(({ target }) => target.resource)));
+  };
+  const siteRefusal = (errors: Array<{ path: string; message: string }>) => `The site's checks refused this: ${errors.map((entry) => entry.message).join(" ")}`;
   const withRules = async (target: Target, content: unknown, result: { errors: Array<{ path: string; message: string; hint?: string }>; warnings: Array<{ path: string; message: string; hint?: string }> }) => {
     const rules = target.kind === "file" ? target.file.rules : target.collection.rules;
     if (!rules) return result;
@@ -511,9 +537,14 @@ export const createCmsApi = (deps: CmsApiDeps) => {
           if (fixed.length) return await failWith(422, target.kind === "item" && target.collection.fixed && befores.get(target.resource) === undefined ? "fixed_collection" : "fixed_list", fixed[0].message, { resource: target.resource, errors: fixed });
         }
 
+        // 3b. P19: the site plugins, on the whole site as it will be.
+        const site = await siteCheck(loaded.map(({ target, draft }) => ({ target, content: draft.content })), head.sha);
+        if (site.errors.length) return await failWith(422, "site_check_failed", siteRefusal(site.errors), { errors: site.errors });
+
         // 4. Write with the format-keeping writer (several records of one file are applied in turn).
         const next: Record<string, string | undefined> = { ...texts };
-        const warnings: Array<{ resource: string; code: "rewrote_whole_file" | "sanitized"; fields?: string[] }> = sanitized.map((entry) => ({ resource: entry.resource, code: "sanitized" as const, fields: entry.fields.map(describeCleaned) }));
+        const warnings: Array<{ resource: string; code: "rewrote_whole_file" | "sanitized" | "site_check"; fields?: string[]; message?: string }> = sanitized.map((entry) => ({ resource: entry.resource, code: "sanitized" as const, fields: entry.fields.map(describeCleaned) }));
+        for (const warning of site.warnings) warnings.push({ resource: warning.path, code: "site_check", message: warning.message });
         for (const { target, draft } of loaded) {
           const path = pathOf(target);
           const kind = target.kind === "file" ? { kind: "file" as const } : target.collection.store.kind === "json-array" ? { kind: "json-array" as const, idField: target.collection.store.idField } : { kind: "markdown" as const };
@@ -613,6 +644,9 @@ export const createCmsApi = (deps: CmsApiDeps) => {
         const current = branch.value as Record<string, unknown>;
         const label = recordLabel(collection, current, target.id);
         const next = { ...current, [status!.field]: value };
+        // P19: the site plugins, with this record's new status.
+        const site = await siteCheck([{ target, content: next }], head.sha);
+        if (site.errors.length) { await record("failed", { code: "site_check_failed" }); return fail(422, "site_check_failed", siteRefusal(site.errors), { errors: site.errors }); }
         let commitSha: string | null = null;
         if (current[status!.field] !== value) {
           const kind = collection.store.kind === "json-array" ? { kind: "json-array" as const, idField: collection.store.idField } : { kind: "markdown" as const };

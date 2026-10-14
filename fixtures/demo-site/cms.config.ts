@@ -4,6 +4,7 @@
 // of text / of objects / nested), reference (one / many, ordered), dotted keys, sections, a status field, Markdown body,
 // and (P12g) pick + toggle: the banner's price points to a package of the same file, written once; (M4) link + phone.
 import { defineCmsConfig, f } from "@sonle282/vibe-cms/config";
+import { catalogPlugin, redirectsCheck } from "@sonle282/vibe-cms/plugins";
 
 export default defineCmsConfig({
   configVersion: 1,
@@ -89,6 +90,9 @@ export default defineCmsConfig({
       },
     },
   ],
+  // P19: checks of the whole site at build and at publish — references still lead somewhere (a Live record pointing to
+  // a hidden one is said), and public/_redirects (form, one 301, no rule hiding a Live page, Cloudflare's limits).
+  plugins: [catalogPlugin(), redirectsCheck({ file: "public/_redirects" })],
   // M14: the site's own admin code (the "call-for-price" control and two panels), bundled into /admin.
   admin: { plugins: ["./cms/admin-plugin.ts"] },
   collections: [

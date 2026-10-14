@@ -12,6 +12,7 @@ import { toTree } from "../config/tree.js";
 import { add, checkRecord, describe, isRecord, at, type ValueCtx } from "./values.js";
 import { sanitizeRecord, unsafeOnly } from "./rich-text.js";
 import { ruleContext, runRules } from "./rules.js";
+import { pluginFiles, runSiteChecks, siteContext } from "./site.js";
 import { mediaSettings } from "../media/index.js";
 import { imageNamesOf, type ImageManifest } from "../media/names.js";
 
@@ -120,5 +121,11 @@ export const checkContent = (config: CmsConfig, root: string): CheckResult => {
   const merge = (result: CheckResult) => { ctx.errors.push(...result.errors); ctx.warnings.push(...result.warnings); };
   for (const file of config.files) if (file.rules && fileData.has(file.key)) merge(runRules(file.rules, fileData.get(file.key), content, file.path));
   for (const entry of loaded) if (entry?.collection.rules) for (const record of entry.records) merge(runRules(entry.collection.rules, record.data, content, record.path));
+  // P19: the site plugins, on the whole site (and the repo files they asked for) as it is.
+  if (config.plugins?.length) {
+    const texts = Object.fromEntries(pluginFiles(config).map((path) => [path, existsSync(join(root, path)) ? readFileSync(join(root, path), "utf8") : undefined]));
+    const items = new Map(loaded.filter((entry) => entry !== undefined).map((entry) => [entry!.collection.key, entry!.records.map((record) => record.data as Record<string, unknown>)]));
+    merge(runSiteChecks(config, siteContext(config, fileData, items, texts)));
+  }
   return { errors: ctx.errors, warnings: ctx.warnings };
 };

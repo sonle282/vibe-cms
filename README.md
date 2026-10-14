@@ -283,6 +283,34 @@ the filters and the count ("83 products" / "12 of 83 products"); the top bar has
 - New records are not rows until they are published (they are on Drafts); `labels.many` sets the plural when "s"
   is not right.
 
+## Site plugins: checks of the whole site (P19)
+
+A record's `rules` see one record. Site plugins see the whole site as it will be — at build (the files as they are)
+and at publish and Hide / Show (with the drafts being published put in) — and the repo files they ask for. Errors stop
+the build or refuse the publish ("The site's checks refused this: …"); warnings are said.
+
+```ts
+import { catalogPlugin, redirectsCheck } from "@sonle282/vibe-cms/plugins";
+
+plugins: [
+  catalogPlugin({
+    liveReferences: "warning",        // a Live record pointing to one that is not Live (default: warning)
+    // Every Live product is on the Products page, once (the Mr Spa CMS's catalog checks).
+    listed: [{ collection: "products", in: [{ file: "products-page", path: "blocks[].productIds" }], once: true, place: "the Products page" }],
+  }),
+  redirectsCheck({ file: "public/_redirects" }),
+],
+```
+
+- `catalogPlugin` also checks, at publish, that the other records' references still lead somewhere (e.g. a category
+  removed while products still point to it); each record's own references are checked by the core.
+- `redirectsCheck` (from Mr Spa's `redirect-regression-check`): `source destination status`, only 301 (`statuses`),
+  no duplicate source, no exact rule after the first dynamic one, site-path destinations end in "/" (one hop), a
+  destination that is a record's address must be Live, no rule may hide a Live page, and Cloudflare's 2,000 exact /
+  100 dynamic rules (a warning from 90 %). At publish the file is read from the branch.
+- A site can write its own: `{ name, files?, check: (site) => [{ message, resource?, path?, warning? }] }` — `site`
+  has `file`, `items`, `text`, `isLive`, `urlOf`, `fileUrl` and `changing`.
+
 ## Admin plugins: the site's own controls and panels (M14)
 
 What only one site needs stays in the site's repo, bundled into `/admin`:
