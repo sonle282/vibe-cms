@@ -5,7 +5,7 @@
  */
 import { existsSync } from "node:fs";
 import { basename, dirname } from "node:path";
-import { loadConfigFromFile } from "vite";
+import { siteVite } from "./site-vite.js";
 import { checkContent } from "./check/content.js";
 import { assertCmsConfig, CmsConfigError, type CmsConfig, type Problem } from "./config/index.js";
 
@@ -14,6 +14,8 @@ export type LoadOptions = { onWarnings?: (warnings: Problem[], file: string) => 
 export const loadCmsConfig = async (file: string, options: LoadOptions = {}): Promise<CmsConfig> => {
   const name = basename(file);
   if (!existsSync(file)) throw new CmsConfigError(name, [{ path: name, message: `not found at ${file}`, hint: "create it with defineCmsConfig({ … }) (see the README)" }]);
+  // The site's own Vite (its Astro's): the package does not bring one.
+  const { loadConfigFromFile } = await siteVite(dirname(file));
   const loaded = await loadConfigFromFile({ command: "build", mode: "production" }, file, dirname(file), "silent");
   const config = loaded?.config as unknown;
   assertCmsConfig(config, name, (warnings) => options.onWarnings?.(warnings, name));

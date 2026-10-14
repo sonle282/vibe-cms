@@ -3,6 +3,15 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.26.1 — 2026-10-14 (installing the CMS no longer changes a site's build tools)
+
+- **Site action:** none — no data change, no D1 migration.
+- The package no longer has Vite as a peer dependency: npm added the newest Vite at the top of a site that only had
+  the copies inside Astro, and de-duplicated onto it (Mr Spa: Vite 8.2.1 → 8.3.4, rolldown 1.2.4 → 1.2.14) — a
+  different build only because the CMS was installed. The package now uses the site's own Vite (its Astro's) to load
+  cms.config.ts, and a local `normalizePath`. `yaml` accepts ^2.8.0. On Mr Spa, adding the package changes no
+  existing package version but a types-only one.
+
 ## 0.26.0 — 2026-10-14 (P20: stores for content that is not one list per file — json-object, pointer, keep; round-trip in vibe-cms check)
 
 - **Site action:** none — no data change, no D1 migration. New optional settings: `store.kind: "json-object"`, `pointer` (stores and files), `keep`, `f.image({ caption: true })`, `redirectsCheck({ allow })`; `npx vibe-cms check` now also round-trips every record.

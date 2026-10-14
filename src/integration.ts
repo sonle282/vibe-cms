@@ -8,7 +8,8 @@ import { existsSync, openSync, readSync, closeSync, readdirSync, lstatSync } fro
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AstroIntegration } from "astro";
-import { normalizePath, type Plugin } from "vite";
+import type { Plugin } from "vite";
+import { normalizePath } from "./site-vite.js";
 import { countConfig, formatWarnings, type CmsConfig } from "./config/index.js";
 import { checkSite } from "./load-config.js";
 import { detectImage, IMAGE_EXTENSIONS, mediaSettings } from "./media/index.js";
