@@ -353,6 +353,14 @@ try {
   // ---------------------------------------------------------------- owner: team (image, references)
   const team = data("src/data/team.json");
   await open("/admin/catalog/team/alex");
+  // M9: the record editor (Mr Spa) — sections on the left, the form in cards, On the website / Ready to publish.
+  check("record editor (M9): Basics · Photo · About, Live on demo.example/team, Ready to publish",
+    assertEqual(await page.locator(".vc-record-toc-link").allTextContents(), ["Basics", "Photo", "About"])
+    && (await page.locator(".vc-record-side .vc-content-status").first().textContent()) === "Live"
+    && (await page.locator(".vc-record-side-url").textContent()) === "demo.example/team"
+    && (await page.locator(".vc-record-side-card h2").nth(1).textContent()) === "Ready to publish",
+  { toc: await page.locator(".vc-record-toc-link").allTextContents(), ready: await page.locator(".vc-record-side-card h2").allTextContents() });
+  await shot("m9-record");
   await pickImage("photo", "Photo", "/images/hero.svg");
   await field("photo").getByLabel("Image description").fill("Alex at work");
   await input("specialty").selectOption("spa-pedicure");

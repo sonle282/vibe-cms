@@ -373,7 +373,7 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     collections.forEach((entry, index) => {
       const at = `collections[${index}]`;
       if (!isRecord(entry)) { err(context, at, "must be an object", "{ key, label, itemLabel, store, fields }"); return; }
-      for (const key of Object.keys(entry)) if (!["key", "label", "itemLabel", "icon", "under", "store", "status", "preview", "order", "access", "fixed", "rules", "list", "labels", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, itemLabel, icon, under, store, status, preview, order, access, fixed, rules, fields");
+      for (const key of Object.keys(entry)) if (!["key", "label", "itemLabel", "icon", "under", "store", "status", "preview", "order", "access", "fixed", "rules", "list", "labels", "layout", "sections", "ready", "fields"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: key, label, itemLabel, icon, under, store, status, preview, order, access, fixed, rules, fields");
       if (entry.under !== undefined) {
         const parent = collections.find((other) => isRecord(other) && other.key === entry.under);
         if (!filled(entry.under) || !isRecord(parent)) err(context, `${at}.under`, `${show(entry.under)} is not a collection of this config`, 'the key of the collection whose tabs it joins, e.g. "products"');
@@ -424,6 +424,21 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
         }
       }
       checkCollectionList(context, entry, at);
+      // M9: the record editor.
+      if (entry.layout !== undefined && entry.layout !== "record" && entry.layout !== "page") err(context, `${at}.layout`, `${show(entry.layout)} is not a layout of a collection`, 'use "record" or "page"');
+      if (entry.layout === "page" && !filled(entry.preview)) err(context, `${at}.layout`, '"page" shows the record\'s page, so it needs a preview', 'add preview: "/<page>/{id}/", or use "record"');
+      checkSections(context, entry, at);
+      if (entry.ready !== undefined) {
+        if (!Array.isArray(entry.ready)) err(context, `${at}.ready`, "must be a list", '[{ field: "categories", label: "At least one category" }]');
+        else entry.ready.forEach((item, index) => {
+          const where = `${at}.ready[${index}]`;
+          if (!isRecord(item) || typeof item.field !== "string" || fieldTypeAt(entry.fields, item.field) === undefined) err(context, `${where}.field`, `${show(isRecord(item) ? item.field : item)} is not a field of this collection`, isRecord(entry.fields) ? `use one of ${Object.keys(entry.fields).join(", ")}` : undefined);
+          else {
+            for (const key of Object.keys(item)) if (key !== "field" && key !== "label") err(context, `${where}.${key}`, "unknown setting", "allowed: field, label");
+            if (item.label !== undefined && !filled(item.label)) err(context, `${where}.label`, "must be a word or a few words", '"At least one category"');
+          }
+        });
+      }
     });
     checkUniqueKeys(context, collections, "collections", keys);
   }

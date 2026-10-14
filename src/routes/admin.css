@@ -1023,3 +1023,47 @@ button.vc-media-place:hover { background: var(--surface-hover); }
 .vc-list-menu-cell { width: 44px; text-align: right; }
 .vc-list-empty p { margin: 0; padding: 42px; color: var(--text-secondary); font-size: 14px; text-align: center; }
 a.vc-row-menu-item { display: flex; align-items: center; color: var(--text); text-decoration: none; }
+
+/* ---------------------------------------------------------------- M9: the record editor (the Mr Spa CMS's Product / Project) */
+.vc-body.vc-body-record { padding: 28px 32px 48px; }
+.vc-body.vc-body-record .vc-page-inner { max-width: none; }
+.vc-record-editor { display: grid; grid-template-columns: 168px minmax(0, 680px) 300px; justify-content: center; align-items: start; gap: 28px; }
+.vc-record-toc-host { position: sticky; top: 0; }
+.vc-record-toc-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.vc-record-toc-link { display: flex; width: 100%; min-height: 34px; align-items: center; padding: 0 12px; border: 0; border-radius: 6px; background: none; color: var(--text-secondary); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.vc-record-toc-link:hover { color: var(--text); background: var(--canvas); }
+.vc-record-toc-link[aria-current] { background: var(--surface-off); color: var(--text); font-weight: 600; }
+.vc-record-toc-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vc-record-form { display: grid; gap: 16px; min-width: 0; }
+.vc-record-required { margin: 0; color: var(--text-secondary); font-size: 12px; }
+.vc-record-form .vc-form { display: grid; gap: 16px; }
+.vc-record-form .vc-section { position: relative; display: grid; gap: 14px; margin: 0; padding: 22px 20px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface); scroll-margin-top: 8px; }
+.vc-record-form .vc-section:focus { outline: 0; }
+.vc-record-form .vc-section-title { margin: 0; font-size: 18px; font-weight: 700; }
+.vc-record-side { position: sticky; top: 0; display: grid; gap: 16px; }
+.vc-record-side-card { display: grid; gap: 10px; padding: 18px; border: 1px solid var(--hairline); border-radius: 12px; background: var(--surface); }
+.vc-record-side-card h2 { margin: 0; color: var(--text); font-size: 15px; font-weight: 700; }
+.vc-record-side-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.vc-record-side-url { overflow-wrap: anywhere; color: var(--accent); font-size: 13px; text-decoration: none; }
+.vc-record-side-url:hover { text-decoration: underline; }
+.vc-record-side-note { margin: 0; color: var(--text-secondary); font-size: 13px; line-height: 1.5; }
+.vc-record-ready-list { display: grid; gap: 2px; margin: 0 -10px; padding: 0; list-style: none; }
+.vc-publish-check { display: flex; width: 100%; min-height: 34px; align-items: center; gap: 9px; padding: 6px 10px; border: 0; border-radius: 6px; background: none; color: var(--text); font: inherit; font-size: 13px; font-weight: 600; text-align: left; cursor: pointer; }
+.vc-publish-check:hover { background: var(--canvas); }
+.vc-publish-check[data-done] { color: var(--text-secondary); font-weight: 500; }
+.vc-publish-check-mark { display: grid; flex: 0 0 auto; width: 18px; height: 18px; place-items: center; border: 1.5px solid var(--warning); border-radius: 999px; color: #fff; font-size: 12px; line-height: 1; }
+.vc-publish-check[data-done] .vc-publish-check-mark { border-color: var(--success); background: var(--success); }
+.vc-record-side-actions { display: grid; justify-items: start; gap: 10px; padding: 4px 4px 0; }
+.vc-record-side-action { padding: 2px 0; border: 0; border-radius: 6px; background: none; color: var(--accent); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.vc-record-side-action:hover { text-decoration: underline; }
+.vc-record-side-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vc-record-side-action.is-danger { color: var(--danger); }
+@media (max-width: 1239px) {
+  .vc-record-editor { grid-template-columns: minmax(0, 1fr) 280px; }
+  .vc-record-toc-host { grid-column: 1 / -1; position: static; }
+  .vc-record-toc-list { display: flex; flex-wrap: wrap; gap: 4px; }
+}
+@media (max-width: 1023px) {
+  .vc-record-editor { grid-template-columns: minmax(0, 1fr); }
+  .vc-record-side { position: static; }
+}

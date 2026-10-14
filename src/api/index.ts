@@ -11,6 +11,7 @@
  *   GET    /collections/:key/items/:id      live record + version + my draft
  *   PUT    /collections/:key/items/:id      save my draft of one record (new id = new record)
  *   DELETE /collections/:key/items/:id      discard my draft
+ *   POST   /collections/:key/items/:id/visibility   M9: { action: "archive" | "unarchive" } → one commit of its status
  *   GET    /drafts                          my drafts (label, updated, stale = the live content moved on) — P8
  *   GET    /media                           P10: uploads (newest first) + the site's own images (built in)
  *   POST   /media                           P10: upload one prepared image (raw bytes; x-file-name header)
@@ -575,6 +576,74 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     }
   };
 
+  /**
+   * M9 (Mr Spa: Hide from website / Show on website again): the record's status on the website changes at once — one
+   * commit with only its status field set (status.archived / status.live); drafts are not involved. The person's own
+   * draft of it, if any, follows (same status, started from the new version), so publishing it later does not undo
+   * this nor count as stale.
+   */
+  const setVisibility = async (request: Request, user: Identity, target: Target) => {
+    if (target.kind !== "item") return fail(404, "not_found", "Only a record can be hidden from the website.");
+    const collection = target.collection;
+    const status = collection.status;
+    if (!status?.archived) fail(400, "no_archived_status", `${collection.label} has no "archived" status (cms.config status.archived).`);
+    const body = await readBody(request);
+    if (body.action !== "archive" && body.action !== "unarchive") fail(400, "bad_request", 'action must be "archive" or "unarchive".');
+    const archive = body.action === "archive";
+    const audit = need(deps.audit, "storage");
+    const drafts = need(deps.drafts, "storage");
+    const publisher = need(deps.publisher, "publisher");
+    await requireAccess(user, target, "publish");
+    if (deps.publishLimiter) {
+      let allowed: boolean;
+      try { allowed = (await deps.publishLimiter.limit({ key: `cms-publish:${user.userId}` })).success; } catch { return fail(503, "limiter_unavailable", "Publish rate limiting is unavailable."); }
+      if (!allowed) fail(429, "too_many_publishes", "Publish limit reached. Please try again in a minute.", { retryAfter: 60 });
+    } else if (deps.requirePublishLimiter) fail(503, "publish_limiter_missing", "Publish rate limiting is not configured.");
+    const value = archive ? status!.archived! : status!.live;
+    const publishId = crypto.randomUUID();
+    const record = (action: "started" | "succeeded" | "failed", detail: Record<string, unknown>) => audit.record({ at: now(), userId: user.userId, role: user.role, action, stage: "publish", resource: target.resource, detail: { publishId, visibility: body.action, ...detail } });
+    try { await record("started", {}); } catch { fail(503, "audit_unavailable", "The audit log cannot be written, so nothing was changed."); }
+    try {
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        const head = await publisher.head();
+        const path = pathOf(target);
+        const texts = await publisher.readFiles(head.sha, [path]);
+        const branch = await onBranch(target, texts[path]);
+        if (branch.value === undefined || branch.value === null || typeof branch.value !== "object") { await record("failed", { code: "not_on_website" }); return fail(404, "not_on_website", `This ${collection.itemLabel.toLowerCase()} is not on the website yet: publish it first.`); }
+        const current = branch.value as Record<string, unknown>;
+        const label = recordLabel(collection, current, target.id);
+        const next = { ...current, [status!.field]: value };
+        let commitSha: string | null = null;
+        if (current[status!.field] !== value) {
+          const kind = collection.store.kind === "json-array" ? { kind: "json-array" as const, idField: collection.store.idField } : { kind: "markdown" as const };
+          const written = write(kind, texts[path], target.id, next);
+          const message = `cms: ${archive ? "hide" : "show"} ${label} ${archive ? "from" : "on"} the website\n\nBy: ${user.userId} (${user.role}) via Vibe CMS\nResources: ${target.resource}`;
+          const result = await publisher.commit({ parent: head.sha, files: { [path]: written.text }, message, author, date: now() });
+          if ("conflict" in result) continue;
+          commitSha = result.sha;
+          // My draft of it follows: the same status, from the version the branch has now.
+          // The commit has landed: a draft that cannot follow (changed in another tab meanwhile) does not undo it.
+          try {
+            const mine = await drafts.get(user.userId, target.resource);
+            if (mine && mine.content && typeof mine.content === "object") {
+              const after = await onBranch(target, written.text);
+              await drafts.save({ userId: user.userId, resource: target.resource, label: mine.label, content: { ...(mine.content as Record<string, unknown>), [status!.field]: value }, sourceVersion: after.version, expectedRevision: mine.revision });
+            }
+          } catch { /* the draft keeps its old version: publishing it later says it is stale */ }
+        }
+        await record("succeeded", { commitSha, attempt });
+        return json({ resource: target.resource, status: archive ? "archived" : "live", commitSha });
+      }
+      await record("failed", { code: "branch_moving" });
+      return fail(502, "branch_moving", `The branch kept changing (${maxAttempts} tries) — try again in a moment.`);
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      await record("failed", { code: error instanceof GitPublishError ? error.code : "internal_error" });
+      if (error instanceof GitPublishError) return fail(error.httpStatus, error.code, error.message);
+      return fail(500, "internal_error", "Changing what the website shows failed.");
+    }
+  };
+
   // ---------------------------------------------------------------- M6: did the site's build fail?
 
   /** `?commit=<sha>` with `publish.buildCheck` set: the site's build of that commit ("failed" = say so, stop waiting). */
@@ -940,6 +1009,9 @@ export const createCmsApi = (deps: CmsApiDeps) => {
       GET: (_request, user, match) => getResource(user, targetOf(`item:${match[1]}:${decodeURIComponent(match[2])}`)),
       PUT: (request, user, match) => putDraft(request, user, targetOf(`item:${match[1]}:${decodeURIComponent(match[2])}`)),
       DELETE: (_request, user, match) => deleteDraft(user, targetOf(`item:${match[1]}:${decodeURIComponent(match[2])}`)),
+    } },
+    { pattern: /^\/collections\/([a-z][a-z0-9-]*)\/items\/([^/]+)\/visibility$/, methods: {
+      POST: (request, user, match) => setVisibility(request, user, targetOf(`item:${match[1]}:${decodeURIComponent(match[2])}`)),
     } },
   ];
 
