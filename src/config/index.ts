@@ -141,6 +141,19 @@ export type CmsCollection = {
   preview?: string;
   /** M8: the list screen (the Mr Spa CMS's Products / Projects / Blog lists). */
   list?: CollectionList;
+  /**
+   * M9: how a record is edited. "record" = the Mr Spa CMS's record editor (sections on the left, the form, and on the
+   * right "On the website" / "Ready to publish" / Duplicate / Hide from website); "page" = the page editor with the
+   * record's page on the canvas. Default: "page" when the collection has a `preview`, "record" otherwise.
+   */
+  layout?: "record" | "page";
+  /** M9: the record editor's sections (cards and the list on the left), as for files. */
+  sections?: Section[];
+  /**
+   * M9: the "Before you publish · N to do" list — a field each, with its words ("At least one category"). Default: the
+   * required fields and the lists with a `min`. "No errors" is always last.
+   */
+  ready?: ReadonlyArray<{ field: string; label?: string }>;
   /** M8: words of the list screen: `add` = its button ("Add product"; default "Add <item>"), `search` = the search
    *  box's placeholder (default "Search <items>"), `many` = the plural of the item ("posts"; default from itemLabel). */
   labels?: { add?: string; search?: string; many?: string };

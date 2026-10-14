@@ -283,6 +283,29 @@ the filters and the count ("83 products" / "12 of 83 products"); the top bar has
 - New records are not rows until they are published (they are on Drafts); `labels.many` sets the plural when "s"
   is not right.
 
+## Record editor (M9)
+
+A record without a page of its own (a team member, a product) is edited in the Mr Spa CMS's record editor: its
+sections on the left (they follow the scroll), the form in cards ("* Required before you can publish"), and on the
+right **On the website** (Live / Draft / Archived, its address when Live, and what that means now: "The website shows
+this version.", "You have a saved draft. …"), **Ready to publish** / **Before you publish · 2 to do** (each item goes
+to its field; "No errors" last), **Duplicate <item>** and **Hide from website** / **Show on website again**.
+
+```ts
+{
+  key: "team", label: "Team", itemLabel: "Team member",
+  layout: "record",                  // default: "page" when the collection has a preview, "record" otherwise
+  sections: [{ key: "basics", label: "Basics", fields: ["name", "specialty"] }, { key: "photo", label: "Photo", fields: ["photo"] }],
+  ready: [{ field: "name" }, { field: "services", label: "At least one service" }],   // default: the required fields and lists with a min
+}
+```
+
+- There is no ID or Status box: the id comes from the name when the record is first saved, and the status from Publish
+  (Live) and Hide from website (Archived, needs `status.archived`).
+- Hide / Show changes the website at once — one commit with only the status — and your saved draft of the record
+  follows, so publishing it later keeps it hidden or shown.
+- `layout: "page"` keeps the page editor (the record's page on the canvas); it needs a `preview`.
+
 ## Pages, site-wide areas, Search & sharing (M7)
 
 ```ts

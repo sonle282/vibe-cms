@@ -100,6 +100,10 @@ export default defineCmsConfig({
       icon: "users",
       store: { kind: "json-array", path: "src/data/team.json", idField: "id" },
       preview: "/team/",
+      // M9: the Mr Spa CMS's record editor (sections on the left, "On the website" / "Ready to publish" on the right)
+      // instead of the page on the canvas.
+      layout: "record",
+      sections: [{ key: "basics", label: "Basics", fields: ["name", "specialty"] }, { key: "photo", label: "Photo", fields: ["photo"] }, { key: "about", label: "About", fields: ["bio", "services"] }],
       fields: {
         name: f.text({ label: "Name", required: true }),
         photo: f.image({ label: "Photo", alt: true }),

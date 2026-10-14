@@ -5,6 +5,25 @@ migration that is not automatic. Each entry says what a site has to do.
 
 ## Unreleased
 
+**M9 — the record editor like the Mr Spa CMS.** Nothing to do on a site; new optional settings (README → Record
+editor).
+
+- `layout: "record"` (the default for a collection without a `preview`): the sections on the left (168 px, they follow
+  the scroll; a row above below 1240 px), the form in cards (≤ 680 px) under "* Required before you can publish", and
+  a 300 px column: **On the website** (the pill Live / Draft / Archived, the record's address when Live, and its note —
+  "The website shows this version." / "You have unsaved changes. …" / "You have a saved draft. …" / "Not on the website
+  yet. Publish adds it." / "Hidden from the website. …"), **Ready to publish** / **Before you publish · N to do** (the
+  `ready` fields, by default the required ones and lists with a `min`, then "No errors"; each goes to its field; when
+  all are done but Publish waits, why), **Duplicate <item>** (`list.duplicate`) and **Hide from website** / **Show on
+  website again** (`status.archived`). Below 1024 px the column goes under the form.
+- No ID or Status box in the record editor: the id comes from the name; saving keeps the record Live (or Archived when
+  hidden).
+- New `POST /api/cms/collections/:key/items/:id/visibility` `{ action: "archive" | "unarchive" }`: one commit of the
+  status only (`cms: hide <name> from the website`), audited and rate limited like Publish; the person's own draft
+  follows the new status and version.
+- Collections take `sections` (as files do) and `ready`; `layout: "page"` needs a `preview`. The demo's team uses the
+  record editor.
+
 **M8 — collection lists like the Mr Spa CMS.** Nothing to do on a site; new optional settings (README → Collection
 lists).
 

@@ -16,6 +16,8 @@ export type BootCollection = {
   idField: string; markdown: boolean; status?: { field: string; live: string; draft: string; archived?: string };
   /** M8: the list screen (columns, filters, search, detail, duplicate) and its words. */
   list?: CmsCollection["list"]; labels?: CmsCollection["labels"];
+  /** M9: the record editor (see CmsCollection). */
+  layout?: "record" | "page"; sections?: Section[]; ready?: CmsCollection["ready"];
   /** P12b: no new record can be added. */
   fixed?: boolean;
   /** U2: its icon on the rail. */
@@ -60,6 +62,9 @@ export const adminBoot = (config: CmsConfig, user: BootUser, options: { uploads?
     ...(collection.under ? { under: collection.under } : {}),
     ...(collection.list ? { list: collection.list } : {}),
     ...(collection.labels ? { labels: collection.labels } : {}),
+    ...(collection.layout ? { layout: collection.layout } : {}),
+    ...(collection.sections ? { sections: collection.sections } : {}),
+    ...(collection.ready ? { ready: collection.ready } : {}),
   })),
 });
 
