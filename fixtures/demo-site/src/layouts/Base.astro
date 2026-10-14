@@ -16,10 +16,15 @@ const { title } = Astro.props as { title: string };
     {notice.enabled && <aside data-site-notice><p data-cms-field="notice.text">{notice.text}</p></aside>}
     <header>
       <a href="/" class="brand"><strong>{site.name}</strong></a>
-      <nav><a href="/">Home</a> · <a href="/services/">Services</a> · <a href="/team/">Team</a> · <a href="https://example.com/">Elsewhere</a></nav>
+      <nav data-cms-list="site.menu">{site.menu.map((item, index) => (
+        <span data-cms-item-index={index}>{index > 0 && " · "}<a data-cms-field="label" data-cms-field-href="href" href={item.href}>{item.label}</a>{"links" in item && item.links && (
+          <span data-cms-list="links"> ({item.links.map((link, at) => <span data-cms-item-index={at}>{at > 0 && ", "}<a data-cms-field="label" data-cms-field-href="href" href={link.href}>{link.label}</a></span>)})</span>
+        )}</span>
+      ))}</nav>
     </header>
     <slot />
     <footer data-cms-section="footer">
+      <p>Call <span data-cms-field="site.footerPhone">{site.footerPhone}</span></p>
       <div data-cms-list="site.footerLinks">
         {site.footerLinks.map((group, index) => (
           <section data-cms-item-index={index}>

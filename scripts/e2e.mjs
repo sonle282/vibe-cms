@@ -168,7 +168,7 @@ try {
   check("salon info: nothing changed yet", (await saveState()) === "No changes" && await page.getByRole("button", { name: "Save draft" }).isDisabled());
   // M3 (Mr Spa): level 1 — the tip and one row per section, in the order the page shows them, each with what it holds.
   const levelOne = await page.locator(".vc-section-row").evaluateAll((rows) => rows.map((row) => row.querySelector("strong").textContent));
-  check("inspector level 1: Pages / Salon info, the tip, the sections in page order", (await page.locator(".vc-inspector-crumb").textContent()) === "Pages" && (await page.locator(".vc-inspector-title").textContent()) === "Salon info" && /Click any part of the page, or pick a section below\./.test(await page.locator(".vc-tip").innerText()) && assertEqual(levelOne, ["Homepage", "Contact & hours", "Footer & search"]), levelOne);
+  check("inspector level 1: Pages / Salon info, the tip, the sections in page order", (await page.locator(".vc-inspector-crumb").textContent()) === "Pages" && (await page.locator(".vc-inspector-title").textContent()) === "Salon info" && /Click any part of the page, or pick a section below\./.test(await page.locator(".vc-tip").innerText()) && assertEqual(levelOne, ["Homepage", "Menu", "Contact & hours", "Footer & search"]), levelOne);
   await shot("m3-inspector-sections");
   await section("home");
   check("inspector level 2: ← Close section, Salon info / Homepage, only its fields", (await page.locator(".vc-inspector-crumb").textContent()) === "Salon info" && (await page.locator(".vc-inspector-title").textContent()) === "Homepage" && await page.getByRole("button", { name: "Close section" }).isVisible() && !(await field("phone").isVisible()));
@@ -180,7 +180,8 @@ try {
   await input("phone").fill("(555) 010-0001");
   await input("email").fill("hi@demo.example");
   await input("address.street").fill("2 Example Street");
-  check("save state counts unsaved changes", (await saveState()) === "4 unsaved changes", await saveState());
+  // M13: the footer's phone is the salon's phone (sameAs): it changed with it.
+  check("save state counts unsaved changes", (await saveState()) === "5 unsaved changes", await saveState());
   // Hours: Mon–Fri closes later; Sunday opens; Saturday relabelled; Sunday row moved above Saturday.
   await field("hours[0]").getByLabel("Closes").fill("18:30");
   await field("hours[1]").getByLabel("Label (optional)").fill("Sat");
@@ -267,7 +268,7 @@ try {
   await shot("p9-preview");
   await save();
   const siteExpected = {
-    ...siteBefore, name: "Demo Salon & Spa", phone: "(555) 010-0001", email: "hi@demo.example", address: { ...siteBefore.address, street: "2 Example Street" },
+    ...siteBefore, name: "Demo Salon & Spa", phone: "(555) 010-0001", footerPhone: "(555) 010-0001", email: "hi@demo.example", address: { ...siteBefore.address, street: "2 Example Street" },
     hours: [
       { ...siteBefore.hours[0], close: "18:30" },
       { days: [0], label: "Sunday", open: "10:00", close: "16:00" },
@@ -287,6 +288,19 @@ try {
   const siteDraft = await api("/api/cms/files/site");
   check("salon info: every field edited in the form is in the saved draft (P5 API)", JSON.stringify(siteDraft.draft?.content) && assertEqual(siteDraft.draft.content, siteExpected), { draft: siteDraft.draft?.content, expected: siteExpected });
   check("salon info: unchanged keys keep their order", JSON.stringify(Object.keys(siteDraft.draft.content)) === JSON.stringify(Object.keys(siteBefore)) && JSON.stringify(Object.keys(siteDraft.draft.content.hours[2])) === JSON.stringify(Object.keys(siteBefore.hours[1])));
+  // M13: the menu cards (the Mr Spa CMS's), and the footer's phone that comes from Contact & hours.
+  await section("menu");
+  check("menu (M13): a card per link with where it goes; a dropdown counts its links", assertEqual(await page.locator('[data-path="menu"] > .vc-menu-list > .vc-menu-cards > .vc-menu-card .vc-menu-card-meta').allTextContents(), ["Opens: demo.example", "Opens: demo.example/services/", "Opens: demo.example/team/", "Dropdown · 2 links", "Opens: example.com"]));
+  await page.locator('[data-path="menu"] > .vc-menu-list > .vc-menu-cards > .vc-menu-card .vc-menu-card-summary').nth(3).click();
+  check("menu: the open card — Editing link 4 of 5, its dropdown's links", (await page.locator(".vc-menu-card.is-open > .vc-menu-card-head .vc-menu-card-heading").first().textContent()) === "Editing link 4 of 5" && assertEqual(await page.locator(".vc-menu-card.is-open .vc-menu-cards .vc-menu-card-title").allTextContents(), ["Blog", "Privacy"]));
+  await shot("m13-menu");
+  await page.locator(".vc-menu-card.is-open > .vc-menu-card-head .vc-menu-card-heading").first().click();
+  await section("footer");
+  check("same as (M13): the footer's phone comes from Contact & hours › Phone", (await field("footerPhone").innerText()).includes("Phone comes from Contact & hours › Phone") && (await field("footerPhone").locator(".vc-same-value").textContent()) === "(555) 010-0001", await field("footerPhone").innerText());
+  await shot("m13-same-as");
+  await field("footerPhone").getByRole("button", { name: "Edit the phone in Contact & hours" }).click();
+  await page.waitForTimeout(200);
+  check("same as: Edit goes to the phone", await input("phone").evaluate((element) => element === document.activeElement));
   await page.reload();
   await page.locator(".vc-inspector").waitFor();
   await section("home");
@@ -298,10 +312,12 @@ try {
   check("record id is shown but fixed", await input("id").isDisabled());
   await input("name").fill("Spa Pedicure Deluxe");
   // P12d: the demo's own rule (cms.config.ts `rules`) runs in the built Worker: a price without "$" is refused, with its message.
-  await input("price").fill("40");
+  // M13: a plain amount gets its "$" (f.price); words without one are kept as typed — and refused by the rule.
+  await input("price").fill("40 and up");
   await page.getByRole("button", { name: "Save draft" }).click();
   const ruleShown = await page.waitForFunction(() => /a price starts with \$/.test(document.querySelector(".vc-form")?.textContent ?? ""), null, { timeout: 10_000 }).then(() => true, () => false);
   check("rules: the site's own rule refuses a price without $ (in the Worker), next to the field", ruleShown && /a price starts with \$/.test(await field("price").innerText()), await field("price").innerText());
+  await shot("m13-price");
   await input("price").fill("$40");
   await input("category").selectOption("Nails");
   await button("extras", "Move Extra 2 up").click();

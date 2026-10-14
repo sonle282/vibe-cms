@@ -8,7 +8,7 @@
  * to editors but cannot be changed (the server refuses anyway, P4): their inputs are disabled, a locked list / object
  * is disabled as a whole, and an editor cannot remove a list item that holds owner-only values (DESIGN §C.1).
  */
-import type { Field, ImageField, ListField, ReferenceField, Section } from "../config/index.js";
+import type { Field, ImageField, ListField, ObjectField, ReferenceField, Section } from "../config/index.js";
 import { isAdminOnly } from "../config/roles.js";
 import type { Role } from "../locks/index.js";
 import { clear, h, icon, uid, type Child } from "./dom.js";
@@ -16,7 +16,8 @@ import { createRichEditor, type RichEditor, type RichEditorOptions } from "./ric
 import { clone, emptyValue, getAt, holdsLockedValue, isRecord, keyPath, parsePathText, pathText, setAt, slugify, type Path } from "./value.js";
 import { fieldAt } from "./bridge.js";
 import { pickPlace, type PickChoices } from "../check/picks.js";
-import { formatPhone, phoneProblem, type LinkPage } from "../check/link.js";
+import { formatPhone, linkOpensText, phoneProblem, type LinkPage } from "../check/link.js";
+import { priceNote, priceShown, priceValue, sameAsNote } from "./blocks.js";
 import { createLinkControl, invalidLinks } from "./link.js";
 import { createImageCard, type ImageSlot, type PickRequest } from "./image-card.js";
 import type { LibraryImage } from "./media.js";
@@ -119,9 +120,22 @@ export const createForm = (options: FormOptions): Form => {
   const changed = (path: Path) => options.onChange?.(clone(state), path);
   // P16a: ids made from a name while the item is new — by the source field's place, what to fill and whether it still follows.
   const following = new Map<string, { target: Path; show: (value: unknown) => void; on: boolean }>();
+  /** M13: fields that copy another (sameAs) — by the source's place, where the copy is and how it is shown. */
+  const copies: Array<{ source: string; target: Path; show: () => void }> = [];
+  const followCopies = (path: Path) => {
+    const at = pathText(path);
+    for (const copy of copies) {
+      if (copy.source !== at && !at.startsWith(`${copy.source}.`) && !copy.source.startsWith(`${at}.`)) continue;
+      const value = getAt(state, parsePathText(copy.source));
+      setAt(state, copy.target, value === undefined ? undefined : clone(value));
+      copy.show();
+      changed(copy.target);
+    }
+  };
   const set = (path: Path, value: unknown) => {
     setAt(state, path, value);
     changed(path);
+    followCopies(path);
     const follow = following.get(pathText(path));
     if (follow?.on && typeof value === "string") {
       // Unique among the other items of the same list ("classic-manicure-2").
@@ -195,7 +209,23 @@ export const createForm = (options: FormOptions): Form => {
     return { control: editor.element, id, show: (value: unknown) => editor.setValue(typeof value === "string" ? value : "") };
   };
 
+  /** M13 (Mr Spa): the price box — "$" in front, 1299 saved as "$1,299", other words kept; "Shoppers will see …". */
+  const priceInput = (field: Extract<Field, { type: "text" }>, path: Path, disabled: boolean) => {
+    const id = uid("f");
+    const current = getAt(state, path);
+    const wasAbsent = current === undefined;
+    const input = h(doc, "input", { id, type: "text", class: "vc-input vc-price-input", disabled, autocomplete: "off", inputmode: "decimal", placeholder: "0.00", maxlength: String(field.maxLength ?? 500) });
+    const note = h(doc, "p", { class: "vc-help vc-price-note", "aria-live": "polite" });
+    const say = (saved: string) => { note.textContent = priceNote(saved); note.hidden = !note.textContent; };
+    const show = (value: unknown) => { const saved = typeof value === "string" ? value : ""; input.value = priceShown(saved); say(saved); };
+    show(current);
+    input.addEventListener("input", () => { const value = priceValue(input.value); set(path, value === "" && wasAbsent ? undefined : value); say(value); });
+    const control = h(doc, "div", { class: "vc-price" }, h(doc, "div", { class: "vc-price-box" }, h(doc, "span", { class: "vc-price-currency", "aria-hidden": "true" }, "$"), input), note);
+    return { control, id, show };
+  };
+
   const textInput = (field: Extract<Field, { type: "text" }>, path: Path, disabled: boolean) => {
+    if (field.format === "price") return priceInput(field, path, disabled);
     const id = uid("f");
     const current = getAt(state, path);
     const wasAbsent = current === undefined;
@@ -442,7 +472,117 @@ export const createForm = (options: FormOptions): Form => {
   const glyph = (label: string, name: string, text: string, onClick: () => void, disabled: boolean) =>
     h(doc, "button", { type: "button", class: `vc-glyph vc-${name}`, "aria-label": label, "data-tooltip": label, disabled, onclick: (event: Event) => { event.preventDefault(); event.stopPropagation(); onClick(); } }, text);
 
+  /** M13: which card of each menu is open (one at a time; kept while the list redraws). */
+  const menuOpen = new Map<string, number>();
+  /**
+   * M13 (the Mr Spa CMS's menu cards): closed, a card is its label and "Opens: …" (a dropdown: "Dropdown · 3 links");
+   * open, "Editing link 2 of 4" (a click closes it), ↑ ↓, ⋯ Remove, and the item's fields. "+ Add link" at the end.
+   */
+  const menuInput = (field: ListField, path: Path, locked: boolean) => {
+    const of = field.of as ObjectField;
+    const keys = Object.keys(of.fields);
+    const labelKey = keys.find((key) => of.fields[key].type === "text") ?? keys[0];
+    const linkKey = keys.find((key) => of.fields[key].type === "link");
+    const childKey = keys.find((key) => { const inner = of.fields[key]; return inner.type === "list" && Boolean(inner.menu); });
+    const itemLabel = field.itemLabel ?? of.label;
+    const noun = itemLabel.toLowerCase();
+    const many = (count: number, word: string) => `${count} ${count === 1 ? word : `${word}s`}`;
+    const key = pathText(path);
+    const cards = h(doc, "ol", { class: "vc-menu-cards" });
+    const add = h(doc, "button", { type: "button", class: "vc-button vc-menu-add" }, `+ Add ${noun}`);
+    const list = () => (Array.isArray(getAt(state, path)) ? (getAt(state, path) as unknown[]) : []);
+    const titleOf = (value: unknown) => { const text = isRecord(value) ? value[labelKey] : undefined; return typeof text === "string" && text.trim() ? text.trim() : "Untitled"; };
+    const metaOf = (value: unknown) => {
+      const children = childKey && isRecord(value) && Array.isArray(value[childKey]) ? value[childKey] as unknown[] : undefined;
+      if (children?.length) { const inner = of.fields[childKey!] as ListField; return `Dropdown · ${many(children.length, (inner.itemLabel ?? inner.of.label).toLowerCase())}`; }
+      return linkKey && isRecord(value) ? linkOpensText(String(value[linkKey] ?? ""), options.links?.host ?? "", options.links?.country) : "";
+    };
+    const focusCard = (index: number, part: "heading" | "summary" | "up" | "down" | "label") => {
+      const card = cards.children[index] as HTMLElement | undefined;
+      const target = part === "label" ? card?.querySelector<HTMLElement>(".vc-menu-card-body input, .vc-menu-card-body textarea")
+        : part === "up" || part === "down" ? card?.querySelector<HTMLElement>(`.vc-menu-card-${part}:not([disabled])`) ?? card?.querySelector<HTMLElement>(".vc-menu-card-heading")
+        : card?.querySelector<HTMLElement>(part === "heading" ? ".vc-menu-card-heading" : ".vc-menu-card-summary");
+      target?.focus();
+    };
+    const write = (next: unknown[], open: number) => { set(path, next); menuOpen.set(key, open); render(); };
+    const iconButton = (name: "up" | "down", label: string, tip: string, run: () => void, disabled: boolean) =>
+      h(doc, "button", { type: "button", class: `vc-icon-button vc-menu-card-action vc-menu-card-${name}`, "aria-label": label, "data-tooltip": tip, disabled, onclick: (event: Event) => { event.preventDefault(); run(); } }, icon(doc, name));
+    /** ⋯ → Remove (red); at the list's minimum it is off, with why. No question first (Mr Spa). */
+    const moreMenu = (title: string, atMin: boolean, remove: () => void) => {
+      const reason = `This list keeps at least ${many(field.min ?? 0, noun)}.`;
+      const menu = h(doc, "div", { class: "vc-row-menu-list", role: "menu", hidden: true },
+        atMin ? h(doc, "p", { class: "vc-menu-card-reason" }, reason) : null,
+        h(doc, "button", { type: "button", class: "vc-row-menu-item is-danger", role: "menuitem", disabled: atMin, ...(atMin ? { title: reason } : {}), onclick: () => { close(); remove(); } }, "Remove"));
+      const button = h(doc, "button", { type: "button", class: "vc-row-menu-button", "aria-label": `More actions for ${title}`, "data-tooltip": "More", "aria-haspopup": "menu", "aria-expanded": "false" }, "⋯");
+      const close = () => { menu.hidden = true; button.setAttribute("aria-expanded", "false"); };
+      button.addEventListener("click", (event) => { event.preventDefault(); menu.hidden = !menu.hidden; button.setAttribute("aria-expanded", String(!menu.hidden)); if (!menu.hidden) menu.querySelector<HTMLElement>(".vc-row-menu-item:not([disabled])")?.focus(); });
+      menu.addEventListener("keydown", (event) => { if (event.key === "Escape") { close(); button.focus(); } });
+      doc.addEventListener("pointerdown", (event) => { if (!menu.hidden && !menu.contains(event.target as Node) && event.target !== button) close(); });
+      return h(doc, "div", { class: "vc-row-menu" }, button, menu);
+    };
+    const render = () => {
+      clear(cards);
+      const values = list();
+      const open = menuOpen.get(key) ?? -1;
+      values.forEach((value, index) => {
+        const title = titleOf(value);
+        const place = pathText([...path, index]);
+        if (index !== open) {
+          cards.append(h(doc, "li", { class: "vc-menu-card", "data-item": place },
+            h(doc, "button", { type: "button", class: "vc-menu-card-summary", "aria-expanded": "false", onclick: () => { menuOpen.set(key, index); render(); focusCard(index, "heading"); } },
+              h(doc, "span", { class: "vc-menu-card-title" }, title), h(doc, "span", { class: "vc-menu-card-meta" }, metaOf(value)), icon(doc, "chevron"))));
+          return;
+        }
+        const named = title === "Untitled" ? "item" : title;
+        const move = (to: number) => { const next = clone(values); [next[to], next[index]] = [next[index], next[to]]; write(next, to); focusCard(to, to < index ? "up" : "down"); };
+        const body = h(doc, "div", { class: "vc-menu-card-body" });
+        renderFields(of.fields, [...path, index], locked, body);
+        cards.append(h(doc, "li", { class: "vc-menu-card is-open", "data-item": place },
+          h(doc, "div", { class: "vc-menu-card-head" },
+            h(doc, "button", { type: "button", class: "vc-menu-card-heading", "aria-expanded": "true", title: "Close", onclick: () => { menuOpen.set(key, -1); render(); focusCard(index, "summary"); } }, `Editing ${noun} ${index + 1} of ${values.length}`),
+            field.fixed ? null : iconButton("up", `Move ${named} up`, "Move up", () => move(index - 1), locked || index === 0),
+            field.fixed ? null : iconButton("down", `Move ${named} down`, "Move down", () => move(index + 1), locked || index === values.length - 1),
+            field.fixed || locked ? null : moreMenu(title, values.length <= (field.min ?? 0), () => {
+              const next = clone(values); next.splice(index, 1);
+              write(next, -1);
+              if (next.length) focusCard(Math.min(index, next.length - 1), "summary"); else add.focus();
+            })),
+          body));
+      });
+      const full = field.max !== undefined && values.length >= field.max;
+      add.disabled = locked || full;
+      if (full) add.title = `This list holds at most ${many(field.max!, noun)}.`; else add.removeAttribute("title");
+    };
+    add.addEventListener("click", () => {
+      const item = emptyValue(of) as Record<string, unknown>;
+      item[labelKey] = `New ${noun}`;
+      if (linkKey) item[linkKey] = "/";
+      const next = [...clone(list()), item];
+      write(next, next.length - 1);
+      focusCard(next.length - 1, "label");
+    });
+    render();
+    return { control: h(doc, "div", { class: "vc-menu-list" }, cards, field.fixed ? null : add) };
+  };
+
+  /** M13 (Mr Spa): a field that copies another — its value, "<label> comes from <section> › <field>", Edit. */
+  const sameAsCard = (field: Field, path: Path) => {
+    const source = field.sameAs!;
+    const sourcePath = parsePathText(source);
+    const sourceField = fieldAt(options.fields, sourcePath)?.field;
+    const top = topKeyOf(options.fields, source);
+    const section = options.sections?.find((entry) => entry.fields.some((key) => key === source || key === top || source.startsWith(`${key}.`)))?.label;
+    const sourceLabel = sourceField?.label ?? source;
+    const value = h(doc, "strong", { class: "vc-same-value" });
+    const show = () => { const current = getAt(state, sourcePath); value.textContent = typeof current === "string" && current.trim() ? current : "Not set"; };
+    show();
+    copies.push({ source: pathText(sourcePath), target: path, show });
+    const edit = h(doc, "button", { type: "button", class: "vc-same-edit", "aria-label": `Edit the ${sourceLabel.toLowerCase()}${section ? ` in ${section}` : ""}`, onclick: () => { if (options.reveal) options.reveal(source); else focusPath(source); } }, "Edit");
+    return h(doc, "div", { class: "vc-same-card" }, h(doc, "div", { class: "vc-same-text" }, value, h(doc, "span", {}, sameAsNote(field.label, sourceLabel, section))), edit);
+  };
+
   const listInput = (field: ListField, path: Path, locked: boolean) => {
+    if (field.menu && field.of.type === "object") return menuInput(field, path, locked);
     const items = h(doc, "div", { class: "vc-items" });
     const note = h(doc, "p", { class: "vc-note vc-list-count" });
     const itemLabel = field.itemLabel ?? field.of.label;
@@ -563,6 +703,8 @@ export const createForm = (options: FormOptions): Form => {
     const withHints = hints ? { ...field, help: field.help ? `${field.help} ${hints}` : hints } : field;
     const shown = extra.label ? { ...withHints, label: extra.label } : withHints;
     const common = { path, field: shown, locked: locked && !lockedAbove, reason, hideLabel: extra.hideLabel };
+    // M13: a copy of another field is that field's value and the way to it, not a box of its own.
+    if (field.sameAs) return wrap({ ...common, field: { ...shown, help: undefined }, group: false, control: sameAsCard(field, path), hideLabel: true });
     switch (field.type) {
       case "text": {
         const { control, id, show } = textInput(field, path, disabled);

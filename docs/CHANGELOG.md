@@ -5,6 +5,23 @@ migration that is not automatic. Each entry says what a site has to do.
 
 ## Unreleased
 
+**M13 — shared blocks like the Mr Spa CMS.** Nothing to do on a site; new optional field builders (README → Menus,
+prices, a field that copies another).
+
+- `f.menu({ label, min?, max?, dropdown? })`: the Mr Spa CMS's menu cards. Closed, a card is its label and "Opens: …"
+  (a dropdown: "Dropdown · 2 links"); open, "Editing link 2 of 5" (a click closes it), ↑ ↓ ("Move Services up", disabled
+  at the ends), ⋯ → Remove (no question; off at `min` with "This list keeps at least 2 links."), then Label and Opens
+  (the Link field) and the dropdown's own cards. "+ Add link" adds "New link" opening "/", open with its label focused;
+  off at `max` ("This list holds at most 8 links."). One card open at a time. Any list of objects with a text and a link
+  field can be shown this way (`menu: true`).
+- `f.price({ label })`: a text value with "$" in front of the box (`inputmode="decimal"`, "0.00"); a plain amount is
+  saved "$1,299" / "$1,299.50", anything else ("From $980", "$5+") as typed; "Shoppers will see $1,299.".
+- `sameAs: "<path>"` on any field: no box of its own — the other field's value, "<label> comes from <section> ›
+  <field>" and Edit (goes to it); it takes the other field's value whenever that one changes. Checked: the path exists,
+  same type, not itself, not a copy of a copy, not inside a list item.
+- The demo's salon info gets a Menu (with a "More" dropdown, drawn by the layout) and a footer phone that is the salon's
+  phone; services' price is an `f.price`.
+
 **M10 — the document editor like the Mr Spa CMS.** Nothing to do on a site; new optional settings (README → Document
 editor). Rich text everywhere gets the Mr Spa toolbar.
 

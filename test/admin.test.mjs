@@ -68,7 +68,7 @@ test("boot data for the page: only the editable config + who is signed in, safe 
 test("form: every field of the demo's salon info renders with the right control, in its section", () => {
   const { document } = dom();
   const form = siteForm(document);
-  assert.deepEqual([...form.element.querySelectorAll("section h2")].map((node) => node.textContent), ["Contact & hours", "Homepage", "Footer & search"]);
+  assert.deepEqual([...form.element.querySelectorAll("section h2")].map((node) => node.textContent), ["Contact & hours", "Homepage", "Menu", "Footer & search"]);
   const expected = { name: "INPUT", phone: "INPUT", email: "INPUT", "address.street": "INPUT", tagline: "INPUT", "hero.title": "INPUT", "hero.text": "DIV", "seo.title": "INPUT", "seo.description": "TEXTAREA" };
   for (const [path, tag] of Object.entries(expected)) assert.equal(control(form, path)?.tagName, tag, path);
   assert.equal(at(form, "hours").querySelectorAll(".vc-hours-row").length, 3);

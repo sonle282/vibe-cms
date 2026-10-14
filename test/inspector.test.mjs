@@ -101,7 +101,7 @@ test("inspector level 1: crumb Pages, the page's title, the hideable tip, one ro
   assert.equal(h.window.location.pathname, "/admin/pages/site");
   assert.deepEqual(h.head(), ["Pages", "Salon info", true]);
   assert.equal(h.q(".vc-tip-text").textContent, "Click any part of the page, or pick a section below.");
-  assert.deepEqual(h.rows(), [["Contact & hours", site.phone, false], ["Homepage", site.hero.title, false], ["Footer & search", site.seo.title, false]]);
+  assert.deepEqual(h.rows(), [["Contact & hours", site.phone, false], ["Homepage", site.hero.title, false], ["Menu", "5 links", false], ["Footer & search", site.seo.title, false]]);
   assert.deepEqual(h.visible(), [], "no section's fields at level 1");
   assert.ok([...h.root.querySelectorAll(".vc-section-chevron")].every((chevron) => chevron.textContent === "›"));
   // Hiding the tip is remembered.

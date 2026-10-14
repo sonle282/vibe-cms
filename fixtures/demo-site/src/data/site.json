@@ -29,6 +29,14 @@
       ]
     }
   ],
+  "menu": [
+    { "label": "Home", "href": "/" },
+    { "label": "Services", "href": "/services/" },
+    { "label": "Team", "href": "/team/" },
+    { "label": "More", "href": "/blog/", "links": [{ "label": "Blog", "href": "/blog/" }, { "label": "Privacy", "href": "/privacy/" }] },
+    { "label": "Elsewhere", "href": "https://example.com/" }
+  ],
+  "footerPhone": "(555) 010-0000",
   "seo": {
     "title": "Demo Salon — invented nails and spa",
     "description": "A made-up salon used to test Vibe CMS."

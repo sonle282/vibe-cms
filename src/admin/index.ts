@@ -30,3 +30,4 @@ export { createTooltipScheduler, installTooltips, tooltipText, TOOLTIP_DELAY_MS 
 export { clone, countChanges, emptyValue, getAt, holdsLockedValue, ID_PATTERN, keyPath, parsePathText, pathText, same, setAt, slugify, type Path } from "./value.js";
 export { excerptOf, googlePath, plainTextOf, stringsIn, wordCount } from "./document.js";
 export { linkProblem } from "./rich-editor.js";
+export { priceNote, priceShown, priceValue, sameAsNote } from "./blocks.js";

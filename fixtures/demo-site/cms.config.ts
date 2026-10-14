@@ -20,7 +20,9 @@ export default defineCmsConfig({
       sections: [
         { key: "contact", label: "Contact & hours", fields: ["phone", "email", "address", "hours"] },
         { key: "home", label: "Homepage", fields: ["name", "tagline", "hero", "highlights", "packages", "fromPrice"] },
-        { key: "footer", label: "Footer & search", fields: ["footerLinks", "seo.title", "seo.description"] },
+        // M13: the menu (the Mr Spa CMS's menu cards) and the footer's phone, which is the salon's phone.
+        { key: "menu", label: "Menu", fields: ["menu"] },
+        { key: "footer", label: "Footer & search", fields: ["footerLinks", "footerPhone", "seo.title", "seo.description"] },
       ],
       fields: {
         // P9: the header shows the name without a data-cms-field attribute; the preview finds it by selector.
@@ -47,6 +49,8 @@ export default defineCmsConfig({
           f.object({ label: "Link group", fields: { title: f.text({ label: "Group title", required: true }), links: f.list(f.object({ label: "Link", fields: { label: f.text({ label: "Text", required: true }), href: f.link({ label: "Address", required: true }) } }), { label: "Links", ordered: true, max: 5, itemLabel: "Link" }) } }),
           { label: "Footer links", ordered: true, max: 3, itemLabel: "Group" },
         ),
+        menu: f.menu({ label: "Menu", max: 8, dropdown: { label: "Dropdown", max: 6 } }),
+        footerPhone: f.phone({ label: "Phone", sameAs: "phone" }),
         "seo.title": f.text({ label: "Search title", maxLength: 60 }),
         "seo.description": f.text({ label: "Search description", multiline: true, maxLength: 160, help: "One or two sentences shown by search engines." }),
       },
@@ -99,7 +103,7 @@ export default defineCmsConfig({
       rules: (service) => (typeof service.price === "string" && service.price && !service.price.startsWith("$") ? [{ path: "price", message: "a price starts with $", hint: "e.g. $25 or $5+" }] : []),
       fields: {
         name: f.text({ label: "Name", required: true }),
-        price: f.text({ label: "Price", locked: "admin" }),
+        price: f.price({ label: "Price", locked: "admin" }),
         category: f.select({ label: "Category", options: ["Nails", "Spa"] }),
         extras: f.list(f.text({ label: "Extra" }), { label: "Extras", ordered: true, itemLabel: "Extra" }),
         description: f.text({ label: "Description", multiline: true, maxLength: 300 }),
