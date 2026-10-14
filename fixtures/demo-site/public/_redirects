@@ -1,0 +1,5 @@
+# Invented redirects for the demo (checked by redirectsCheck at build and at publish).
+/our-team /team/ 301
+/our-team/ /team/ 301
+/blog/hello/ /blog/welcome/ 301
+/old-blog/* /blog/ 301

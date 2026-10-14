@@ -97,6 +97,27 @@ export type RuleProblem = { path: string; message: string; hint?: string; warnin
 export type ContentRule = (value: Record<string, unknown>, content: RuleContext) => RuleProblem[] | undefined;
 
 /**
+ * P19: what a site plugin reads — the whole site as it will be (at publish: with the drafts being published), the text
+ * of the repo files it asked for (`files`, e.g. "public/_redirects"), and whether / where a record is on the website.
+ */
+export type SiteContext = RuleContext & {
+  config: CmsConfig;
+  text: (path: string) => string | undefined;
+  /** A record of a collection is Live (its status is the live one, or the collection has none). */
+  isLive: (collection: string, record: Record<string, unknown>) => boolean;
+  /** A record's website address (its collection's `preview`), or undefined. */
+  urlOf: (collection: string, record: Record<string, unknown>) => string | undefined;
+  /** A file's website address (a fixed `preview`), or undefined. */
+  fileUrl: (key: string) => string | undefined;
+  /** The resources being published ("item:products:x"); empty at build. */
+  changing: readonly string[];
+};
+/** `resource` = "file:site" / "item:products:x" (or a repo file's path) and `path` = where in it; `warning` = says, does not stop. */
+export type SiteProblem = { message: string; resource?: string; path?: string; hint?: string; warning?: boolean };
+/** P19: a site plugin (cms.config.ts `plugins`) — catalogPlugin(), redirectsCheck() from "@sonle282/vibe-cms/plugins", or the site's own. */
+export type CmsPlugin = { name: string; files?: readonly string[]; check: (site: SiteContext) => readonly SiteProblem[] | undefined };
+
+/**
  * A group of fields in the page inspector. `fields`: field keys, or (M3c) a path into one — an object's field ("hero.title")
  * or an item of a fixed list ("services[0].card") — so one list can give a section per item, as the Mr Spa CMS does.
  */
@@ -252,6 +273,8 @@ export type CmsConfig = {
    * each default-exports defineAdminPlugin({ name, controls, panels }) from "@sonle282/vibe-cms/admin".
    */
   admin?: { plugins?: string[] };
+  /** P19: checks of the whole site at build and at publish (see CmsPlugin). */
+  plugins?: CmsPlugin[];
   /**
    * P10: uploaded images. `dir` = where they are committed in the site's repo (default "public/assets/uploads"; served
    * at the same path without "public"); `maxBytes` = largest file after the browser has prepared it (default 10 MiB).

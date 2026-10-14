@@ -55,7 +55,7 @@ const FIELD_OPTIONS: Record<string, string[]> = {
   link: [],
   phone: [],
 };
-const TOP_LEVEL = ["configVersion", "site", "repo", "roles", "contentDirs", "files", "collections", "publish", "media", "admin"];
+const TOP_LEVEL = ["configVersion", "site", "repo", "roles", "contentDirs", "files", "collections", "publish", "media", "admin", "plugins"];
 
 /** Why a git branch name is invalid (git check-ref-format rules), or undefined when it is fine. */
 export const branchProblem = (name: string): string | undefined => {
@@ -249,6 +249,18 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
   const context: Context = { errors: [], warnings: [], collectionKeys: new Set(), oldAdminName: [] };
   if (!isRecord(config)) { err(context, "(default export)", "must be defineCmsConfig({ … })", "export default defineCmsConfig({ configVersion: 1, … })"); return context; }
   for (const key of Object.keys(config)) if (!TOP_LEVEL.includes(key)) err(context, key, "unknown setting", `allowed: ${TOP_LEVEL.join(", ")}`);
+  // P19: the site plugins (checks of the whole site).
+  if (config.plugins !== undefined) {
+    if (!Array.isArray(config.plugins)) err(context, "plugins", "must be a list of plugins", "plugins: [catalogPlugin({ … }), redirectsCheck()]");
+    else config.plugins.forEach((plugin, index) => {
+      const at = `plugins[${index}]`;
+      if (!isRecord(plugin)) { err(context, at, "must be a plugin { name, check }", "e.g. redirectsCheck() from @sonle282/vibe-cms/plugins"); return; }
+      for (const key of Object.keys(plugin)) if (!["name", "files", "check"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "allowed: name, files, check");
+      if (!filled(plugin.name)) err(context, `${at}.name`, "required — the plugin's name");
+      if (typeof plugin.check !== "function") err(context, `${at}.check`, "must be a function (site) => problems");
+      if (plugin.files !== undefined && (!Array.isArray(plugin.files) || !plugin.files.every((file) => filled(file) && !String(file).startsWith("/") && !String(file).includes("..")))) err(context, `${at}.files`, "must be repo paths", '["public/_redirects"]');
+    });
+  }
   // M14: the site's admin plugins (browser modules bundled into /admin).
   if (config.admin !== undefined) {
     if (!isRecord(config.admin)) err(context, "admin", "must be { plugins: [...] }", 'admin: { plugins: ["./cms/admin-plugin.ts"] }');
