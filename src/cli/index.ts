@@ -8,6 +8,7 @@ import { check } from "./check.js";
 import { exportData, importData } from "./data.js";
 import { importLegacyUsers } from "./legacy.js";
 import { resetOwnerPassword } from "./owner.js";
+import { init } from "./init.js";
 import { setup } from "./setup.js";
 import { update } from "./update.js";
 import { CliError, packageVersion, type Log } from "./util.js";
@@ -22,6 +23,10 @@ export { CliError } from "./util.js";
 
 export const HELP = `vibe-cms ${"<version>"} — run in the site's folder
 
+  init [--data <folders>] [--out <file>] [--dry-run] [--force] [--name <site name>] [--url <address>] [--repo <owner/name>] [--branch <branch>]
+      A first draft of cms.config.ts from the site's JSON content (src/data, src/content): pages, collections, sections
+      and every field, guessed and checked against the content; lists where the templates print a value
+      (data-cms-field for the preview). Never replaces cms.config.ts without --force.
   setup --site <site> [--account <id>] [--local]
       Create (only if missing) D1 <site>-cms, KV <site>-session, R2 <site>-media; write the CMS bindings into
       wrangler.jsonc; apply the migrations. Safe to run again. --account: another Cloudflare account (hand-over).
@@ -39,7 +44,7 @@ export const HELP = `vibe-cms ${"<version>"} — run in the site's folder
 
 Common: --config <wrangler.jsonc> · --account <id> (default: the account wrangler is signed in to — npx wrangler login).`;
 
-const COMMANDS = ["setup", "migrate", "check", "export", "import", "update", "reset-admin-password", "reset-owner-password", "import-legacy-users"] as const;
+const COMMANDS = ["init", "setup", "migrate", "check", "export", "import", "update", "reset-admin-password", "reset-owner-password", "import-legacy-users"] as const;
 
 export const run = async (argv: string[], { root = process.cwd(), log = console.log as Log, error = console.error as Log } = {}) => {
   const [command, ...rest] = argv;
@@ -49,12 +54,15 @@ export const run = async (argv: string[], { root = process.cwd(), log = console.
     if (!(COMMANDS as readonly string[]).includes(command)) throw new CliError(`unknown command "${command}"`, "npx vibe-cms help");
     const { values, positionals } = parseArgs({
       args: rest, allowPositionals: command === "update", strict: true,
-      options: { site: { type: "string" }, account: { type: "string" }, local: { type: "boolean" }, config: { type: "string" }, out: { type: "string" }, file: { type: "string" }, username: { type: "string" }, from: { type: "string" }, "from-config": { type: "string" }, "dry-run": { type: "boolean" } },
+      options: { site: { type: "string" }, account: { type: "string" }, local: { type: "boolean" }, config: { type: "string" }, out: { type: "string" }, file: { type: "string" }, username: { type: "string" }, from: { type: "string" }, "from-config": { type: "string" }, "dry-run": { type: "boolean" }, data: { type: "string" }, force: { type: "boolean" }, name: { type: "string" }, url: { type: "string" }, repo: { type: "string" }, branch: { type: "string" } },
     });
     if (values.account !== undefined && !/^[0-9a-f]{32}$/.test(values.account)) throw new CliError("--account must be a Cloudflare account id (32 hex characters)");
     const local = values.local ?? false;
     const wrangler = () => createWrangler(root, values.account);
     switch (command) {
+      case "init":
+        init({ root, log, data: values.data, out: values.out, force: values.force, dryRun: values["dry-run"], name: values.name, url: values.url, repo: values.repo, branch: values.branch });
+        return 0;
       case "setup":
         setup({ root, site: values.site ?? "", account: values.account, local, config: values.config, wrangler: wrangler(), log });
         return 0;

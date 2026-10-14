@@ -47,7 +47,24 @@ that version — no `.npmrc`, no `NODE_AUTH_TOKEN`, on your machine or in Cloudf
    });
    ```
 
-3. **Create `cms.config.ts`** at the project root:
+3. **Write `cms.config.ts`** — let the CMS draft it from the site's content (the JSON files in `src/data` /
+   `src/content`; content still written in code, e.g. `src/data/*.ts`, moves to JSON first):
+
+   ```bash
+   npx vibe-cms init
+   ```
+
+   Every JSON object becomes a page (its sections = its groups; `preview` when `src/pages` has a page of that name;
+   policies in "Policies"; header / footer / popup "Across the whole site"; `seo.json` the Search & sharing screen),
+   every list of records with a unique `id` / `slug` a collection, and every value a field guessed from its key and
+   values (text, multiline, date, rich text, image, link, phone, number, toggle, opening hours, objects, lists). The
+   draft is checked against the content as it is — what does not fit becomes plain text, and what is left out is listed
+   at the top of the file. It also prints where the templates show a value (`{home.hero.title}`) and the
+   `data-cms-field="home.hero.title"` to add there so the preview points at the field. Options: `--dry-run`, `--data
+   <folders>`, `--name`, `--url`, `--repo <owner/name>`, `--branch`; it never replaces a `cms.config.ts` (`--force`).
+
+   Then read it through: labels, `required: true`, `locked: "admin"` (editors see it, only an admin changes it),
+   `access: "admin"` (admins only), and each `TODO`. A hand-written config looks the same:
 
    ```ts
    import { defineCmsConfig, f } from "@sonle282/vibe-cms/config";
@@ -104,6 +121,7 @@ runs it; `--account <id>` picks another account. No command asks for, prints or 
 
 | Command | What it does |
 |---|---|
+| `init [--data <folders>] [--out <file>] [--dry-run] [--force] [--name] [--url] [--repo <owner/name>] [--branch]` | M15: a first draft of `cms.config.ts` from the site's JSON content, checked against it, plus the `data-cms-field` to add for the preview (Install step 3). Never replaces a config without `--force`; touches nothing else |
 | `setup --site <site> [--account <id>] [--local]` | Resources + bindings + migrations, as above. Idempotent; a binding already pointing at another site's database or bucket is refused, never re-pointed. With `--account`: the same on another account (hand-over) — the ids in `wrangler.jsonc` follow |
 | `migrate [--local]` | Applies the package migrations to `CMS_DB` (after an update). They only add tables / columns |
 | `check [--site <site>]` | What the build checks (config + content), plus: the bindings exist and point only at `<site>-*`, migrations are wired, rate limits are there, the package comes from a release URL |

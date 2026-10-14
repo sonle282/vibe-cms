@@ -22,3 +22,6 @@ Thumbs.db
 # P5 test worker: generated from the demo site by scripts/api-local.mjs
 test/api-worker/generated.mjs
 test/auth-worker/generated.mjs
+
+# M15 init tests (made-up sites, removed after the run)
+test/.tmp-init-*/
