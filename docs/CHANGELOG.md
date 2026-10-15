@@ -3,7 +3,7 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## Unreleased
+## 0.28.1 — 2026-10-15 (release safety for the sites; vibe-cms update lists every site action)
 
 **Release safety for the sites.** Site action: none.
 
