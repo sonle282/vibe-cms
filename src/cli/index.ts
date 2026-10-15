@@ -6,7 +6,7 @@
 import { parseArgs } from "node:util";
 import { check } from "./check.js";
 import { exportData, importData } from "./data.js";
-import { importLegacyUsers } from "./legacy.js";
+import { importLegacyUsers, setAsideLegacyTables } from "./legacy.js";
 import { resetOwnerPassword } from "./owner.js";
 import { init } from "./init.js";
 import { setup } from "./setup.js";
@@ -30,11 +30,12 @@ export const HELP = `vibe-cms ${"<version>"} — run in the site's folder
       A first draft of cms.config.ts from the site's JSON content (src/data, src/content): pages, collections, sections
       and every field, guessed and checked against the content; lists where the templates print a value
       (data-cms-field for the preview). Never replaces cms.config.ts without --force.
-  setup --site <site> [--account <id>] [--local]
+  setup --site <site> [--account <id>] [--local] [--rename-legacy]
       Create (only if missing) D1 <site>-cms, KV <site>-session, R2 <site>-media; write the CMS bindings into
       wrangler.jsonc; apply the migrations. Safe to run again. --account: another Cloudflare account (hand-over).
-      --local: nothing remote (placeholder ids + the local D1 of wrangler dev).
-  migrate [--local]                 Apply the package migrations to CMS_DB (adds tables / columns, never deletes).
+      --local: nothing remote (placeholder ids + the local D1 of wrangler dev). A site that had a CMS keeps the
+      KV its binding uses; --rename-legacy: its old CMS's tables in CMS_DB become legacy_cms_* (rows kept).
+  migrate [--local] [--rename-legacy]  Apply the package migrations to CMS_DB (adds tables / columns, never deletes).
   check [--site <site>]             cms.config.ts + content (as the build) + bindings point only at this site.
   export --out <dir> [--local]      D1 rows → <dir>/<site>-cms.sql + .counts.json (R2 is counted, not copied).
   import --file <sql> [--local]     Into an empty, set-up CMS database; compares the rows with the counts file.
@@ -68,7 +69,7 @@ export const run = async (argv: string[], { root = process.cwd(), log = console.
     if (!(COMMANDS as readonly string[]).includes(command)) throw new CliError(`unknown command "${command}"`, "npx vibe-cms help");
     const { values, positionals } = parseArgs({
       args: rest, allowPositionals: command === "update", strict: true,
-      options: { site: { type: "string" }, account: { type: "string" }, local: { type: "boolean" }, config: { type: "string" }, out: { type: "string" }, file: { type: "string" }, username: { type: "string" }, from: { type: "string" }, "from-config": { type: "string" }, "dry-run": { type: "boolean" }, data: { type: "string" }, force: { type: "boolean" }, name: { type: "string" }, url: { type: "string" }, repo: { type: "string" }, branch: { type: "string" } },
+      options: { site: { type: "string" }, account: { type: "string" }, local: { type: "boolean" }, config: { type: "string" }, out: { type: "string" }, file: { type: "string" }, username: { type: "string" }, from: { type: "string" }, "from-config": { type: "string" }, "dry-run": { type: "boolean" }, "rename-legacy": { type: "boolean" }, data: { type: "string" }, force: { type: "boolean" }, name: { type: "string" }, url: { type: "string" }, repo: { type: "string" }, branch: { type: "string" } },
     });
     if (values.account !== undefined && !/^[0-9a-f]{32}$/.test(values.account)) throw new CliError("--account must be a Cloudflare account id (32 hex characters)");
     const local = values.local ?? false;
@@ -80,10 +81,11 @@ export const run = async (argv: string[], { root = process.cwd(), log = console.
         init({ root, log, data: values.data, out: values.out, force: values.force, dryRun: values["dry-run"], name: values.name, url: values.url, repo: values.repo, branch: values.branch });
         return 0;
       case "setup":
-        setup({ root, site: values.site ?? "", account: values.account, local, config: values.config, wrangler: wrangler(), log });
+        setup({ root, site: values.site ?? "", account: values.account, local, config: values.config, renameLegacy: values["rename-legacy"] ?? false, wrangler: wrangler(), log });
         return 0;
       case "migrate": {
         const configRel = findWranglerConfig(root, values.config).slice(root.length + 1).split("\\").join("/");
+        setAsideLegacyTables({ wrangler: wrangler(), config: configRel, local, rename: values["rename-legacy"] ?? false, log });
         const applied = applyMigrations(wrangler(), configRel, local);
         log(applied.length ? `Migrations applied (${local ? "local" : "remote"}): ${applied.join(", ")}` : `Migrations: up to date (${local ? "local" : "remote"}).`);
         return 0;

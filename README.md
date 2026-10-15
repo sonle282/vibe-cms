@@ -299,7 +299,14 @@ secrets: { githubToken: "CMS_GITHUB_TOKEN" },      // default VIBE_GITHUB_TOKEN
 - The Worker, the media route and every CLI command (`setup`, `check`, `migrate`, `export` / `import`,
   `import-legacy-users`, `reset-admin-password`) read these names. `setup` only adds what is missing (the package's
   tables into the existing D1, `migrations_dir`, rate limits); resource names still follow `<site>-cms`,
-  `<site>-session`, `<site>-media`, which keeps one site from reaching another's data.
+  `<site>-session`, `<site>-media`, which keeps one site from reaching another's data. The KV namespace a `SESSION`
+  binding already uses is kept, whatever its title (the old CMS's keys and cookie differ from the package's).
+- The old CMS's D1 is the site's `CMS_DB` and has tables with the package's names (`cms_users`, `cms_auth_state`,
+  `cms_draft_index`, `cms_audit_log`, other columns)? `setup` / `migrate` stop and change nothing. When switching, run
+  `npx vibe-cms setup --site <site> --rename-legacy`: they become `legacy_cms_*` in the same database (every row kept,
+  nothing deleted), the package's migrations apply, then `npx vibe-cms import-legacy-users --from CMS_DB --from-config
+  <wrangler file>` brings the people over from `legacy_cms_users` with their passwords. The old CMS stops working from
+  then on; renaming back is `ALTER TABLE legacy_cms_users RENAME TO cms_users` (after the package's tables are set aside).
 - Templates that mark content with `data-cms-bind="hero.title"` (and `-href`, `-alt`) — a path in the page being edited —
   work in the preview as they are: the admin reads them as `data-cms-field` inside its preview only, the public HTML is
   unchanged. A `data-cms-bind` on a whole list marks where it is; its items are not redrawn from it.

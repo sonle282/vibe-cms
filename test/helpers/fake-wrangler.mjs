@@ -1,8 +1,10 @@
 // P11 tests: a fake `wrangler` for the remote paths of `vibe-cms setup` — answers d1 / kv / r2 list + create and
 // `d1 migrations apply` the way wrangler 4 prints them, with an account kept in a JSON file (FAKE_CF_STATE). Every call
-// is recorded with the account it ran on (CLOUDFLARE_ACCOUNT_ID). Nothing leaves the machine.
+// is recorded with the account it ran on (CLOUDFLARE_ACCOUNT_ID). Each D1 is a real SQLite file next to the state
+// (<uuid>.sqlite): migrations run their SQL, `d1 execute` (--command / --file, --json) runs on it. Nothing leaves the machine.
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 const file = process.env.FAKE_CF_STATE;
 const state = JSON.parse(readFileSync(file, "utf8"));
@@ -15,6 +17,16 @@ const save = () => writeFileSync(file, JSON.stringify(state, null, 2));
 const fail = (message) => { save(); process.stderr.write(`✘ [ERROR] ${message}\n`); process.exit(1); };
 const id = (prefix) => `${prefix}${String(cf.d1.length + cf.kv.length + cf.r2.length + 1).padStart(4, "0")}${account.slice(0, 4)}`;
 const option = (name) => { const index = args.indexOf(name); return index === -1 ? undefined : args[index + 1]; };
+
+const sqlite = (uuid) => new DatabaseSync(join(dirname(resolve(file)), `${uuid}.sqlite`));
+/** The D1 a command names: a binding or database_name of --config, else a database name in the account. */
+const d1Named = (name) => {
+  const configFile = option("--config");
+  const entry = configFile ? JSON.parse(readFileSync(resolve(configFile), "utf8").replace(/^\s*\/\/.*$/gm, "")).d1_databases?.find((db) => db.binding === name || db.database_name === name) : undefined;
+  const found = cf.d1.find((db) => (entry ? db.uuid === entry.database_id : db.name === name));
+  if (!found) fail(`Couldn't find a D1 DB with the name or binding '${name}'`);
+  return { ...found, entry };
+};
 
 if (state.loggedOut) fail("You are not authenticated. Please run `wrangler login`.");
 const [a, b, c, d] = args;
@@ -32,6 +44,23 @@ else if (a === "d1" && b === "migrations" && c === "apply") {
   const done = (cf.applied[db.database_id] ??= []);
   const todo = all.filter((name) => !done.includes(name));
   if (!todo.length) console.log("✅ No migrations to apply!");
-  else { done.push(...todo); console.log(`Migrations to be applied:\n${todo.map((name) => `│ ${name} │`).join("\n")}\n${todo.map((name) => `│ ${name} │ ✅ │`).join("\n")}`); }
+  else {
+    const database = sqlite(db.database_id);
+    for (const name of todo) {
+      try { database.exec(readFileSync(join(dirname(resolve(option("--config"))), db.migrations_dir, name), "utf8")); } catch (error) { database.close(); fail(`Migration ${name} failed with the following errors: ${error.message}`); }
+      done.push(name);
+    }
+    database.close();
+    console.log(`Migrations to be applied:\n${todo.map((name) => `│ ${name} │`).join("\n")}\n${todo.map((name) => `│ ${name} │ ✅ │`).join("\n")}`);
+  }
+} else if (a === "d1" && b === "execute") {
+  const database = sqlite(d1Named(c).uuid);
+  let results = [];
+  try {
+    if (option("--file")) database.exec(readFileSync(option("--file"), "utf8"));
+    else results = database.prepare(option("--command")).all().map((row) => ({ ...row }));
+  } catch (error) { database.close(); fail(error.message); }
+  database.close();
+  console.log(args.includes("--json") ? JSON.stringify([{ results, success: true, meta: { duration: 0 } }], null, 2) : "🚣 Executed");
 } else fail(`fake wrangler: unsupported ${args.join(" ")}`);
 save();

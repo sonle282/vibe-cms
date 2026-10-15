@@ -12,6 +12,10 @@ migration that is not automatic. Each entry says what a site has to do.
   route, the admin page and every CLI command — no new resources, no data copied, no secret entered again.
 - The preview reads a template's `data-cms-bind` / `-href` / `-alt` (the Mr Spa CMS's) as `data-cms-field` of the file
   being edited — in the preview only; the page's HTML is unchanged. A whole list bound so is only marked, not redrawn.
+- The old CMS's D1 kept as the site's `CMS_DB`: its tables with the package's names (cms_users, cms_auth_state,
+  cms_draft_index, cms_audit_log) are renamed `legacy_cms_*` in place by `setup` / `migrate --rename-legacy` (without
+  it they stop and change nothing; every row kept, nothing deleted); `import-legacy-users --from CMS_DB` reads
+  `legacy_cms_users`. `setup` keeps the KV namespace the `SESSION` binding already uses, whatever its title.
 
 ## 0.26.1 — 2026-10-14 (installing the CMS no longer changes a site's build tools)
 
