@@ -10,9 +10,10 @@ import { writeFileSync } from "node:fs";
 import { relative } from "node:path";
 import { applyMigrations, jsonOutput, must, type Wrangler } from "./wrangler.js";
 import { BINDINGS, SECRETS, entryOf, findWranglerConfig, LIMITS, readWranglerConfig, upsertBindings, type Upsert, type WranglerConfig } from "./wrangler-config.js";
+import { setAsideLegacyTables } from "./legacy.js";
 import { CliError, migrationsDirFor, resourceNames, validateSite, type Log } from "./util.js";
 
-export type SetupOptions = { root: string; site: string; account?: string; local?: boolean; config?: string; wrangler: Wrangler; log: Log };
+export type SetupOptions = { root: string; site: string; account?: string; local?: boolean; config?: string; renameLegacy?: boolean; wrangler: Wrangler; log: Log };
 
 /** Rate-limit namespaces are numbers unique in the account: derived from the site name (kept once written). */
 export const limiterNamespaces = (site: string) => {
@@ -43,9 +44,14 @@ const ensureD1 = (wrangler: Wrangler, name: string, log: Log): Found => {
   return { id: made.uuid, created: true };
 };
 
-const ensureKv = (wrangler: Wrangler, title: string, log: Log): Found => {
-  const list = () => jsonOutput<Array<{ id: string; title: string }>>(must(wrangler, ["kv", "namespace", "list"], "listing KV namespaces"), "listing KV namespaces").find((ns) => ns.title === title);
-  const found = list();
+/** P21: the KV namespace the binding already uses, when it is in this account, is kept whatever its title (a site that had a CMS). */
+const ensureKv = (wrangler: Wrangler, title: string, log: Log, current?: string): Found => {
+  const all = () => jsonOutput<Array<{ id: string; title: string }>>(must(wrangler, ["kv", "namespace", "list"], "listing KV namespaces"), "listing KV namespaces");
+  const list = () => all().find((ns) => ns.title === title);
+  const namespaces = all();
+  const kept = current ? namespaces.find((ns) => ns.id === current) : undefined;
+  if (kept && kept.title !== title) { log(`  KV ${kept.title}: already used by ${BINDINGS.session}, kept (${kept.id})`); return { id: kept.id, created: false }; }
+  const found = namespaces.find((ns) => ns.title === title);
   if (found) { log(`  KV ${title}: already there (${found.id})`); return { id: found.id, created: false }; }
   must(wrangler, ["kv", "namespace", "create", title], `creating KV ${title}`);
   const made = list();
@@ -64,7 +70,7 @@ const ensureR2 = (wrangler: Wrangler, name: string, log: Log): { created: boolea
   return { created: true };
 };
 
-export const setup = ({ root, site: siteInput, account, local = false, config: configArg, wrangler, log }: SetupOptions) => {
+export const setup = ({ root, site: siteInput, account, local = false, config: configArg, renameLegacy = false, wrangler, log }: SetupOptions) => {
   const site = validateSite(siteInput);
   const file = findWranglerConfig(root, configArg);
   const configRel = relative(root, file).split("\\").join("/");
@@ -79,7 +85,7 @@ export const setup = ({ root, site: siteInput, account, local = false, config: c
     dbId = String(entryOf(data, "d1_databases", BINDINGS.db)?.database_id ?? `local-${names.db}`);
     kvId = String(entryOf(data, "kv_namespaces", BINDINGS.session)?.id ?? `local-${names.session}`);
   } else {
-    const db = ensureD1(wrangler, names.db, log), kv = ensureKv(wrangler, names.session, log), r2 = ensureR2(wrangler, names.media, log);
+    const db = ensureD1(wrangler, names.db, log), kv = ensureKv(wrangler, names.session, log, entryOf(data, "kv_namespaces", BINDINGS.session)?.id as string | undefined), r2 = ensureR2(wrangler, names.media, log);
     if (db.created) created.push(`D1 ${names.db}`);
     if (kv.created) created.push(`KV ${names.session}`);
     if (r2.created) created.push(`R2 ${names.media}`);
@@ -99,6 +105,7 @@ export const setup = ({ root, site: siteInput, account, local = false, config: c
   if (next !== text) writeFileSync(file, next);
   log(changes.length ? `  ${configRel}: ${changes.length} change${changes.length === 1 ? "" : "s"}\n${changes.map((line) => `    ${line}`).join("\n")}` : `  ${configRel}: already up to date`);
 
+  const renamed = setAsideLegacyTables({ wrangler, config: configRel, local, rename: renameLegacy, log });
   const applied = applyMigrations(wrangler, configRel, local);
   log(applied.length ? `  migrations applied (${local ? "local" : "remote"}): ${applied.join(", ")}` : `  migrations: up to date (${local ? "local" : "remote"})`);
 
@@ -111,5 +118,5 @@ export const setup = ({ root, site: siteInput, account, local = false, config: c
     "  npx vibe-cms check",
   ].join("\n"));
   else log("\nLocal only: the ids are placeholders — run setup without --local before deploying.");
-  return { site, file, created, changes, applied, unchanged: created.length === 0 && changes.length === 0 && applied.length === 0 };
+  return { site, file, created, changes, renamed, applied, unchanged: created.length === 0 && changes.length === 0 && renamed.length === 0 && applied.length === 0 };
 };
