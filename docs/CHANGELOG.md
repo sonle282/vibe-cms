@@ -3,6 +3,16 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## Unreleased
+
+**M17 — Images in this post.** Site action: none (a new optional setting).
+
+- `document.images`: a list of images that holds an HTML body's images, in order (Mr Spa's `contentImages`). Under the
+  body as "Images in this post" with "Insert image in article"; the list follows the body, and a change on a card (its
+  description, Replace, ×) is made to that image in the article — only what changed. Checked: a list of images, next to a
+  formatted HTML body.
+- A list or menu field set from outside (`form.setValue`, a plugin's `setAt`) is drawn again.
+
 ## 0.28.1 — 2026-10-15 (release safety for the sites; vibe-cms update lists every site action)
 
 **Release safety for the sites.** Site action: none.

@@ -424,6 +424,16 @@ the first lines, as Google shows them) and **Ready to publish**.
   list · Add link · Insert image (Quote only when the field's `allow` has `blockquote`). **Add link** takes a page of
   the site or a secure `https://` address. There is no "Edit HTML / Markdown" button any more: a Markdown post the visual
   editor cannot keep still opens as Markdown.
+- `images` (M17, an HTML body): a list of images that holds the body's images, in order — Mr Spa's `contentImages`,
+  which its website uses when a post has no cover. It shows under the body as **Images in this post** (a card per image,
+  "Insert image in article" puts a new one where the text cursor is). It follows the body; a description typed, a
+  Replace or a × on a card is made to that image in the article — only what changed, so a list that did not mirror the
+  body (placeholders from an old website) never overwrites the article's images; the next edit of the text rewrites it.
+
+```ts
+document: { title: "title", body: "contentHtml", cover: "heroImage", images: "contentImages" },
+// contentImages: f.list(f.image({ label: "Content image", alt: true }), { label: "Images in this post", itemLabel: "Content image" })
+```
 
 ## Record editor (M9)
 

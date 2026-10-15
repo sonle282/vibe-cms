@@ -582,7 +582,7 @@ function checkDocument(context: Context, entry: Record<string, unknown>, at: str
   const document = entry.document;
   if (entry.layout !== "document") { if (document !== undefined) err(context, `${at}.document`, 'is only for layout "document"', 'add layout: "document", or remove document'); return; }
   if (!isRecord(document)) { err(context, `${at}.document`, 'required with layout "document" — which fields are the title and the body', '{ title: "title", body: "body", cover: "cover" }'); return; }
-  for (const key of Object.keys(document)) if (!["title", "body", "cover", "plain"].includes(key)) err(context, `${at}.document.${key}`, "unknown setting", "document has title, body, cover and plain");
+  for (const key of Object.keys(document)) if (!["title", "body", "cover", "plain", "images"].includes(key)) err(context, `${at}.document.${key}`, "unknown setting", "document has title, body, cover, plain and images");
   if (document.plain !== undefined && typeof document.plain !== "boolean") err(context, `${at}.document.plain`, "must be true or false");
   const plain = document.plain === true;
   if (fieldTypeAt(entry.fields, String(document.title ?? "")) !== "text") err(context, `${at}.document.title`, `${show(document.title)} is not a text field`, 'e.g. title: "title"');
@@ -591,6 +591,13 @@ function checkDocument(context: Context, entry: Record<string, unknown>, at: str
   else if (!plain && bodyType !== "richText") err(context, `${at}.document.body`, "the paper holds formatted text: use a richText field", "or plain: true for plain text (a policy)");
   else if (plain && bodyType !== "text" && bodyType !== "list") err(context, `${at}.document.body`, "plain text is a text field or a list of sections", "or remove plain for formatted text");
   if (document.cover !== undefined && fieldTypeAt(entry.fields, String(document.cover)) !== "image") err(context, `${at}.document.cover`, `${show(document.cover)} is not an image field`, 'e.g. cover: "cover"');
+  // M17: the body's images as a list of images (top level), next to formatted text.
+  if (document.images !== undefined) {
+    const list = isRecord(entry.fields) && typeof document.images === "string" ? entry.fields[document.images] : undefined;
+    const markdownBody = markdown && document.body === "body" && !(isRecord(entry.fields) && "body" in entry.fields);
+    if (plain || bodyType !== "richText" || markdownBody) err(context, `${at}.document.images`, "is for a body of formatted HTML text", "remove images, or use a richText body");
+    else if (!isRecord(list) || list.type !== "list" || !isRecord(list.of) || list.of.type !== "image") err(context, `${at}.document.images`, `${show(document.images)} is not a list of images next to the body`, 'e.g. images: "contentImages" with contentImages: f.list(f.image({ label: "Content image", alt: true }), { label: "Images in this post" })');
+  }
 }
 
 /** M7: the type of the field at a key or a path into objects ("popup.enabled", "seo.title"), or undefined. */

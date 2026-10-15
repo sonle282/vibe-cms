@@ -34,7 +34,7 @@ import { ADMIN_BASE, adminHref, legacyHashPath, parseAdminPath, type AdminRoute 
 import { applyLeafChanges, buildFailedText, deriveSaveState, elapsedText, publishBlockReason, unsavedLeafChanges, type LeafChange, type PublishedState, type SaveState } from "./save-state.js";
 import { createRecovery, forgetAllRecovery, forgetRecovery, readRecovery, recoveryQuestion, type Recovery } from "./recovery.js";
 import { reviewSummary, type ReviewGroup } from "./review.js";
-import { clone, countChanges, getAt, ID_PATTERN, keyPath, parsePathText, pathText, slugify, type Path } from "./value.js";
+import { clone, countChanges, getAt, ID_PATTERN, isRecord, keyPath, parsePathText, pathText, slugify, type Path } from "./value.js";
 
 export type AdminOptions = {
   root: HTMLElement;
@@ -997,10 +997,62 @@ export const startAdmin = (options: AdminOptions) => {
           const source = Object.entries(collection.fields).find(([key, field]) => field.type === "text" && key !== collection.idField);
           if (source && path[0] === source[0]) { autoId = true; form.setValue([collection.idField], slugify(String(value[source[0]] ?? ""))); autoId = false; }
         }
+        // M17: the body's images and the list that holds them follow each other.
+        if (documentSpec?.images && !syncingImages && (path[0] === documentSpec.body || path[0] === documentSpec.images)) syncImages(value, path[0] === documentSpec.body ? "list" : "body");
         preview?.update(value, path, isNew ? owner() : undefined);
         refresh();
       },
     });
+
+    /**
+     * M17 (Mr Spa's "Images in this post"): `document.images` lists the body's images, in order. A change of the body
+     * rewrites the list from the body's images (an image keeps what else its item had, e.g. a caption). A change made in
+     * the list is made to the body's image at the same place — only what changed there (its address, its description;
+     * an item removed = that image removed): a list that did not mirror the body (Mr Spa's imported posts hold the old
+     * website's placeholders) never pushes its other values into the article.
+     */
+    let syncingImages = false;
+    let lastImages: unknown[] = documentSpec?.images && Array.isArray(getAt(start, keyPath(documentSpec.images))) ? clone(getAt(start, keyPath(documentSpec.images)) as unknown[]) : [];
+    function syncImages(value: Record<string, unknown>, to: "list" | "body") {
+      const spec = documentSpec!;
+      const box = doc.createElement("template");
+      box.innerHTML = String(getAt(value, keyPath(spec.body)) ?? "");
+      const images = [...box.content.querySelectorAll("img")];
+      const listed = Array.isArray(getAt(value, keyPath(spec.images!))) ? clone(getAt(value, keyPath(spec.images!)) as unknown[]) : [];
+      const srcOf = (item: unknown) => (typeof item === "string" ? item : isRecord(item) && typeof item.src === "string" ? item.src : "");
+      const altOf = (item: unknown) => (isRecord(item) && typeof item.alt === "string" ? item.alt : "");
+      syncingImages = true;
+      try {
+        if (to === "list") {
+          const next = images.map((image, index) => {
+            const before = listed[index] !== undefined && srcOf(listed[index]) === image.getAttribute("src") ? listed[index] : listed.find((item) => srcOf(item) === image.getAttribute("src"));
+            return { ...(isRecord(before) ? before : {}), src: image.getAttribute("src") ?? "", alt: image.getAttribute("alt") ?? "" };
+          });
+          if (JSON.stringify(next) !== JSON.stringify(listed)) form.setValue(keyPath(spec.images!), next);
+          lastImages = next;
+          return;
+        }
+        const was = lastImages;
+        lastImages = listed;
+        if (listed.length === was.length) {
+          // The same items: what changed on one of them (Replace, its description) goes to the image at its place.
+          listed.forEach((item, index) => {
+            const image = images[index];
+            if (!image) return;
+            if (srcOf(item) !== srcOf(was[index])) image.setAttribute("src", srcOf(item));
+            if (altOf(item) !== altOf(was[index])) image.setAttribute("alt", altOf(item));
+          });
+        } else if (listed.length < was.length) {
+          // Items removed (×): the images at their places go too. The kept items are matched in order.
+          let at = 0;
+          const gone: number[] = [];
+          was.forEach((item, index) => { if (at < listed.length && JSON.stringify(item) === JSON.stringify(listed[at])) at += 1; else gone.push(index); });
+          for (const index of gone.reverse()) images[index]?.remove();
+        } else return;
+        const html = box.innerHTML;
+        if (html !== String(getAt(value, keyPath(spec.body)) ?? "")) form.setValue(keyPath(spec.body), html);
+      } finally { syncingImages = false; }
+    }
 
     const recovery: Recovery | undefined = isNew ? undefined : createRecovery({ storage, resource: resourceOf(), user: user.username, version: () => version, content: () => form.value(), dirty: () => dirty() > 0, now });
     flushRecovery = recovery?.flush;
@@ -1193,8 +1245,9 @@ export const startAdmin = (options: AdminOptions) => {
     const documentPaper = () => {
       const spec = documentSpec!;
       const boxOf = (key: string | undefined) => (key ? form.element.querySelector<HTMLElement>(`:scope > [data-path="${key}"]`) : null);
-      const cover = boxOf(spec.cover); const titleBox = boxOf(spec.title); const bodyBox = boxOf(spec.body);
+      const cover = boxOf(spec.cover); const titleBox = boxOf(spec.title); const bodyBox = boxOf(spec.body); const imagesBox = plain ? null : boxOf(spec.images);
       const onPaper = [cover, titleBox, bodyBox].filter((box): box is HTMLElement => Boolean(box));
+      if (imagesBox) imagesBox.remove();
       for (const box of onPaper) form.element.append(box);
       for (const child of [...form.element.children]) if (child.classList.contains("vc-field") && !onPaper.includes(child as HTMLElement)) detailsCard!.body.append(child);
       if (addressRow) detailsCard!.body.append(addressRow);
@@ -1212,8 +1265,18 @@ export const startAdmin = (options: AdminOptions) => {
       bodyBox?.classList.add("vc-doc-body");
       bodyBox?.querySelector(":scope > .vc-label")?.classList.add("vc-sr-only");
       const toolbar = plain ? null : bodyBox?.querySelector<HTMLElement>(".vc-rich-toolbar") ?? null;
+      // M17 (Mr Spa): "Images in this post" under the body — a card per image; new ones go in where the text cursor is.
+      let imagesSection: HTMLElement | null = null;
+      if (imagesBox) {
+        imagesBox.querySelector(":scope > .vc-label, :scope > legend")?.classList.add("vc-sr-only");
+        for (const add of imagesBox.querySelectorAll<HTMLElement>(".vc-add")) add.hidden = true;
+        const insertTool = toolbar?.querySelector<HTMLButtonElement>('[data-command="image"]');
+        const insert = insertTool ? h(doc, "button", { type: "button", class: "vc-button vc-doc-insert-image", onmousedown: (event: Event) => event.preventDefault(), onclick: () => insertTool.click() }, "Insert image in article") : null;
+        const headingId = `doc-images-${Math.random().toString(36).slice(2, 8)}`;
+        imagesSection = h(doc, "section", { class: "vc-doc-images", "aria-labelledby": headingId }, h(doc, "h2", { id: headingId }, "Images in this post"), imagesBox, insert);
+      }
       return h(doc, "div", { class: `vc-doc-paper${plain ? " is-plain" : ""}` }, docBar?.element ?? null, toolbar, form.element,
-        plain ? null : h(doc, "p", { class: "vc-help vc-doc-paste" }, "Pasting keeps text only; HTML code is not accepted."));
+        plain ? null : h(doc, "p", { class: "vc-help vc-doc-paste" }, "Pasting keeps text only; HTML code is not accepted."), imagesSection);
     };
     /** M9 (Mr Spa): Hide from website / Show on website again — at once, outside Save draft and Publish. */
     const changeVisibility = async (archive: boolean) => {

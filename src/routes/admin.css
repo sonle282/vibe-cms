@@ -1086,6 +1086,10 @@ a.vc-row-menu-item { display: flex; align-items: center; color: var(--text); tex
 .vc-doc-body .vc-rich-area img { display: block; margin: 12px 0; border-radius: 6px; }
 .vc-doc-body .vc-rich-area a { color: var(--accent); text-decoration: underline; }
 .vc-doc-paste { margin: 0; }
+/* M17 (Mr Spa): Images in this post, under the body */
+.vc-doc-images { display: grid; gap: 12px; padding-top: 18px; border-top: 1px solid var(--hairline); }
+.vc-doc-images > h2 { margin: 0; font-size: 14px; font-weight: 700; }
+.vc-doc-images .vc-doc-insert-image { justify-self: start; }
 .vc-doc-details { display: grid; gap: 14px; }
 .vc-doc-details .vc-label { font-size: 13px; font-weight: 650; }
 .vc-doc-google { display: grid; gap: 3px; padding: 12px 14px; border: 1px solid var(--hairline); border-radius: 8px; }
