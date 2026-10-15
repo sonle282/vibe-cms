@@ -30,6 +30,11 @@ type Base = {
   sameAs?: string;
   /** M14: the name of a control an admin plugin gives (`admin.plugins`) — shown instead of the standard box. */
   control?: string;
+  /**
+   * M16: not shown in the form — another field's plugin control edits it (Mr Spa's Header menu: one list of 6 cards made
+   * of 4 fields). It is still checked, saved and published as any field.
+   */
+  hidden?: boolean;
 };
 
 /**
@@ -45,7 +50,12 @@ export type TextField = Base & { type: "text"; maxLength?: number; multiline?: b
 /** P12d: `allow` = the tags this field may hold (a part of the rich-text allow-list, e.g. ["em", "br"]); the toolbar follows. */
 export type RichTextField = Base & { type: "richText"; allow?: readonly string[] };
 /** P20: `caption` = the image also holds a caption ({ src, alt, caption }), edited under it. */
-export type ImageField = Base & { type: "image"; alt?: boolean; mobile?: boolean; caption?: boolean };
+/**
+ * `mobile`: the image has a phone version, on the same card (Desktop | Mobile) — `true`: kept in the value
+ * ({ src, mobile }); a key (M16): kept in that sibling image field of the same object (Mr Spa: image + mobileImage), which
+ * is then not shown on its own.
+ */
+export type ImageField = Base & { type: "image"; alt?: boolean; mobile?: boolean | string; caption?: boolean };
 export type SelectField = Base & { type: "select"; options: readonly string[] };
 /** Content: [{ days: [1, 2, 3, 4, 5], label?, open: "09:00", close: "19:00" }, { days: [0], closed: true }] (0 = Sunday). */
 export type HoursField = Base & { type: "hours" };

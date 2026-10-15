@@ -3,6 +3,18 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## Unreleased
+
+**M16 — what a site's own controls need from the form.** Site action: none (new optional settings).
+
+- `f.image({ mobile: "<key>" })`: the phone version is the sibling image field of that name (plain addresses, Mr Spa's
+  `image` + `mobileImage`) — one card with Desktop | Mobile, the help of the version shown; the sibling is not a card of
+  its own. Checked: a sibling image field, not paired itself, not paired twice; an image of a list keeps `mobile: true`.
+- A field's `hidden: true`: not shown on its own (another field's control edits it); still checked, saved, published.
+- Plugin controls: `setAt(path, value)` (write and show another field of the record) and `standardAt(path)` (another
+  field's standard box). `@sonle282/vibe-cms/admin` exports `linkOpensText`, `formatPhone`, `phoneHrefValue`,
+  `phoneProblem` for plugins.
+
 ## 0.27.0 — 2026-10-15 (a site that had a CMS keeps its Cloudflare set-up)
 
 **P21 (package part) — a site that had a CMS keeps its names.** Site action: none (new optional settings; a site
