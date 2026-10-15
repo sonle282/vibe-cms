@@ -152,6 +152,14 @@ test("release URLs, r2 list parsing, rate-limit namespaces, CHANGELOG site actio
   assert.deepEqual(siteActions(changelog, "0.1.0", "0.3.0"), ["0.2.0: do B", "0.3.0: do C over two lines."]);
   assert.deepEqual(siteActions(changelog, "0.3.0", "0.3.0"), []);
   assert.deepEqual(siteActions(readFileSync(new URL("../docs/CHANGELOG.md", import.meta.url), "utf8"), "0.12.0", "0.13.0").length, 1, "the real CHANGELOG parses");
+  // Since 0.27.0 the note sits in the release's first paragraph (and may wrap): those count too.
+  const real = readFileSync(new URL("../docs/CHANGELOG.md", import.meta.url), "utf8");
+  assert.deepEqual(siteActions(real, "0.26.0", "0.28.0"), [
+    "0.26.1: none — no data change, no D1 migration.",
+    "0.27.0: none (new optional settings; a site without an older CMS sees no change).",
+    "0.28.0: none (new optional settings).",
+  ]);
+  assert.deepEqual(siteActions("# C\n\n## 0.2.0 — x\n\n**A change.** Site action: run the\nmigration first.\n\n- detail\n", "0.1.0", "0.2.0"), ["0.2.0: run the migration first."]);
 });
 
 test("command line: help, version, unknown command / option, missing arguments", async () => {

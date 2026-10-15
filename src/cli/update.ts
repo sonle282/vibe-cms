@@ -26,11 +26,17 @@ export const siteActions = (changelog: string, from: string | undefined, to: str
     const version = /^(\d+\.\d+\.\d+)/.exec(section)?.[1];
     if (!version || compare(version, to) > 0 || (from && compare(version, from) <= 0)) continue;
     const lines = section.split(/\r?\n/);
-    const start = lines.findIndex((line) => /^- (\*\*)?Site action/.test(line));
+    // Two ways a release writes it: a list item "- **Site action:** …" (its indented lines follow), or inside the
+    // release's first paragraph "**What it is.** Site action: none (…)." (the paragraph's next lines follow).
+    const start = lines.findIndex((line) => /^- (\*\*)?Site action/.test(line) || /\bSite action:/.test(line));
     if (start === -1) continue;
-    const note = [lines[start]];
-    for (const line of lines.slice(start + 1)) { if (!/^\s+\S/.test(line)) break; note.push(line.trim()); }
-    notes.unshift(`${version}: ${note.join(" ").replace(/^- (\*\*)?Site action:?(\*\*)?:?\s*/, "")}`);
+    const listed = /^- /.test(lines[start]);
+    const note = [lines[start].slice(listed ? 0 : lines[start].indexOf("Site action"))];
+    for (const line of lines.slice(start + 1)) {
+      if (listed ? !/^\s+\S/.test(line) : !line.trim() || /^(\s*- |#)/.test(line)) break;
+      note.push(line.trim());
+    }
+    notes.unshift(`${version}: ${note.join(" ").replace(/^(- )?(\*\*)?Site action:?(\*\*)?:?\s*/, "")}`);
   }
   return notes;
 };
