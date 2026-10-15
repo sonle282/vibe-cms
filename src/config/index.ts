@@ -143,7 +143,12 @@ export type Section = { key: string; label: string; fields: string[] };
  * Policy page: no formatting bar — the body's text boxes on the paper (a text field or a list of sections) and a word
  * count.
  */
-export type DocumentLayout = { title: string; body: string; cover?: string; plain?: boolean };
+/**
+ * M10: the paper's fields. M17 `images`: a list of images that holds the body's images, in order (Mr Spa's
+ * contentImages) — shown under the body as "Images in this post"; it follows the body, and replacing, describing or
+ * removing an image there changes it in the body too.
+ */
+export type DocumentLayout = { title: string; body: string; cover?: string; plain?: boolean; images?: string };
 
 /** One file = one record (a page, the salon info). */
 export type CmsFile = {

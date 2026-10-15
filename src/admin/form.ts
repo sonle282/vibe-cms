@@ -623,7 +623,7 @@ export const createForm = (options: FormOptions): Form => {
       focusCard(next.length - 1, "label");
     });
     render();
-    return { control: h(doc, "div", { class: "vc-menu-list" }, cards, field.fixed ? null : add) };
+    return { control: h(doc, "div", { class: "vc-menu-list" }, cards, field.fixed ? null : add), show: () => render() };
   };
 
   /** M13 (Mr Spa): a field that copies another — its value, "<label> comes from <section> › <field>", Edit. */
@@ -707,7 +707,8 @@ export const createForm = (options: FormOptions): Form => {
     };
     add.addEventListener("click", () => { const next = clone(list()); next.push(emptyValue(field.of)); write(next, { index: next.length - 1, action: "add" }); });
     render();
-    return { control: h(doc, "div", { class: "vc-list" }, note, items, field.fixed ? null : add) };
+    // A value set from outside (form.setValue, a plugin's setAt, M17's post images) is drawn again.
+    return { control: h(doc, "div", { class: "vc-list" }, note, items, field.fixed ? null : add), show: () => render() };
   };
 
   const referenceInput = (field: ReferenceField, path: Path, disabled: boolean) => {
@@ -851,7 +852,7 @@ export const createForm = (options: FormOptions): Form => {
         if (field.flat) wrapper.classList.add("vc-sole");
         return wrapper;
       }
-      case "list": return wrap({ ...common, group: true, control: listInput(field, path, disabled).control });
+      case "list": { const { control, show } = listInput(field, path, disabled); return wrap({ ...common, group: true, control, show }); }
       case "tuple": {
         // P12d: one field per place of the stored list, side by side.
         const box = h(doc, "div", { class: "vc-object vc-tuple" });
