@@ -373,6 +373,18 @@ export default defineAdminPlugin({
   publish); a plugin only changes what the admin shows.
 - A plugin that throws never stops the CMS: its place says "The my-site plugin could not show this: …". A missing
   plugin file stops the build with its path. The demo's plugin is `fixtures/demo-site/cms/admin-plugin.ts`.
+- A control may edit more than its own field (M16 — Mr Spa's Header menu: 4 links and 2 dropdowns as one list of 6
+  cards): `setAt(path, value)` writes another field of the record and shows it where it is, `standardAt(path)` gives
+  another field's standard box to place inside the control, and a field with `hidden: true` is not shown on its own
+  (it is still checked, saved and published). `linkOpensText`, `formatPhone`, `phoneHrefValue` and `phoneProblem` are
+  exported for plugins, so their words match the standard boxes.
+
+```ts
+// A phone version kept in a sibling key (plain addresses: image + mobileImage) — one card, Desktop | Mobile; the help
+// under it is the shown version's. `mobile: true` keeps it in the value ({ src, mobile }) instead.
+image: f.image({ label: "Hero image", help: "Choose the desktop hero image.", mobile: "mobileImage" }),
+mobileImage: f.image({ label: "Mobile hero image", help: "Choose the phone-sized hero image." }),
+```
 
 ## Menus, prices, a field that copies another (M13)
 

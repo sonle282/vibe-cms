@@ -28,6 +28,10 @@ export type ControlContext = {
   disabled: boolean;
   /** Write a new value (the save state, preview and checks follow, as for the standard box). */
   set: (value: unknown) => void;
+  /** M16: write another field of the record (a path from the record) and show it where it is. */
+  setAt: (path: Path, value: unknown) => void;
+  /** M16: the standard box (label, help, control) of another field of the record — e.g. one marked `hidden`. */
+  standardAt: (path: Path) => HTMLElement;
   /** The whole record as it is now in the form. */
   record: () => Record<string, unknown>;
   /** The standard box of this field (its `element`, and `show` for a value set from outside). */

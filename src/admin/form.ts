@@ -118,6 +118,16 @@ export const createForm = (options: FormOptions): Form => {
   const owner = role === "owner";
   const state: Record<string, unknown> = isRecord(options.value) ? clone(options.value) : {};
   const references = options.references ?? {};
+  /** M16: the image fields that are another image's phone version (shown on its card, not on their own). */
+  const pairedMobile = new WeakSet<Field>();
+  const pairUp = (fields: Record<string, Field>) => {
+    for (const field of Object.values(fields)) {
+      if (field.type === "image" && typeof field.mobile === "string" && fields[field.mobile]) pairedMobile.add(fields[field.mobile]);
+      if (field.type === "object") pairUp(field.fields);
+      if (field.type === "list" && field.of.type === "object") pairUp(field.of.fields);
+    }
+  };
+  pairUp(options.fields);
   /** path text → the field's wrapper, error line and a way to show a new value. */
   const registry = new Map<string, { wrapper: HTMLElement; error: HTMLElement; inputs: () => HTMLElement[]; show?: (value: unknown) => void; label: string }>();
   const changed = (path: Path) => options.onChange?.(clone(state), path);
@@ -184,7 +194,11 @@ export const createForm = (options: FormOptions): Form => {
     // The visible main control first (a visual editor's area or its source box), then everything else.
     const inputs = () => [...new Set([...wrapper.querySelectorAll<HTMLElement>("[data-vc-primary]:not([hidden])"), ...wrapper.querySelectorAll<HTMLElement>("input, select, textarea")])];
     for (const input of inputs()) if (!input.getAttribute("aria-describedby")) input.setAttribute("aria-describedby", described);
-    registry.set(text, { wrapper, error, inputs, show, label: field.label });
+    // M16: a field shown elsewhere (a plugin's standardAt, a phone image on its desktop card) keeps that place.
+    const hiddenHere = field.hidden === true || pairedMobile.has(field);
+    if (hiddenHere) wrapper.hidden = true;
+    const before = registry.get(text);
+    if (!hiddenHere || !before || !before.wrapper.isConnected) registry.set(text, { wrapper, error, inputs, show, label: field.label });
     return wrapper;
   };
 
@@ -349,12 +363,21 @@ export const createForm = (options: FormOptions): Form => {
   const imageInput = (field: ImageField, path: Path, disabled: boolean, label: string, setMain?: () => void) => {
     const wasAbsent = getAt(state, path) === undefined;
     const read = () => getAt(state, path);
+    // M16: the phone version in a sibling field (Mr Spa: image + mobileImage, plain addresses).
+    const siblingPath = typeof field.mobile === "string" ? [...path.slice(0, -1), field.mobile] : undefined;
     const get = (slot: ImageSlot) => {
       const value = read();
       if (slot === "desktop") return typeof value === "string" ? value : isRecord(value) && typeof value.src === "string" ? value.src : "";
+      if (siblingPath) { const phone = getAt(state, siblingPath); return typeof phone === "string" ? phone : isRecord(phone) && typeof phone.src === "string" ? phone.src : ""; }
       return isRecord(value) && typeof value.mobile === "string" ? value.mobile : "";
     };
     const write = (slot: ImageSlot, src: string) => {
+      if (slot === "mobile" && siblingPath) {
+        const phone = getAt(state, siblingPath);
+        set(siblingPath, isRecord(phone) ? { ...phone, src } : src);
+        registry.get(pathText(siblingPath))?.show?.(getAt(state, siblingPath));
+        return;
+      }
       const now = read();
       let next: unknown;
       if (slot === "desktop" && !isRecord(now)) next = src === "" && wasAbsent ? undefined : src;
@@ -370,6 +393,7 @@ export const createForm = (options: FormOptions): Form => {
     const card = createImageCard({
       doc, label, key: pathText(path), disabled,
       mobile: Boolean(field.mobile) || (isRecord(start) && typeof start.mobile === "string"),
+      ...(siblingPath ? { onSlot: (slot: ImageSlot) => onSlot(slot) } : {}),
       // Mr Spa: a required image and an image of a list (the list has its own ×) have no Remove.
       removable: !field.required && typeof path[path.length - 1] !== "number",
       get, set: write,
@@ -415,7 +439,17 @@ export const createForm = (options: FormOptions): Form => {
       if (alt) alt.value = isRecord(value) && typeof value.alt === "string" ? value.alt : "";
       if (caption) caption.value = isRecord(value) && typeof value.caption === "string" ? value.caption : "";
     };
-    return { control: h(doc, "div", { class: "vc-image" }, card.element, altPart, captionPart), show };
+    // M16: with the phone version beside it, the help under the card is the shown version's (the Mr Spa CMS).
+    let onSlot = (_slot: ImageSlot) => {};
+    const control = h(doc, "div", { class: "vc-image" }, card.element, altPart, captionPart);
+    if (siblingPath) {
+      const phoneHelp = fieldAt(options.fields, siblingPath)?.field.help;
+      onSlot = (slot) => {
+        const help = control.closest(".vc-field")?.querySelector<HTMLElement>(":scope > .vc-help");
+        if (help && (field.help || phoneHelp)) help.textContent = (slot === "mobile" ? phoneHelp : field.help) ?? field.help ?? "";
+      };
+    }
+    return { control, show };
   };
 
   const hoursInput = (path: Path, disabled: boolean) => {
@@ -742,6 +776,12 @@ export const createForm = (options: FormOptions): Form => {
         const made = plugged.make({
           doc, id, field, path, value: clone(getAt(state, path)), disabled,
           set: (value) => set(path, value),
+          setAt: (other, value) => { set(other, value); registry.get(pathText(other))?.show?.(getAt(state, other)); },
+          standardAt: (other) => {
+            const found = fieldAt(options.fields, other);
+            if (!found || found.rest.length) throw new Error(`${pathText(other)} is not a field of this record`);
+            return renderField({ ...found.field, hidden: false, control: undefined } as Field, other, lockedAlong(other));
+          },
           record: () => clone(state),
           standard: () => {
             const box = renderField({ ...field, control: undefined } as Field, path, lockedAbove, { ...extra, hideLabel: true });

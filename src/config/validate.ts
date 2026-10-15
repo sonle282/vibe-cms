@@ -38,7 +38,7 @@ const FIELD_KEY = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
 const GITHUB_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
 const GITHUB_REPO = /^[A-Za-z0-9._-]{1,100}$/;
 
-const BASE_OPTIONS = ["type", "label", "help", "required", "locked", "bind", "sameAs", "control"];
+const BASE_OPTIONS = ["type", "label", "help", "required", "locked", "bind", "sameAs", "control", "hidden"];
 const FIELD_OPTIONS: Record<string, string[]> = {
   text: ["maxLength", "multiline", "pattern", "patternHint", "tokens", "from", "format"],
   richText: ["allow"],
@@ -114,6 +114,7 @@ export const checkField = (context: Context, field: unknown, at: string, depth: 
   if (field.bind !== undefined && !filled(field.bind)) err(context, `${at}.bind`, "must be a CSS selector", 'e.g. bind: ".hero h1"');
   if (field.control !== undefined && (typeof field.control !== "string" || !/^[a-z][a-z0-9-]*$/.test(field.control))) err(context, `${at}.control`, `${show(field.control)} is not a control name`, 'the name an admin plugin gives it, e.g. control: "call-for-price"');
   checkBoolean(context, field, "required", at);
+  checkBoolean(context, field, "hidden", at);
   if (field.locked === "owner") context.oldAdminName.push(`${at}.locked`);
   else if (field.locked !== undefined && field.locked !== "admin") err(context, `${at}.locked`, `only "admin" is allowed (got ${show(field.locked)})`, 'write locked: "admin" or remove it');
 
@@ -147,7 +148,8 @@ export const checkField = (context: Context, field: unknown, at: string, depth: 
       break;
     case "image":
       checkBoolean(context, field, "alt", at);
-      checkBoolean(context, field, "mobile", at);
+      // M16: a key = the phone version is the sibling image field of that name (checked with its siblings).
+      if (field.mobile !== undefined && typeof field.mobile !== "boolean" && !(typeof field.mobile === "string" && /^[A-Za-z_$][\w$-]*$/.test(field.mobile))) err(context, `${at}.mobile`, `must be true / false or the key of the phone version (got ${show(field.mobile)})`, 'e.g. mobile: "mobileImage"');
       break;
     case "select": {
       const options = field.options;
@@ -414,6 +416,7 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
       checkPreview(context, entry.preview, `${at}.preview`, []);
       checkFields(context, entry.fields, `${at}.fields`);
       checkSameAs(context, entry.fields, `${at}.fields`);
+      checkMobilePairs(context, entry.fields, `${at}.fields`);
       checkKeep(context, entry, at);
       checkSections(context, entry, at);
       checkPageSettings(context, entry, at);
@@ -443,6 +446,7 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
       if (!filled(entry.itemLabel)) err(context, `${at}.itemLabel`, "required — the name of one record", 'e.g. "Service"');
       checkFields(context, entry.fields, `${at}.fields`);
       checkSameAs(context, entry.fields, `${at}.fields`);
+      checkMobilePairs(context, entry.fields, `${at}.fields`);
       checkKeep(context, entry, at);
       const fieldKeys = isRecord(entry.fields) ? Object.keys(entry.fields) : [];
       const store = entry.store;
@@ -517,6 +521,29 @@ function checkKeep(context: Context, entry: Record<string, unknown>, at: string)
     if (typeof key !== "string" || !/^[A-Za-z0-9_$][\w$-]*(\[\])?(\.[A-Za-z0-9_$][\w$-]*(\[\])?)*$/.test(key)) err(context, `${at}.keep[${index}]`, `${show(key)} is not a key path`, 'e.g. "sizeGuide" or "items[].id"');
     else if (fieldTypeAt(entry.fields, key) !== undefined) err(context, `${at}.keep[${index}]`, `${show(key)} is a field of this entry`, "keep is for keys the CMS does not show");
   });
+}
+
+/** M16: `mobile: "<key>"` names a sibling image field (not itself paired, not paired twice). */
+function checkMobilePairs(context: Context, fields: unknown, at: string) {
+  if (!isRecord(fields)) return;
+  const taken = new Map<string, string>();
+  for (const [key, field] of Object.entries(fields)) {
+    if (!isRecord(field)) continue;
+    if (field.type === "object") checkMobilePairs(context, field.fields, `${at}.${key}.fields`);
+    if (field.type === "list" && isRecord(field.of)) {
+      if (field.of.type === "object") checkMobilePairs(context, field.of.fields, `${at}.${key}.of.fields`);
+      else if (field.of.type === "image" && typeof field.of.mobile === "string") err(context, `${at}.${key}.of.mobile`, "a phone version by key is a sibling field — an image of a list has none", "use mobile: true (kept in the value)");
+    }
+    if (field.type !== "image" || typeof field.mobile !== "string" || !/^[A-Za-z_$][\w$-]*$/.test(field.mobile)) continue;
+    const other = fields[field.mobile];
+    const where = `${at}.${key}.mobile`;
+    if (field.mobile === key) err(context, where, "cannot name the field itself");
+    else if (!isRecord(other)) err(context, where, `${show(field.mobile)} is not a field next to it`, `add ${field.mobile}: f.image({ label: "… on phones" }) beside it`);
+    else if (other.type !== "image") err(context, where, `${show(field.mobile)} is a ${String(other.type)} field, not image`);
+    else if (other.mobile !== undefined && other.mobile !== false) err(context, where, `${show(field.mobile)} has a phone version of its own`);
+    else if (taken.has(field.mobile)) err(context, where, `${show(field.mobile)} is already the phone version of ${taken.get(field.mobile)}`);
+    else taken.set(field.mobile, key);
+  }
 }
 
 function checkSameAs(context: Context, fields: unknown, at: string) {

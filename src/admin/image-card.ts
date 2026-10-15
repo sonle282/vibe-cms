@@ -38,6 +38,8 @@ export type ImageCardOptions = {
   /** "Set as main" (an image of a list that is not the first). */
   setMain?: () => void;
   notify?: (text: string, action?: { label: string; run: () => void }) => void;
+  /** M16: the version shown changed (the Mr Spa CMS swaps the help under the card). */
+  onSlot?: (slot: ImageSlot) => void;
 };
 export type ImageCard = { element: HTMLElement; refresh(): void };
 
@@ -128,11 +130,11 @@ export const createImageCard = (options: ImageCardOptions): ImageCard => {
     root.classList.toggle("is-uploading", busy);
     if (options.mobile) {
       const devices = h(doc, "div", { class: "vc-image-devices", role: "radiogroup", "aria-label": `${options.label}: version` },
-        ...(["desktop", "mobile"] as const).map((which) => h(doc, "button", { type: "button", class: "vc-image-device", role: "radio", "aria-checked": String(which === slot), tabindex: which === slot ? "0" : "-1", "data-device": which, onclick: () => { slot = which; shownSlot.set(options.key, which); render(); root.querySelector<HTMLElement>(`[data-device="${which}"]`)?.focus(); } }, which === "desktop" ? "Desktop" : "Mobile")));
+        ...(["desktop", "mobile"] as const).map((which) => h(doc, "button", { type: "button", class: "vc-image-device", role: "radio", "aria-checked": String(which === slot), tabindex: which === slot ? "0" : "-1", "data-device": which, onclick: () => { slot = which; shownSlot.set(options.key, which); options.onSlot?.(which); render(); root.querySelector<HTMLElement>(`[data-device="${which}"]`)?.focus(); } }, which === "desktop" ? "Desktop" : "Mobile")));
       devices.addEventListener("keydown", (event) => {
         const to = event.key === "Home" ? "desktop" : event.key === "End" ? "mobile" : event.key.startsWith("Arrow") ? (slot === "desktop" ? "mobile" : "desktop") : undefined;
         if (!to) return;
-        event.preventDefault(); slot = to; shownSlot.set(options.key, to); render(); root.querySelector<HTMLElement>(`[data-device="${to}"]`)?.focus();
+        event.preventDefault(); slot = to; shownSlot.set(options.key, to); options.onSlot?.(to); render(); root.querySelector<HTMLElement>(`[data-device="${to}"]`)?.focus();
       });
       root.append(devices);
     }
