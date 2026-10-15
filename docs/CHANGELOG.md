@@ -14,6 +14,9 @@ migration that is not automatic. Each entry says what a site has to do.
 - `npm run sites:check` (maintainer's machine only): the same install into a copy of each real site, plus `vibe-cms check`
   and a build compared with the site's own: every public page and the files they use identical byte for byte.
 - `vibe-cms check` says "1 file", "1 record" (was "1 files").
+- `vibe-cms update` lists every release's site action again: from 0.27.0 it is written in the release's first
+  paragraph ("Site action: none (…)"), which the list missed (0.27.0 and 0.28.0 were left out). The installed CLI prints
+  the notes, so this shows from the next update on (a site on 0.28.1 or later).
 
 ## 0.28.0 — 2026-10-15 (a site's own controls edit several fields; phone images by key)
 
