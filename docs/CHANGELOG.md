@@ -3,9 +3,10 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## Unreleased
+## 0.27.0 — 2026-10-15 (a site that had a CMS keeps its Cloudflare set-up)
 
-**P21 (package part) — a site that had a CMS keeps its names.** Nothing to do on a site; new optional settings.
+**P21 (package part) — a site that had a CMS keeps its names.** Site action: none (new optional settings; a site
+without an older CMS sees no change).
 
 - `bindings: { db?, session?, media?, loginLimiter?, publishLimiter? }` and `secrets: { githubToken? }`: the names the
   site's Worker already uses (Mr Spa: R2 `MEDIA`, secret `CMS_GITHUB_TOKEN`). Read by the Worker (`siteEnv`), the media
