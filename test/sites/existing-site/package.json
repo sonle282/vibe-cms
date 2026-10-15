@@ -1,0 +1,9 @@
+{
+  "name": "existing-site",
+  "private": true,
+  "type": "module",
+  "description": "CI only (scripts/site-upgrade-check.mjs): a site that already runs, with its own lockfile and the oldest Astro the package supports. Installing the package must not change the version of anything it has.",
+  "dependencies": {
+    "astro": "7.2.1"
+  }
+}

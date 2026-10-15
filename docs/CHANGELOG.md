@@ -3,6 +3,18 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## Unreleased
+
+**Release safety for the sites.** Site action: none.
+
+- `npm run site:upgrade` (in `npm run check`, so in CI): the packed package installed into an invented site that already
+  runs — Astro 7.2.1 (the oldest supported), an older lockfile with Vite 8.2.1 inside Astro. Fails when anything the site
+  had changes version or is replaced; `vibe-cms check` must pass there. It fails on 0.26.0 (its Vite peer moved the site to
+  Vite 8.3.4) and passes now.
+- `npm run sites:check` (maintainer's machine only): the same install into a copy of each real site, plus `vibe-cms check`
+  and a build compared with the site's own: every public page and the files they use identical byte for byte.
+- `vibe-cms check` says "1 file", "1 record" (was "1 files").
+
 ## 0.28.0 — 2026-10-15 (a site's own controls edit several fields; phone images by key)
 
 **M16 — what a site's own controls need from the form.** Site action: none (new optional settings).
