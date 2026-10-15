@@ -25,3 +25,6 @@ test/auth-worker/generated.mjs
 
 # M15 init tests (made-up sites, removed after the run)
 test/.tmp-init-*/
+
+# The real sites for npm run sites:check (local paths, never committed)
+.sites.local.json

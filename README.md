@@ -615,12 +615,22 @@ public pages.
 
 ```bash
 npm ci
-npm run check    # typecheck + unit tests (incl. the admin on a fake DOM) + pack contents + store on local D1 + API on local D1 with a fake GitHub + sign-in on local D1 / KV / rate limits + build demo + astro check + local smoke + e2e in headless Chrome + install from a packed release (CLI)
+npm run check    # typecheck + unit tests (incl. the admin on a fake DOM) + pack contents + store on local D1 + API on local D1 with a fake GitHub + sign-in on local D1 / KV / rate limits + build demo + astro check + local smoke + e2e in headless Chrome + install from a packed release (CLI) + install into a site that already runs
 ```
 
-`fixtures/demo-site` is an invented salon used by every test — tests never read another site's data. It runs locally
+`fixtures/demo-site` is an invented salon used by every test — tests never read another site's data.
+`test/sites/existing-site` is an invented site that already runs (the oldest Astro the package supports, an older
+lockfile with Vite inside Astro): `npm run site:upgrade` installs the packed package into a copy of it and fails when
+anything the site had changes version (0.26.0's Vite peer would: `astro/node_modules/vite 8.2.1 → vite 8.3.4`). It runs locally
 only: no Cloudflare account, no resources, no deploy. The e2e step drives a Chrome / Chromium that is already installed
 (`CHROME_PATH`, or the usual install paths) — nothing is downloaded.
+
+Before a release, on the maintainer's machine (not in CI — the real sites' data stays out of the package):
+`npm run sites:check` installs the package as it is into a copy of each real site's last commit (the folders passed,
+or `.sites.local.json`, git-ignored: `[{ "path": "../my-site", "config": "wrangler.jsonc", "site": "my-site" }]`) and
+checks per site: no package it had changes version, `vibe-cms check` passes, and after a build every public page and
+every file those pages use is identical byte for byte (files only the admin uses are listed). `--no-build` skips the
+builds; the sites' own folders are never touched.
 
 Release (after review only): set `version` in `package.json`, add its CHANGELOG section, push the tag `vX.Y.Z` —
 `.github/workflows/release.yml` builds, checks the tarball and publishes the GitHub Release with the `.tgz` (every other
