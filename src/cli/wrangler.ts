@@ -4,6 +4,7 @@
  * token: wrangler uses the login of whoever runs it (`wrangler login`); `--account` only picks the account
  * (CLOUDFLARE_ACCOUNT_ID). VIBE_CMS_WRANGLER = a .js / .mjs file to run instead (the package's tests: a fake Cloudflare).
  */
+import { BINDINGS } from "./wrangler-config.js";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -55,14 +56,14 @@ export const jsonOutput = <T>(stdout: string, what: string): T => {
 type D1Rows<T> = Array<{ results: T[]; success: boolean }>;
 
 /** Rows of one SELECT on the site's CMS database (binding CMS_DB) — or `database` (a name or binding; P12e: an older CMS's D1). */
-export const query = <T>(wrangler: Wrangler, config: string | undefined, local: boolean, sql: string, database = "CMS_DB"): T[] => {
+export const query = <T>(wrangler: Wrangler, config: string | undefined, local: boolean, sql: string, database = BINDINGS.db): T[] => {
   const out = must(wrangler, ["d1", "execute", database, local ? "--local" : "--remote", ...(config ? ["--config", config] : []), "--json", "--command", sql], "reading the CMS database");
   return jsonOutput<D1Rows<T>>(out, "reading the CMS database").flatMap((part) => part.results ?? []);
 };
 
 /** Apply the package migrations to CMS_DB. Returns the names applied now (empty = it was up to date). */
 export const applyMigrations = (wrangler: Wrangler, config: string, local: boolean) => {
-  const out = must(wrangler, ["d1", "migrations", "apply", "CMS_DB", local ? "--local" : "--remote", "--config", config], "applying the CMS migrations");
+  const out = must(wrangler, ["d1", "migrations", "apply", BINDINGS.db, local ? "--local" : "--remote", "--config", config], "applying the CMS migrations");
   if (/No migrations to apply/i.test(out)) return [];
   return [...new Set(out.match(/\b\d{4}_[a-z0-9_]+\.sql\b/g) ?? [])];
 };

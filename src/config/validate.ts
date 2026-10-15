@@ -55,7 +55,7 @@ const FIELD_OPTIONS: Record<string, string[]> = {
   link: [],
   phone: [],
 };
-const TOP_LEVEL = ["configVersion", "site", "repo", "roles", "contentDirs", "files", "collections", "publish", "media", "admin", "plugins"];
+const TOP_LEVEL = ["configVersion", "site", "repo", "roles", "contentDirs", "files", "collections", "publish", "media", "admin", "plugins", "bindings", "secrets"];
 
 /** Why a git branch name is invalid (git check-ref-format rules), or undefined when it is fine. */
 export const branchProblem = (name: string): string | undefined => {
@@ -249,6 +249,16 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
   const context: Context = { errors: [], warnings: [], collectionKeys: new Set(), oldAdminName: [] };
   if (!isRecord(config)) { err(context, "(default export)", "must be defineCmsConfig({ … })", "export default defineCmsConfig({ configVersion: 1, … })"); return context; }
   for (const key of Object.keys(config)) if (!TOP_LEVEL.includes(key)) err(context, key, "unknown setting", `allowed: ${TOP_LEVEL.join(", ")}`);
+  // P21: the site's own binding / secret names (a site that already had a CMS keeps them).
+  for (const [setting, keys] of [["bindings", ["db", "session", "media", "loginLimiter", "publishLimiter"]], ["secrets", ["githubToken"]]] as const) {
+    const value = (config as Record<string, unknown>)[setting];
+    if (value === undefined) continue;
+    if (!isRecord(value)) { err(context, setting, "must be an object of names", setting === "bindings" ? '{ media: "MEDIA" }' : '{ githubToken: "CMS_GITHUB_TOKEN" }'); continue; }
+    for (const [key, name] of Object.entries(value)) {
+      if (!(keys as readonly string[]).includes(key)) err(context, `${setting}.${key}`, "unknown setting", `allowed: ${keys.join(", ")}`);
+      else if (typeof name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) err(context, `${setting}.${key}`, `${show(name)} is not a binding / variable name`, 'e.g. "MEDIA"');
+    }
+  }
   // P19: the site plugins (checks of the whole site).
   if (config.plugins !== undefined) {
     if (!Array.isArray(config.plugins)) err(context, "plugins", "must be a list of plugins", "plugins: [catalogPlugin({ … }), redirectsCheck()]");

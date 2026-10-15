@@ -13,7 +13,7 @@
  *   VIBE_GITHUB_API_URL   tests only: a fake GitHub on THIS machine (http://127.0.0.1:…, localhost, [::1]); any other
  *                         value is ignored, so the token can never be sent anywhere but api.github.com
  */
-import type { CmsConfig } from "../config/index.js";
+import { siteNames, type CmsConfig } from "../config/index.js";
 import { createCmsAuth, type RateLimiter, type SessionKv } from "../auth/index.js";
 import { createBundledSource, createD1AuditLog, createD1DraftStore, type D1Like } from "../store/index.js";
 import { createCmsApi, devIdentity } from "./index.js";
@@ -24,6 +24,20 @@ import { imageNamesOf, type ImageManifest } from "../media/names.js";
 export type SiteEnv = {
   CMS_DB?: D1Like; SESSION?: SessionKv; CMS_MEDIA?: MediaBucket; CMS_LOGIN_LIMITER?: RateLimiter; CMS_PUBLISH_LIMITER?: RateLimiter;
   VIBE_GITHUB_TOKEN?: string; VIBE_GITHUB_API_URL?: string; CMS_BOOTSTRAP_USERNAME?: string; CMS_BOOTSTRAP_PASSWORD?: string; CMS_SESSION_TTL_SECONDS?: string; VIBE_CMS_DEV_USER?: string;
+};
+
+/**
+ * P21: the Worker's env under the package's names, from the site's own (cms.config `bindings` / `secrets`): a site that
+ * had a CMS keeps its bindings and secrets as they are.
+ */
+export const siteEnv = (config: Pick<CmsConfig, "bindings" | "secrets">, env: Record<string, unknown>): SiteEnv => {
+  const names = siteNames(config);
+  return {
+    ...(env as SiteEnv),
+    CMS_DB: env[names.db] as D1Like | undefined, SESSION: env[names.session] as SessionKv | undefined, CMS_MEDIA: env[names.media] as MediaBucket | undefined,
+    CMS_LOGIN_LIMITER: env[names.loginLimiter] as RateLimiter | undefined, CMS_PUBLISH_LIMITER: env[names.publishLimiter] as RateLimiter | undefined,
+    VIBE_GITHUB_TOKEN: env[names.githubToken] as string | undefined,
+  };
 };
 
 /** A loopback GitHub API URL for tests, or undefined (= the real api.github.com). */
@@ -46,6 +60,7 @@ export const createSiteRuntime = ({ config, content, env, dev, githubApiUrl, ima
   /** Tests only (fake GitHub). Routes never pass it. */
   githubApiUrl?: string;
 }) => {
+  env = siteEnv(config, env as Record<string, unknown>);
   const audit = env.CMS_DB ? createD1AuditLog(env.CMS_DB) : undefined;
   const apiUrl = githubApiUrl ?? loopbackApiUrl(env.VIBE_GITHUB_API_URL);
   const auth = createCmsAuth({

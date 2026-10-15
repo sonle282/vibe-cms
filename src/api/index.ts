@@ -49,7 +49,7 @@ import { addUsage, imagePlacesOfRecord, type ImageUsage } from "../media/usage.j
 import { addressOfName, mapImageValues, nameOfAddress, uploadNamesIn, uploadTail, type ImageNames } from "../media/names.js";
 import type { Identify, Identity, RateLimiter } from "../auth/index.js";
 
-export { createSiteRuntime, loopbackApiUrl, type SiteEnv } from "./runtime.js";
+export { createSiteRuntime, loopbackApiUrl, siteEnv, type SiteEnv } from "./runtime.js";
 export { adminBoot, bootJson, type AdminBoot } from "../admin/boot.js";
 export { buildState, createGitHubPublisher, GitPublishError, rateLimitWait, type CheckRun, type CommitAuthor, type CommitInput, type FileContent, type GitHubOptions, type GitPublisher, type HistoryCommit } from "./github.js";
 

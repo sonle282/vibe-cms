@@ -13,9 +13,12 @@ import { setup } from "./setup.js";
 import { update } from "./update.js";
 import { CliError, packageVersion, type Log } from "./util.js";
 import { applyMigrations, createWrangler } from "./wrangler.js";
-import { findWranglerConfig } from "./wrangler-config.js";
+import { findWranglerConfig, useSiteNames } from "./wrangler-config.js";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 export { checkWiring, RELEASE_URL } from "./check.js";
+export { BINDINGS, SECRETS, useSiteNames } from "./wrangler-config.js";
 export { limiterNamespaces, r2Names } from "./setup.js";
 export { releaseUrl, siteActions } from "./update.js";
 export { upsertBindings, parseWranglerConfig } from "./wrangler-config.js";
@@ -46,6 +49,17 @@ Common: --config <wrangler.jsonc> · --account <id> (default: the account wrangl
 
 const COMMANDS = ["init", "setup", "migrate", "check", "export", "import", "update", "reset-admin-password", "reset-owner-password", "import-legacy-users"] as const;
 
+/** P21: the site's own binding / secret names from its cms.config.ts (defaults when it has none or cannot load). */
+const readSiteNames = async (root: string) => {
+  const file = join(root, "cms.config.ts");
+  if (!existsSync(file)) return;
+  try {
+    const { loadCmsConfig } = await import("../load-config.js");
+    const { siteNames } = await import("../config/index.js");
+    useSiteNames(siteNames(await loadCmsConfig(file)));
+  } catch { /* the command says what is wrong with the config where it matters (check) */ }
+};
+
 export const run = async (argv: string[], { root = process.cwd(), log = console.log as Log, error = console.error as Log } = {}) => {
   const [command, ...rest] = argv;
   if (!command || command === "help" || command === "--help" || command === "-h") { log(HELP.replace("<version>", packageVersion())); return 0; }
@@ -59,6 +73,8 @@ export const run = async (argv: string[], { root = process.cwd(), log = console.
     if (values.account !== undefined && !/^[0-9a-f]{32}$/.test(values.account)) throw new CliError("--account must be a Cloudflare account id (32 hex characters)");
     const local = values.local ?? false;
     const wrangler = () => createWrangler(root, values.account);
+    // P21: a site that had a CMS keeps its binding / secret names (cms.config.ts `bindings`, `secrets`).
+    if (command !== "init" && command !== "update") await readSiteNames(root);
     switch (command) {
       case "init":
         init({ root, log, data: values.data, out: values.out, force: values.force, dryRun: values["dry-run"], name: values.name, url: values.url, repo: values.repo, branch: values.branch });
