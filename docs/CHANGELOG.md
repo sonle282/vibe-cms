@@ -3,7 +3,7 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## Unreleased
+## 0.29.0 — 2026-10-15 (Images in this post: a blog post's images as a list, both ways)
 
 **M17 — Images in this post.** Site action: none (a new optional setting).
 
