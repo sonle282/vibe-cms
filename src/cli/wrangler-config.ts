@@ -8,8 +8,16 @@ import { join } from "node:path";
 import { applyEdits, modify, parse, printParseErrorCode, type ParseError } from "jsonc-parser";
 import { CliError } from "./util.js";
 
-/** Binding names the package's Worker code reads (src/api/runtime.ts, src/auth, src/media). */
-export const BINDINGS = { db: "CMS_DB", session: "SESSION", media: "CMS_MEDIA", login: "CMS_LOGIN_LIMITER", publish: "CMS_PUBLISH_LIMITER" } as const;
+/**
+ * Binding names the package's Worker code reads (src/api/runtime.ts, src/auth, src/media) — the defaults, or (P21) the
+ * site's own from cms.config.ts (`bindings`, `secrets`), set by useSiteNames before a command runs.
+ */
+export const BINDINGS = { db: "CMS_DB", session: "SESSION", media: "CMS_MEDIA", login: "CMS_LOGIN_LIMITER", publish: "CMS_PUBLISH_LIMITER" };
+export const SECRETS = { githubToken: "VIBE_GITHUB_TOKEN" };
+export const useSiteNames = (names: { db: string; session: string; media: string; loginLimiter: string; publishLimiter: string; githubToken: string }) => {
+  Object.assign(BINDINGS, { db: names.db, session: names.session, media: names.media, login: names.loginLimiter, publish: names.publishLimiter });
+  SECRETS.githubToken = names.githubToken;
+};
 export const LIMITS = { login: { limit: 10, period: 60 }, publish: { limit: 20, period: 60 } } as const;
 
 type Json = Record<string, unknown>;

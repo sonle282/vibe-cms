@@ -298,6 +298,14 @@ export type CmsConfig = {
   /** P19: checks of the whole site at build and at publish (see CmsPlugin). */
   plugins?: CmsPlugin[];
   /**
+   * P21: the names the site's Worker already uses, so a site that had a CMS keeps its Cloudflare set-up as it is (no new
+   * resources, no data copied, no secret entered again): e.g. Mr Spa `bindings: { media: "MEDIA" }`, `secrets: {
+   * githubToken: "CMS_GITHUB_TOKEN" }`. Defaults: CMS_DB, SESSION, CMS_MEDIA, CMS_LOGIN_LIMITER, CMS_PUBLISH_LIMITER,
+   * VIBE_GITHUB_TOKEN.
+   */
+  bindings?: { db?: string; session?: string; media?: string; loginLimiter?: string; publishLimiter?: string };
+  secrets?: { githubToken?: string };
+  /**
    * P10: uploaded images. `dir` = where they are committed in the site's repo (default "public/assets/uploads"; served
    * at the same path without "public"); `maxBytes` = largest file after the browser has prepared it (default 10 MiB).
    * The site's R2 bucket <site>-media (binding CMS_MEDIA) holds them until they are published.
@@ -322,6 +330,16 @@ export type CmsConfig = {
 export const defineCmsConfig = (config: CmsConfig): CmsConfig => config;
 
 type Options<T extends Field> = Omit<T, "type">;
+
+/** P21: the binding and secret names the package reads — the site's own (cms.config `bindings` / `secrets`) or the defaults. */
+export const siteNames = (config: Pick<CmsConfig, "bindings" | "secrets">) => ({
+  db: config.bindings?.db ?? "CMS_DB",
+  session: config.bindings?.session ?? "SESSION",
+  media: config.bindings?.media ?? "CMS_MEDIA",
+  loginLimiter: config.bindings?.loginLimiter ?? "CMS_LOGIN_LIMITER",
+  publishLimiter: config.bindings?.publishLimiter ?? "CMS_PUBLISH_LIMITER",
+  githubToken: config.secrets?.githubToken ?? "VIBE_GITHUB_TOKEN",
+});
 
 /** Field builders: f.text({ label: "Phone", locked: "admin" }). */
 export const f = {

@@ -135,10 +135,15 @@ const resolveFrom = (start: Element | null, relative: Path): { owner: PreviewOwn
   return rel.length > 1 && typeof rel[0] === "string" ? { owner: `file:${rel[0]}`, path: rel.slice(1) } : undefined;
 };
 
+/** P21: an element bound with the Mr Spa CMS's `data-cms-bind` — its path is the edited record's, whatever is around it. */
+const ALIAS_OWNER = "data-cms-alias-owner";
 /** Whose field an element shows, and which: walks up through list items and records. */
 export const resolveBinding = (element: Element, attribute: Attribute = "data-cms-field") => {
   const raw = element.getAttribute(attribute);
-  return raw ? resolveFrom(element, bindingPath(raw)) : undefined;
+  if (!raw) return undefined;
+  const alias = element.getAttribute(ALIAS_OWNER);
+  if (alias) return { owner: alias, path: bindingPath(raw) };
+  return resolveFrom(element, bindingPath(raw));
 };
 /** Whose list a data-cms-list element of list items (data-cms-item-index) shows. */
 export const resolveList = (list: Element) => resolveFrom(list.parentElement, bindingPath(list.getAttribute("data-cms-list") ?? ""));
@@ -167,6 +172,18 @@ export const attachBridge = (options: BridgeOptions): Bridge => {
     let elements: Element[] = [];
     try { elements = [...page.querySelectorAll(bind.selector)]; } catch { elements = []; }
     for (const element of elements) if (!element.hasAttribute("data-cms-field")) element.setAttribute("data-cms-field", [bind.owner.slice(5), ...bind.path].join("."));
+  }
+
+  // P21: templates of a site whose CMS came before (Mr Spa) say data-cms-bind="hero.title" (+ -href, -alt): a path in the
+  // record being edited. Read as data-cms-field in this preview only — the page's own HTML stays as it is.
+  if (owner.startsWith("file:")) {
+    for (const [from, to] of [["data-cms-bind", "data-cms-field"], ["data-cms-bind-href", "data-cms-field-href"], ["data-cms-bind-alt", "data-cms-field-alt"]] as const) {
+      for (const element of page.querySelectorAll(`[${from}]`)) {
+        if (element.hasAttribute(to)) continue;
+        element.setAttribute(to, element.getAttribute(from) ?? "");
+        element.setAttribute(ALIAS_OWNER, owner);
+      }
+    }
   }
 
   // A new record: show it where its collection is listed, as a copy of the first record there.
@@ -240,6 +257,9 @@ export const attachBridge = (options: BridgeOptions): Bridge => {
     if (attribute === "data-cms-field-alt") { element.setAttribute("alt", typeof raw === "string" ? raw : ""); return; }
     const found = fieldAt(options.fields, path);
     const field = found?.field;
+    // P21: a data-cms-bind on a whole list (Mr Spa's carousels, paragraphs) shows where the list is; its items are not
+    // redrawn from it.
+    if (field?.type === "list" && !found?.rest.length && element.hasAttribute(ALIAS_OWNER)) return;
     if (field?.type === "image" && !found?.rest.length) { setImage(element, raw); return; }
     if (field?.type === "image" && found?.rest[0] === "alt") { const image = element.tagName === "IMG" ? element : element.querySelector("img"); image?.setAttribute("alt", typeof raw === "string" ? raw : ""); return; }
     // M4: a link is never shown as text — on an <a> it is the address.

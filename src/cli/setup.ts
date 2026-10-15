@@ -9,7 +9,7 @@
 import { writeFileSync } from "node:fs";
 import { relative } from "node:path";
 import { applyMigrations, jsonOutput, must, type Wrangler } from "./wrangler.js";
-import { BINDINGS, entryOf, findWranglerConfig, LIMITS, readWranglerConfig, upsertBindings, type Upsert, type WranglerConfig } from "./wrangler-config.js";
+import { BINDINGS, SECRETS, entryOf, findWranglerConfig, LIMITS, readWranglerConfig, upsertBindings, type Upsert, type WranglerConfig } from "./wrangler-config.js";
 import { CliError, migrationsDirFor, resourceNames, validateSite, type Log } from "./util.js";
 
 export type SetupOptions = { root: string; site: string; account?: string; local?: boolean; config?: string; wrangler: Wrangler; log: Log };
@@ -105,7 +105,7 @@ export const setup = ({ root, site: siteInput, account, local = false, config: c
   if (!local) log([
     "",
     "Next (docs: README → Install, design §E.1 steps 6–8) — run these yourself, the CLI never handles secrets:",
-    "  npx wrangler secret put VIBE_GITHUB_TOKEN        # fine-grained, this one repository, Contents read/write",
+    `  npx wrangler secret put ${SECRETS.githubToken.padEnd(23)}# fine-grained, this one repository, Contents read/write (skip if it is set already)`,
     "  npx wrangler secret put CMS_BOOTSTRAP_USERNAME   # the first admin; delete both after the first sign-in",
     "  npx wrangler secret put CMS_BOOTSTRAP_PASSWORD",
     "  npx vibe-cms check",

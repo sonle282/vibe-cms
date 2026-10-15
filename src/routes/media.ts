@@ -5,11 +5,13 @@ import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
 import config from "virtual:vibe-cms/config";
 import { createMediaStore, mediaSettings, type MediaBucket } from "@sonle282/vibe-cms/media";
+import { siteEnv } from "@sonle282/vibe-cms/api";
 
 export const prerender = false;
 
 export const GET: APIRoute = ({ url }) => {
-  const bucket = (env as { CMS_MEDIA?: MediaBucket }).CMS_MEDIA;
+  // P21: the site's own name for the bucket (cms.config bindings.media), CMS_MEDIA by default.
+  const bucket = siteEnv(config, env as Record<string, unknown>).CMS_MEDIA as MediaBucket | undefined;
   if (!bucket) return new Response("Not found", { status: 404 });
   return createMediaStore({ bucket, settings: mediaSettings(config.media) }).serve(url.pathname);
 };

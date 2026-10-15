@@ -3,6 +3,16 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## Unreleased
+
+**P21 (package part) — a site that had a CMS keeps its names.** Nothing to do on a site; new optional settings.
+
+- `bindings: { db?, session?, media?, loginLimiter?, publishLimiter? }` and `secrets: { githubToken? }`: the names the
+  site's Worker already uses (Mr Spa: R2 `MEDIA`, secret `CMS_GITHUB_TOKEN`). Read by the Worker (`siteEnv`), the media
+  route, the admin page and every CLI command — no new resources, no data copied, no secret entered again.
+- The preview reads a template's `data-cms-bind` / `-href` / `-alt` (the Mr Spa CMS's) as `data-cms-field` of the file
+  being edited — in the preview only; the page's HTML is unchanged. A whole list bound so is only marked, not redrawn.
+
 ## 0.26.1 — 2026-10-14 (installing the CMS no longer changes a site's build tools)
 
 - **Site action:** none — no data change, no D1 migration.

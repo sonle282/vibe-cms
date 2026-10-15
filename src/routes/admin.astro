@@ -7,7 +7,7 @@ import { env } from "cloudflare:workers";
 import config from "virtual:vibe-cms/config";
 import content from "virtual:vibe-cms/content";
 import images, { names } from "virtual:vibe-cms/images";
-import { adminBoot, bootJson, createSiteRuntime, type SiteEnv } from "@sonle282/vibe-cms/api";
+import { adminBoot, bootJson, createSiteRuntime, siteEnv, type SiteEnv } from "@sonle282/vibe-cms/api";
 // Geist for the CMS only (never the website or the preview): the same self-hosted font as the Mr Spa CMS.
 import "@fontsource-variable/geist/wght.css";
 import "./admin.css";
@@ -20,7 +20,7 @@ const state = identity === undefined ? "not-configured" : identity === null ? "s
 const boot = identity && state === "signed-in"
   ? adminBoot(config, current
     ? { id: current.user.id, username: current.user.username, displayName: current.user.display_name, role: current.user.role }
-    : { id: identity.userId, username: identity.userId, displayName: "Local developer", role: identity.role }, { uploads: Boolean((env as SiteEnv).CMS_MEDIA) })
+    : { id: identity.userId, username: identity.userId, displayName: "Local developer", role: identity.role }, { uploads: Boolean(siteEnv(config, env as Record<string, unknown>).CMS_MEDIA) })
   : null;
 // U4: the sign-in card and the small-screen note of the Mr Spa CMS (21, 24) — the site's mark, name and address.
 const siteHost = (() => { try { return new URL(config.site.url).host; } catch { return config.site.url; } })();

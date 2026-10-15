@@ -285,6 +285,25 @@ the filters and the count ("83 products" / "12 of 83 products"); the top bar has
 - New records are not rows until they are published (they are on Drafts); `labels.many` sets the plural when "s"
   is not right.
 
+## A site that already had a CMS: keep its names (P21)
+
+A site switching from its own CMS keeps its Cloudflare set-up as it is — the same D1, KV and R2, the same secret — by
+telling the package the names its Worker already uses. Nothing is created, copied or entered again:
+
+```ts
+// cms.config.ts (Mr Spa)
+bindings: { media: "MEDIA" },                      // db, session, media, loginLimiter, publishLimiter
+secrets: { githubToken: "CMS_GITHUB_TOKEN" },      // default VIBE_GITHUB_TOKEN
+```
+
+- The Worker, the media route and every CLI command (`setup`, `check`, `migrate`, `export` / `import`,
+  `import-legacy-users`, `reset-admin-password`) read these names. `setup` only adds what is missing (the package's
+  tables into the existing D1, `migrations_dir`, rate limits); resource names still follow `<site>-cms`,
+  `<site>-session`, `<site>-media`, which keeps one site from reaching another's data.
+- Templates that mark content with `data-cms-bind="hero.title"` (and `-href`, `-alt`) — a path in the page being edited —
+  work in the preview as they are: the admin reads them as `data-cms-field` inside its preview only, the public HTML is
+  unchanged. A `data-cms-bind` on a whole list marks where it is; its items are not redrawn from it.
+
 ## Site plugins: checks of the whole site (P19)
 
 A record's `rules` see one record. Site plugins see the whole site as it will be — at build (the files as they are)
