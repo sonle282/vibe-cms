@@ -53,7 +53,7 @@ export const contentPaths = (config: CmsConfig, root: string) => [...new Set([
 /** P10: the site's own images (public/…) for the image library — path, size, pixels; at most 3000, SVG included.
  * M18: the CMS's upload folder (`uploadsDir`, e.g. public/assets/uploads) is read first, newest first, so a site with
  * more than 3000 images never leaves its own uploads out; each upload gets `uploadedAt` (when git first saw the file,
- * else the first of its year/month folder). */
+ * else the first of its year/month folder). The exact date of an upload made in the CMS is its note's (src/media). */
 export const VIRTUAL_IMAGES = "virtual:vibe-cms/images";
 const RESOLVED_VIRTUAL_IMAGES = `\0${VIRTUAL_IMAGES}`;
 type SiteImage = { src: string; width?: number; height?: number; bytes: number; uploadedAt?: string };
@@ -61,7 +61,10 @@ type SiteImage = { src: string; width?: number; height?: number; bytes: number; 
 const addedDates = (root: string, dir: string) => {
   const dates = new Map<string, string>();
   try {
-    const log = execFileSync("git", ["log", "--relative", "--diff-filter=A", "--format=%x00%cI", "--name-only", "--", dir], { cwd: root, encoding: "utf8", timeout: 20_000, maxBuffer: 32 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
+    // A shallow clone (Cloudflare's build) dates every file to its last commit, later than any new upload: no git dates.
+    const git = (args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", timeout: 20_000, maxBuffer: 32 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
+    if (git(["rev-parse", "--is-shallow-repository"]).trim() !== "false") return dates;
+    const log = git(["log", "--relative", "--diff-filter=A", "--format=%x00%cI", "--name-only", "--", dir]);
     for (const entry of log.split("\0")) {
       const [date, ...files] = entry.trim().split("\n");
       // Newest commit first: the oldest "added" wins, so keep overwriting.

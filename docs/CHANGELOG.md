@@ -3,6 +3,15 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.29.2 — 2026-10-27 (uploads of the same month in the order they were uploaded)
+
+**M18, part 2.** Site action: none (`vibe-cms update`).
+
+- An upload's date and time are kept in its note when it is uploaded, so a published upload keeps them: uploads of the
+  same month are listed newest first too. Uploads made before 0.29.2 have no note and keep their month.
+- A shallow clone (Cloudflare's build) no longer dates published uploads by git: its one commit is later than any new
+  upload. Git dates are used only with the full history.
+
 ## 0.29.1 — 2026-10-27 (the image library shows the newest uploads first)
 
 **M18 — newest uploads first.** Site action: none (`vibe-cms update`).
