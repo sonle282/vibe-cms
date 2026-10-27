@@ -772,8 +772,9 @@ test("P10 / M5 shell: the image card opens the sheet (Current, uploads, the webs
   assert.equal(sheet().querySelector(".vc-sheet-context").textContent, "Team › Alex Example");
   assert.equal(sheet().querySelector("input[type=search]").placeholder, "Search by file name, page or product");
   assert.deepEqual([...sheet().querySelectorAll(".vc-chip")].map((chip) => chip.textContent), ["All", "Pages", "Services", "Team", "Blog", "Not used", "Not published yet"]);
-  // Current first, then the website's images — those the content uses first.
-  assert.deepEqual(tiles(), ["/images/team-alex.svg", "/images/hero.svg", "/images/team-sam.svg", "/images/spare.svg"]);
+  // Current first, then (M19, Sort: Newest) the website's images, which have no date, by name.
+  assert.deepEqual(tiles(), ["/images/team-alex.svg", "/images/hero.svg", "/images/spare.svg", "/images/team-sam.svg"]);
+  assert.equal(sheet().querySelector(".vc-sort-select").value, "newest");
   assert.equal(sheet().querySelector(".vc-sheet-badge").textContent, "Current");
   assert.equal(sheet().querySelector(".vc-sheet-count").textContent, "4 images");
   assert.equal(sheet().querySelector('[data-src="/images/team-sam.svg"] .vc-sheet-meta').textContent, "200 B · Sam Sample");
@@ -839,11 +840,11 @@ test("P10 / M5 shell: the image card opens the sheet (Current, uploads, the webs
   const grid = sheet().querySelector(".vc-sheet-grid");
   grid.dispatchEvent(new window.KeyboardEvent("keydown", { key: "End", bubbles: true }));
   grid.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-  assert.equal(shown(), "/images/spare.svg");
+  assert.equal(shown(), "/images/team-sam.svg");
   await open();
   document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
   assert.equal(sheet(), null);
-  assert.equal(shown(), "/images/spare.svg");
+  assert.equal(shown(), "/images/team-sam.svg");
   // ⋯: Copy image link · Remove image; removed = the dashed "Choose image".
   field.querySelector(".vc-image-more").click();
   assert.deepEqual([...field.querySelectorAll(".vc-image-menu-item")].map((item) => item.textContent), ["Copy image link", "Remove image"]);
@@ -890,12 +891,18 @@ test("M11 Media (Mr Spa): chips, the detail panel (facts, Used on → the field)
   const until = async (test, what) => { for (let i = 0; i < 200; i += 1) { if (test()) return; await new Promise((resolve) => setTimeout(resolve, 5)); } assert.fail(`timed out waiting for ${what}`); };
   const tiles = () => [...root.querySelectorAll(".vc-media-library .vc-sheet-tile")].map((tile) => tile.dataset.src);
   await until(() => /^\d/.test(root.querySelector(".vc-sheet-count")?.textContent ?? ""), "the library");
-  assert.deepEqual(tiles(), [old2.src, old.src, pub.src, "/images/hero.svg", "/images/team-sam.svg"], "uploads not published yet first, then the published one, then the website's images (used first)");
+  assert.deepEqual(tiles(), [pub.src, old2.src, old.src, "/images/hero.svg", "/images/team-sam.svg"], "M19, Sort: Newest — uploads by date, then the website's images by name");
+  // Sort: Used first — the old order of the website's images; the choice is kept in this browser.
+  const sortSelect = root.querySelector(".vc-sort-select");
+  sortSelect.value = "used"; sortSelect.dispatchEvent(new window.Event("change"));
+  assert.equal(tiles()[0], "/images/hero.svg");
+  assert.equal(window.localStorage.getItem("vibe-cms:media-sort"), "used");
+  sortSelect.value = "newest"; sortSelect.dispatchEvent(new window.Event("change"));
   assert.deepEqual([...root.querySelectorAll(".vc-chip")].map((chip) => chip.textContent), ["All", "Pages", "Services", "Team", "Blog", "Not used", "Not published yet", "Archived"]);
   assert.equal(root.querySelector(".vc-sheet-count").textContent, "5 images");
   const chip = (label) => [...root.querySelectorAll(".vc-chip")].find((entry) => entry.textContent === label).click();
   chip("Not used");
-  assert.deepEqual(tiles(), [old2.src, old.src, pub.src]);
+  assert.deepEqual(tiles(), [pub.src, old2.src, old.src]);
   assert.equal(root.querySelector(".vc-sheet-count").textContent, "3 images found");
   chip("All");
   // The detail panel: facts, where it is used.

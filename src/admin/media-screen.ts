@@ -10,7 +10,7 @@ import type { Client } from "./api.js";
 import type { BootMedia } from "./boot.js";
 import { openDialog } from "./dialog.js";
 import { clear, h, icon } from "./dom.js";
-import { imageDetails, imageName, libraryOrder, openAdjust, sheetBytes, SHEET_PAGE, type Adjust, type LibraryImage, type Measure, type Prepare, type PreparedImage, type Upload } from "./media.js";
+import { imageDetails, imageName, libraryOrder, openAdjust, savedSort, sortLibrary, sortMenu, sheetBytes, SHEET_PAGE, type Adjust, type LibraryImage, type Measure, type Prepare, type PreparedImage, type Upload } from "./media.js";
 import type { ImagePlace, ImageUsage } from "../media/usage.js";
 
 type Note = { displayName?: string; archivedAt?: string; archivedBy?: string; uploadedAt?: string };
@@ -66,6 +66,7 @@ export const openMediaScreen = (options: MediaScreenOptions) => {
   let usage: ImageUsage = {};
   let loaded = false;
   let filter = "all";
+  let sort = savedSort(win);
   let shown = SHEET_PAGE;
   let selected: Entry | undefined;
 
@@ -81,7 +82,7 @@ export const openMediaScreen = (options: MediaScreenOptions) => {
   const more = h(doc, "button", { type: "button", class: "vc-sheet-more", hidden: true, onclick: () => { shown += SHEET_PAGE; render(); } }, "Load more");
   const panel = h(doc, "aside", { class: "vc-media-panel", "aria-labelledby": "vc-media-panel-name", hidden: true });
   const main = h(doc, "div", { class: "vc-media-main" }, status,
-    h(doc, "div", { class: "vc-media-filter-row" }, h(doc, "label", { class: "vc-sheet-search" }, icon(doc, "search"), search), chips, count), grid, empty, more);
+    h(doc, "div", { class: "vc-media-filter-row" }, h(doc, "label", { class: "vc-sheet-search" }, icon(doc, "search"), search), chips, sortMenu(doc, sort, (next) => { sort = next; shown = SHEET_PAGE; render(); }), count), grid, empty, more);
   const element = h(doc, "div", { class: "vc-media-view" }, h(doc, "div", { class: "vc-media-layout" }, main, panel));
   const say = (text: string, state: "" | "saving" | "error" | "success" = "") => { status.textContent = text; status.dataset.state = state; };
 
@@ -90,14 +91,14 @@ export const openMediaScreen = (options: MediaScreenOptions) => {
   const nameOf = (entry: Entry) => entry.displayName || imageName(entry.src, entry.name);
   const visible = () => {
     const words = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    return entries.filter((entry) => {
+    return sortLibrary(entries.filter((entry) => {
       if (filter === "archived") { if (!entry.archivedAt) return false; } else if (entry.archivedAt) return false;
       if (filter.startsWith("group:") && (entry.staged || !entry.places.some((place) => `group:${place.group}` === filter))) return false;
       if (filter === "unused" && entry.places.length) return false;
       if (filter === "staged" && !entry.staged) return false;
       const text = [nameOf(entry), imageName(entry.src, entry.name), entry.src, ...entry.places.map((place) => place.label)].join(" ").toLowerCase();
       return words.every((word) => text.includes(word));
-    });
+    }), sort, nameOf, usage);
   };
   const tileId = (src: string) => `vc-media-image-${[...src].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) | 0, 7).toString(36).replace("-", "n")}`;
   const select = (entry: Entry | undefined, open = false) => {

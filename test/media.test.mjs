@@ -267,3 +267,22 @@ test("M18: an upload's date is kept in its note, so it outlives the staged copy;
   assert.equal(notes.get(older.src).uploadedAt, "2026-10-01T09:00:00.000Z");
   assert.deepEqual(notes.get(newer.src), { displayName: "Kappa banner", uploadedAt: "2026-10-20T15:30:00.000Z" });
 });
+
+test("M19: Sort — newest (default), oldest, name, largest, used first; images without a date after the dated ones", async () => {
+  const { sortLibrary, LIBRARY_SORTS } = await import("../dist/admin/media.js");
+  const list = [
+    { src: "/a/zebra.png", bytes: 10, places: [] },
+    { src: "/u/old.webp", uploadedAt: "2026-09-01T00:00:00Z", bytes: 30, places: [] },
+    { src: "/a/apple.png", bytes: 50, places: [{}] },
+    { src: "/u/new.webp", uploadedAt: "2026-10-20T00:00:00Z", bytes: 20, places: [{}] },
+  ];
+  const name = (image) => image.src.split("/").pop();
+  const usage = { "/u/new.webp": [{}], "/a/apple.png": [{}] };
+  const order = (sort) => sortLibrary(list, sort, name, usage).map(name);
+  assert.deepEqual(LIBRARY_SORTS.map(([key]) => key), ["newest", "oldest", "name", "size", "used"]);
+  assert.deepEqual(order("newest"), ["new.webp", "old.webp", "apple.png", "zebra.png"]);
+  assert.deepEqual(order("oldest"), ["old.webp", "new.webp", "apple.png", "zebra.png"]);
+  assert.deepEqual(order("name"), ["apple.png", "new.webp", "old.webp", "zebra.png"]);
+  assert.deepEqual(order("size"), ["apple.png", "old.webp", "new.webp", "zebra.png"]);
+  assert.deepEqual(order("used"), ["new.webp", "apple.png", "old.webp", "zebra.png"]);
+});

@@ -31,6 +31,37 @@ export const libraryOrder = <T extends { src: string; uploadedAt?: string; stage
   return [...uploads.filter((image) => image.staged).sort(newest), ...dated, ...rest];
 };
 
+/** M19: how the library is sorted — Newest by default; the choice is kept in this browser. */
+export type LibrarySort = "newest" | "oldest" | "name" | "size" | "used";
+export const LIBRARY_SORTS: Array<[LibrarySort, string]> = [["newest", "Newest"], ["oldest", "Oldest"], ["name", "Name A–Z"], ["size", "Largest"], ["used", "Used first"]];
+const SORT_KEY = "vibe-cms:media-sort";
+export const savedSort = (win: Window | null | undefined): LibrarySort => {
+  try { const value = win?.localStorage.getItem(SORT_KEY); if (LIBRARY_SORTS.some(([key]) => key === value)) return value as LibrarySort; } catch { /* storage blocked */ }
+  return "newest";
+};
+/** Images with a date (uploads) come before those without (the site's own images, by name) when sorting by date. */
+export const sortLibrary = <T extends { src: string; uploadedAt?: string; bytes: number; places: unknown[] }>(list: T[], sort: LibrarySort, nameOf: (image: T) => string, usage: ImageUsage): T[] => {
+  const byName = (a: T, b: T) => nameOf(a).localeCompare(nameOf(b), "en", { numeric: true, sensitivity: "base" }) || a.src.localeCompare(b.src);
+  if (sort === "name") return [...list].sort(byName);
+  if (sort === "size") return [...list].sort((a, b) => b.bytes - a.bytes || byName(a, b));
+  if (sort === "used") {
+    const order = new Map(Object.keys(usage).map((src, index) => [src, index]));
+    return [...list].sort((a, b) => (order.get(a.src) ?? Infinity) - (order.get(b.src) ?? Infinity) || byName(a, b));
+  }
+  const way = sort === "oldest" ? 1 : -1;
+  return [...list].sort((a, b) => (a.uploadedAt ? (b.uploadedAt ? way * a.uploadedAt.localeCompare(b.uploadedAt) : -1) : b.uploadedAt ? 1 : 0) || byName(a, b));
+};
+/** The Sort menu beside the chips; `onChange` gets the new sort, which is also kept in this browser. */
+export const sortMenu = (doc: Document, value: LibrarySort, onChange: (sort: LibrarySort) => void) => {
+  const select = h(doc, "select", { class: "vc-input vc-sort-select", "aria-label": "Sort images" }, ...LIBRARY_SORTS.map(([key, text]) => h(doc, "option", { value: key, selected: key === value }, text)));
+  select.addEventListener("change", () => {
+    const sort = select.value as LibrarySort;
+    try { doc.defaultView?.localStorage.setItem(SORT_KEY, sort); } catch { /* storage blocked */ }
+    onChange(sort);
+  });
+  return h(doc, "label", { class: "vc-sort" }, h(doc, "span", { class: "vc-sort-label" }, "Sort"), select);
+};
+
 export const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 export const MAX_EDGE = 2400;
 
@@ -295,7 +326,9 @@ export const openImagePicker = (options: PickerOptions) => {
   const chipList: Array<[string, string]> = [["all", "All"], ...(options.groups ?? []).map((group): [string, string] => [`group:${group}`, group]), ["divider", ""], ["unused", "Not used"], ...(media.uploads ? [["staged", "Not published yet"] as [string, string]] : [])];
   const chips = h(doc, "div", { class: "vc-chips", role: "group", "aria-label": "Show images" },
     ...chipList.map(([key, text]) => key === "divider" ? h(doc, "span", { class: "vc-chip-divider", "aria-hidden": "true" }) : h(doc, "button", { type: "button", class: "vc-chip", "data-filter": key, "aria-pressed": String(key === "all"), onclick: () => { filter = key; shown = SHEET_PAGE; render(); } }, text)));
-  const chipRow = h(doc, "div", { class: "vc-sheet-chips" }, chips);
+  let sort = savedSort(win);
+  let usage: ImageUsage = {};
+  const chipRow = h(doc, "div", { class: "vc-sheet-chips" }, chips, sortMenu(doc, sort, (next) => { sort = next; shown = SHEET_PAGE; render(); }));
 
   // ---- library
   const grid = h(doc, "div", { class: "vc-sheet-grid", role: "listbox", "aria-label": "Images", tabindex: "0" });
@@ -320,13 +353,15 @@ export const openImagePicker = (options: PickerOptions) => {
   };
   const visible = () => {
     const words = search.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    return entries.filter((entry) => {
+    const found = entries.filter((entry) => {
       if (entry.current && filter !== "all") return false;
       if (filter.startsWith("group:") && (entry.staged || !entry.places.some((place) => `group:${place.group}` === filter))) return false;
       if (filter === "unused" && entry.places.length) return false;
       if (filter === "staged" && !entry.staged) return false;
       return matches(entry, words);
     });
+    // The image in use stays first, whatever the sort.
+    return [...found.filter((entry) => entry.current), ...sortLibrary(found.filter((entry) => !entry.current), sort, (entry) => imageName(entry.src, entry.name), usage)];
   };
   const tileId = (src: string) => `vc-sheet-image-${[...src].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) | 0, 7).toString(36).replace("-", "n")}`;
   const select = (entry: Entry | undefined, focus = false) => {
@@ -482,7 +517,6 @@ export const openImagePicker = (options: PickerOptions) => {
 
   // ---- load: Current first, then the library in libraryOrder (unpublished uploads, uploads newest first, the rest)
   let siteSet = new Set<string>();
-  let usage: ImageUsage = {};
   const placesOf = (src: string) => usage[src] ?? [];
   void (async () => {
     const result = await api.get<{ uploads: LibraryImage[]; site: LibraryImage[]; usage?: ImageUsage; notes?: Record<string, { displayName?: string; archivedAt?: string; uploadedAt?: string }> }>("/api/cms/media");

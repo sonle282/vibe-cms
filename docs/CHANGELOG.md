@@ -3,6 +3,18 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.30.0 — 2026-10-27 (Sort in the image library; whole images in the thumbnails)
+
+**M19 — Sort and whole thumbnails.** Site action: none (`vibe-cms update`).
+
+- A Sort menu beside the chips of the Media screen and the image sheet: Newest (the default), Oldest, Name A–Z,
+  Largest, Used first. The choice is kept in this browser. Images without a date (the site's own images) come after
+  the uploads when sorting by date, by name. In the image sheet the image in use stays first.
+- Newest replaces the fixed order of 0.29: an unpublished upload is no longer put first when a published one is newer;
+  "Used first" is the old order of the website's images.
+- Thumbnails show the whole image (a tall phone banner was cut to a strip): the Media screen, the image sheet and the
+  record lists.
+
 ## 0.29.2 — 2026-10-27 (uploads of the same month in the order they were uploaded)
 
 **M18, part 2.** Site action: none (`vibe-cms update`).
