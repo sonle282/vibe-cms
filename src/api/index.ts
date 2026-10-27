@@ -103,7 +103,7 @@ export type CmsApiDeps = {
   /** P10: uploads in the site's R2 bucket (undefined = no CMS_MEDIA binding: uploading is off). */
   media?: MediaStore | undefined;
   /** P10: the site's own images (public/…), listed at build time for the image library. */
-  siteImages?: Array<{ src: string; width?: number; height?: number; bytes: number; name?: string }>;
+  siteImages?: Array<{ src: string; width?: number; height?: number; bytes: number; name?: string; uploadedAt?: string }>;
   /** P12h: images stored by name in the site's manifest (media.names), with the manifest of this build. */
   imageNames?: ImageNames;
   /** Publish rate limit (20 / minute / user on the first site). */

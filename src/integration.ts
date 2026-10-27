@@ -4,8 +4,9 @@
  * server routes as virtual modules, and adds /admin/[...path] (the admin) and /api/cms/*. The site's public pages keep
  * prerendering; only the injected routes run on demand (the site uses @astrojs/cloudflare).
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, openSync, readSync, closeSync, readdirSync, lstatSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AstroIntegration } from "astro";
 import type { Plugin } from "vite";
@@ -49,30 +50,66 @@ export const contentPaths = (config: CmsConfig, root: string) => [...new Set([
   }),
 ])];
 
-/** P10: the site's own images (public/…) for the image library — path, size, pixels; at most 3000, SVG included. */
+/** P10: the site's own images (public/…) for the image library — path, size, pixels; at most 3000, SVG included.
+ * M18: the CMS's upload folder (`uploadsDir`, e.g. public/assets/uploads) is read first, newest first, so a site with
+ * more than 3000 images never leaves its own uploads out; each upload gets `uploadedAt` (when git first saw the file,
+ * else the first of its year/month folder). */
 export const VIRTUAL_IMAGES = "virtual:vibe-cms/images";
 const RESOLVED_VIRTUAL_IMAGES = `\0${VIRTUAL_IMAGES}`;
-export const siteImages = (root: string, limit = 3000) => {
+type SiteImage = { src: string; width?: number; height?: number; bytes: number; uploadedAt?: string };
+/** When each file under `dir` was first committed (git, one call), by project-relative path; empty without git. */
+const addedDates = (root: string, dir: string) => {
+  const dates = new Map<string, string>();
+  try {
+    const log = execFileSync("git", ["log", "--relative", "--diff-filter=A", "--format=%x00%cI", "--name-only", "--", dir], { cwd: root, encoding: "utf8", timeout: 20_000, maxBuffer: 32 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] });
+    for (const entry of log.split("\0")) {
+      const [date, ...files] = entry.trim().split("\n");
+      // Newest commit first: the oldest "added" wins, so keep overwriting.
+      for (const file of files) if (file.trim() && date) dates.set(file.trim(), date.trim());
+    }
+  } catch { /* not a git checkout: folder dates only */ }
+  return dates;
+};
+export const siteImages = (root: string, limit = 3000, uploadsDir?: string) => {
   const publicDir = join(root, "public");
-  const out: Array<{ src: string; width?: number; height?: number; bytes: number }> = [];
-  const walk = (dir: string, url: string) => {
-    if (out.length >= limit || !existsSync(dir)) return;
+  const uploadsFull = uploadsDir ? resolve(root, uploadsDir) : undefined;
+  const out: SiteImage[] = [];
+  const read = (full: string, src: string, size: number): SiteImage => {
+    const head = Buffer.alloc(Math.min(size, 65_536));
+    const fd = openSync(full, "r");
+    try { readSync(fd, head, 0, head.length, 0); } finally { closeSync(fd); }
+    const info = detectImage(new Uint8Array(head));
+    return { src, ...(info?.width && info.height ? { width: info.width, height: info.height } : {}), bytes: size };
+  };
+  const walk = (dir: string, url: string, into: SiteImage[], skip?: string, max = limit) => {
+    if (into.length >= max || !existsSync(dir)) return;
     for (const name of readdirSync(dir).sort()) {
-      if (out.length >= limit || name.startsWith(".")) continue;
+      if (into.length >= max || name.startsWith(".")) continue;
       const full = join(dir, name);
+      if (skip && resolve(full) === skip) continue;
       const stat = lstatSync(full);
       if (stat.isSymbolicLink()) continue;
-      if (stat.isDirectory()) walk(full, `${url}/${name}`);
-      else if (IMAGE_EXTENSIONS.test(name)) {
-        const head = Buffer.alloc(Math.min(stat.size, 65_536));
-        const fd = openSync(full, "r");
-        try { readSync(fd, head, 0, head.length, 0); } finally { closeSync(fd); }
-        const info = detectImage(new Uint8Array(head));
-        out.push({ src: `${url}/${name}`, ...(info?.width && info.height ? { width: info.width, height: info.height } : {}), bytes: stat.size });
-      }
+      if (stat.isDirectory()) walk(full, `${url}/${name}`, into, skip, max);
+      else if (IMAGE_EXTENSIONS.test(name)) into.push(read(full, `${url}/${name}`, stat.size));
     }
   };
-  walk(publicDir, "");
+  if (uploadsFull && uploadsFull.startsWith(resolve(publicDir)) && existsSync(uploadsFull)) {
+    const uploads: SiteImage[] = [];
+    // Every upload is read: they are sorted by date before the limit applies.
+    walk(uploadsFull, `/${relative(publicDir, uploadsFull).split(/[\\/]/).join("/")}`, uploads, undefined, Infinity);
+    const added = addedDates(root, relative(root, uploadsFull).split(/[\\/]/).join("/"));
+    const publicRel = relative(root, publicDir).split(/[\\/]/).join("/");
+    for (const image of uploads) {
+      const folder = /\/(20\d{2})\/(0[1-9]|1[0-2])\/[^/]+$/.exec(image.src);
+      // A shallow clone dates every file to its one commit: a git date outside the upload's year/month folder is not used.
+      const git = added.get(`${publicRel}${image.src}`);
+      const date = folder ? (git?.startsWith(`${folder[1]}-${folder[2]}`) ? git : `${folder[1]}-${folder[2]}-01T00:00:00Z`) : git;
+      if (date) image.uploadedAt = date;
+    }
+    uploads.sort((a, b) => (b.uploadedAt ?? "").localeCompare(a.uploadedAt ?? "") || a.src.localeCompare(b.src));
+    out.push(...uploads.slice(0, limit));
+  }
+  walk(publicDir, "", out, uploadsFull);
   return out;
 };
 
@@ -88,7 +125,7 @@ const virtualModules = (file: string, root: string, paths: string[], cms: CmsCon
     if (id === RESOLVED_VIRTUAL_IMAGES) {
       // P12h: images by name — the library lists the manifest, and the Worker gets the manifest to convert names.
       const names = readImageNames(cms, root);
-      return `export default ${JSON.stringify(names ? manifestImages(names) : siteImages(root))};
+      return `export default ${JSON.stringify(names ? manifestImages(names) : siteImages(root, 3000, mediaSettings(cms.media).dir))};
 export const names = ${JSON.stringify(names ? names.manifest : null)};`;
     }
     if (id !== RESOLVED_VIRTUAL_CONTENT) return undefined;

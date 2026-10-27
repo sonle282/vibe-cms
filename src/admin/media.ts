@@ -18,6 +18,19 @@ export type Prepare = (file: File) => Promise<PreparedImage>;
 /** Upload a prepared image; `onProgress` gets 0–1 while the bytes go out. `reused`: the same image was already uploaded. */
 export type Upload = (prepared: PreparedImage, onProgress?: (fraction: number) => void) => Promise<{ ok: true; image: LibraryImage; reused?: boolean } | { ok: false; message: string }>;
 
+/** M18: the library's order, as WordPress shows it — uploads not on the website yet, then the other uploads newest first
+ * (published ones carry `uploadedAt` from the build), then the website's other images, used first in content order. */
+export const libraryOrder = <T extends { src: string; uploadedAt?: string; staged: boolean }>(uploads: T[], site: T[], usage: ImageUsage): T[] => {
+  const order = new Map(Object.keys(usage).map((src, index) => [src, index]));
+  const newest = (a: T, b: T) => (b.uploadedAt ?? "").localeCompare(a.uploadedAt ?? "");
+  const uploadSet = new Set(uploads.map((image) => image.src));
+  const others = site.filter((image) => !uploadSet.has(image.src));
+  const dated = [...uploads.filter((image) => !image.staged), ...others.filter((image) => image.uploadedAt)].sort(newest);
+  const rest = others.filter((image) => !image.uploadedAt)
+    .sort((a, b) => (order.get(a.src) ?? Infinity) - (order.get(b.src) ?? Infinity) || (order.has(a.src) ? 0 : a.src.localeCompare(b.src)));
+  return [...uploads.filter((image) => image.staged).sort(newest), ...dated, ...rest];
+};
+
 export const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 export const MAX_EDGE = 2400;
 
@@ -467,7 +480,7 @@ export const openImagePicker = (options: PickerOptions) => {
   search.focus();
   render();
 
-  // ---- load: Current first, then uploads not on the website yet, then the website's images (used first, in content order)
+  // ---- load: Current first, then the library in libraryOrder (unpublished uploads, uploads newest first, the rest)
   let siteSet = new Set<string>();
   let usage: ImageUsage = {};
   const placesOf = (src: string) => usage[src] ?? [];
@@ -478,14 +491,11 @@ export const openImagePicker = (options: PickerOptions) => {
     usage = result.data.usage ?? {};
     siteSet = new Set(result.data.site.map((image) => image.src));
     const uploads = result.data.uploads.map((image): Entry => ({ ...image, source: "upload", places: placesOf(image.src), staged: !siteSet.has(image.src) }));
-    const uploadSet = new Set(uploads.map((image) => image.src));
-    const order = new Map(Object.keys(usage).map((src, index) => [src, index]));
-    const site = result.data.site.filter((image) => !uploadSet.has(image.src)).map((image): Entry => ({ ...image, source: "site", places: placesOf(image.src), staged: false }))
-      .sort((a, b) => (order.get(a.src) ?? Infinity) - (order.get(b.src) ?? Infinity) || (order.has(a.src) ? 0 : a.src.localeCompare(b.src)));
+    const site = result.data.site.map((image): Entry => ({ ...image, source: "site", places: placesOf(image.src), staged: false }));
     // M11 (Mr Spa): an archived image cannot be chosen; a display name is the name people see.
     const notes = result.data.notes ?? {};
     const named = (image: Entry): Entry => (notes[image.src]?.displayName ? { ...image, name: notes[image.src].displayName } : image);
-    const library = [...uploads.filter((image) => image.staged), ...uploads.filter((image) => !image.staged), ...site].filter((image) => !notes[image.src]?.archivedAt).map(named);
+    const library = libraryOrder(uploads, site, usage).filter((image) => !notes[image.src]?.archivedAt).map(named);
     options.onLoad?.(library);
     const known = options.current ? library.find((image) => image.src === options.current) : undefined;
     const current: Entry[] = options.current ? [{ ...(known ?? { src: options.current, bytes: 0, source: "site" as const, places: placesOf(options.current), staged: false }), current: true }] : [];

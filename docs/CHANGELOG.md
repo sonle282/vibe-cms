@@ -3,6 +3,17 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.29.1 — 2026-10-27 (the image library shows the newest uploads first)
+
+**M18 — newest uploads first.** Site action: none (`vibe-cms update`).
+
+- The image library (the image sheet and the Media screen) lists, as WordPress does: uploads not on the website yet,
+  then every upload newest first, then the website's other images (used first). Before, a published upload went to the
+  website's images in content order.
+- The site's images read the CMS's upload folder first, so a site with more than 3000 images (Mr Spa: 3163) no longer
+  leaves its uploads out of the library. A published upload's date is when git first saw the file (else its year/month
+  folder).
+
 ## 0.29.0 — 2026-10-15 (Images in this post: a blog post's images as a list, both ways)
 
 **M17 — Images in this post.** Site action: none (a new optional setting).

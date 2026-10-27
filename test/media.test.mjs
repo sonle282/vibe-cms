@@ -222,3 +222,34 @@ test("the site's own images (built into the admin): every image under public/, w
   assert.equal(siteImages(demoRoot, 1).length, 1);
   assert.deepEqual(siteImages(join(demoRoot, "missing")), []);
 });
+
+test("M18: the CMS's uploads come first, newest first, and the 3000 limit never leaves them out", async () => {
+  const { siteImages } = await import("../dist/integration.js");
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const root = mkdtempSync(join(tmpdir(), "vc-uploads-"));
+  try {
+    for (const path of ["public/a/first.png", "public/a/second.png", "public/assets/uploads/2026/09/old-11111111.webp", "public/assets/uploads/2026/10/new-22222222.webp"]) {
+      mkdirSync(join(root, path, ".."), { recursive: true });
+      writeFileSync(join(root, path), path.endsWith(".png") ? tinyPng(2, 2) : tinyWebp(2, 2));
+    }
+    const images = siteImages(root, 3000, "public/assets/uploads");
+    assert.deepEqual(images.map((image) => image.src), ["/assets/uploads/2026/10/new-22222222.webp", "/assets/uploads/2026/09/old-11111111.webp", "/a/first.png", "/a/second.png"]);
+    assert.equal(images[0].uploadedAt, "2026-10-01T00:00:00Z");
+    assert.equal(images[2].uploadedAt, undefined);
+    assert.deepEqual(siteImages(root, 1, "public/assets/uploads").map((image) => image.src), ["/assets/uploads/2026/10/new-22222222.webp"]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("M18: the library order — unpublished uploads, then uploads newest first, then the website's images used first", async () => {
+  const { libraryOrder } = await import("../dist/admin/media.js");
+  const uploads = [{ src: "/u/staged.webp", uploadedAt: "2026-10-20T00:00:00Z", staged: true }];
+  const site = [
+    { src: "/a/used.png", staged: false },
+    { src: "/u/2026/09/old.webp", uploadedAt: "2026-09-01T00:00:00Z", staged: false },
+    { src: "/a/other.png", staged: false },
+    { src: "/u/2026/10/new.webp", uploadedAt: "2026-10-05T00:00:00Z", staged: false },
+  ];
+  const usage = { "/a/used.png": [{}], "/u/2026/09/old.webp": [{}] };
+  assert.deepEqual(libraryOrder(uploads, site, usage).map((image) => image.src), ["/u/staged.webp", "/u/2026/10/new.webp", "/u/2026/09/old.webp", "/a/used.png", "/a/other.png"]);
+});

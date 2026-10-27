@@ -10,7 +10,7 @@ import type { Client } from "./api.js";
 import type { BootMedia } from "./boot.js";
 import { openDialog } from "./dialog.js";
 import { clear, h, icon } from "./dom.js";
-import { imageDetails, imageName, openAdjust, sheetBytes, SHEET_PAGE, type Adjust, type LibraryImage, type Measure, type Prepare, type PreparedImage, type Upload } from "./media.js";
+import { imageDetails, imageName, libraryOrder, openAdjust, sheetBytes, SHEET_PAGE, type Adjust, type LibraryImage, type Measure, type Prepare, type PreparedImage, type Upload } from "./media.js";
 import type { ImagePlace, ImageUsage } from "../media/usage.js";
 
 type Note = { displayName?: string; archivedAt?: string; archivedBy?: string };
@@ -319,7 +319,7 @@ export const openMediaScreen = (options: MediaScreenOptions) => {
     options.actions.append(h(doc, "div", { class: "vc-media-more" }, toggle, menu), fileInput, uploadButton);
   }
 
-  // ---- load: uploads not on the website yet first, then the published ones, then the website's images (used first)
+  // ---- load: uploads not on the website yet first, then uploads newest first, then the website's images (used first)
   const load = async () => {
     loaded = false; render();
     const result = await api.get<{ uploads: LibraryImage[]; site: LibraryImage[]; usage?: ImageUsage; notes?: Record<string, Note> }>("/api/cms/media");
@@ -334,11 +334,8 @@ export const openMediaScreen = (options: MediaScreenOptions) => {
       return { ...image, source, places: usage[image.src] ?? [], staged: source === "upload" && !siteSet.has(image.src), upload: uploadPattern.test(image.src), ...(note.archivedAt ? { archivedAt: note.archivedAt } : {}), ...(note.displayName ? { displayName: note.displayName } : {}) };
     };
     const uploads = result.data.uploads.map((image) => withNote(image, "upload"));
-    const uploadSet = new Set(uploads.map((image) => image.src));
-    const order = new Map(Object.keys(usage).map((src, index) => [src, index]));
-    const site = result.data.site.filter((image) => !uploadSet.has(image.src)).map((image) => withNote(image, "site"))
-      .sort((a, b) => (order.get(a.src) ?? Infinity) - (order.get(b.src) ?? Infinity) || (order.has(a.src) ? 0 : a.src.localeCompare(b.src)));
-    entries = [...uploads.filter((image) => image.staged), ...uploads.filter((image) => !image.staged), ...site];
+    const site = result.data.site.map((image) => withNote(image, "site"));
+    entries = libraryOrder(uploads, site, usage);
     options.remember?.(entries);
     render();
   };
