@@ -253,3 +253,17 @@ test("M18: the library order — unpublished uploads, then uploads newest first,
   const usage = { "/a/used.png": [{}], "/u/2026/09/old.webp": [{}] };
   assert.deepEqual(libraryOrder(uploads, site, usage).map((image) => image.src), ["/u/staged.webp", "/u/2026/10/new.webp", "/u/2026/09/old.webp", "/a/used.png", "/a/other.png"]);
 });
+
+test("M18: an upload's date is kept in its note, so it outlives the staged copy; a display name keeps it", async () => {
+  const bucket = createMemoryBucket();
+  const times = ["2026-10-01T09:00:00Z", "2026-10-20T15:30:00Z"];
+  const store = createMediaStore({ bucket, settings: mediaSettings(), now: () => new Date(times.shift()) });
+  const older = await store.stage({ bytes: tinyPng(2, 2), fileName: "older.png", userId: "usr_a" });
+  const newer = await store.stage({ bytes: tinyPng(3, 3), fileName: "newer.png", userId: "usr_a" });
+  // Published: the staged copy is gone (as after a deploy), the note stays.
+  await bucket.delete([`staging${older.src}`, `staging${newer.src}`]);
+  await store.setNote(newer.src, { displayName: "Kappa banner" });
+  const notes = await store.notes();
+  assert.equal(notes.get(older.src).uploadedAt, "2026-10-01T09:00:00.000Z");
+  assert.deepEqual(notes.get(newer.src), { displayName: "Kappa banner", uploadedAt: "2026-10-20T15:30:00.000Z" });
+});

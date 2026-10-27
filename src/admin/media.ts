@@ -485,15 +485,17 @@ export const openImagePicker = (options: PickerOptions) => {
   let usage: ImageUsage = {};
   const placesOf = (src: string) => usage[src] ?? [];
   void (async () => {
-    const result = await api.get<{ uploads: LibraryImage[]; site: LibraryImage[]; usage?: ImageUsage; notes?: Record<string, { displayName?: string; archivedAt?: string }> }>("/api/cms/media");
+    const result = await api.get<{ uploads: LibraryImage[]; site: LibraryImage[]; usage?: ImageUsage; notes?: Record<string, { displayName?: string; archivedAt?: string; uploadedAt?: string }> }>("/api/cms/media");
     loaded = true;
     if (!result.ok) { failed = true; error.hidden = false; error.textContent = "The image library could not be loaded."; render(); return; }
     usage = result.data.usage ?? {};
     siteSet = new Set(result.data.site.map((image) => image.src));
-    const uploads = result.data.uploads.map((image): Entry => ({ ...image, source: "upload", places: placesOf(image.src), staged: !siteSet.has(image.src) }));
-    const site = result.data.site.map((image): Entry => ({ ...image, source: "site", places: placesOf(image.src), staged: false }));
     // M11 (Mr Spa): an archived image cannot be chosen; a display name is the name people see.
+    // M18: an upload's date is the one its note kept (the build only knows the month for a published one).
     const notes = result.data.notes ?? {};
+    const dated = <T extends LibraryImage>(image: T): T => (notes[image.src]?.uploadedAt ? { ...image, uploadedAt: notes[image.src].uploadedAt } : image);
+    const uploads = result.data.uploads.map((image): Entry => dated({ ...image, source: "upload", places: placesOf(image.src), staged: !siteSet.has(image.src) }));
+    const site = result.data.site.map((image): Entry => dated({ ...image, source: "site", places: placesOf(image.src), staged: false }));
     const named = (image: Entry): Entry => (notes[image.src]?.displayName ? { ...image, name: notes[image.src].displayName } : image);
     const library = libraryOrder(uploads, site, usage).filter((image) => !notes[image.src]?.archivedAt).map(named);
     options.onLoad?.(library);

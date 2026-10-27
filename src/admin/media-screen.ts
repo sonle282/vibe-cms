@@ -13,7 +13,7 @@ import { clear, h, icon } from "./dom.js";
 import { imageDetails, imageName, libraryOrder, openAdjust, sheetBytes, SHEET_PAGE, type Adjust, type LibraryImage, type Measure, type Prepare, type PreparedImage, type Upload } from "./media.js";
 import type { ImagePlace, ImageUsage } from "../media/usage.js";
 
-type Note = { displayName?: string; archivedAt?: string; archivedBy?: string };
+type Note = { displayName?: string; archivedAt?: string; archivedBy?: string; uploadedAt?: string };
 type Entry = LibraryImage & { places: ImagePlace[]; staged: boolean; upload: boolean; archivedAt?: string; displayName?: string };
 type Usage = { places: ImagePlace[]; drafts: Array<{ resource: string; label: string; mine: boolean }>; draftsKnown: boolean };
 
@@ -331,7 +331,7 @@ export const openMediaScreen = (options: MediaScreenOptions) => {
     siteSet = new Set(result.data.site.map((image) => image.src));
     const withNote = (image: LibraryImage, source: "upload" | "site"): Entry => {
       const note = notes[image.src] ?? {};
-      return { ...image, source, places: usage[image.src] ?? [], staged: source === "upload" && !siteSet.has(image.src), upload: uploadPattern.test(image.src), ...(note.archivedAt ? { archivedAt: note.archivedAt } : {}), ...(note.displayName ? { displayName: note.displayName } : {}) };
+      return { ...image, ...(note.uploadedAt ? { uploadedAt: note.uploadedAt } : {}), source, places: usage[image.src] ?? [], staged: source === "upload" && !siteSet.has(image.src), upload: uploadPattern.test(image.src), ...(note.archivedAt ? { archivedAt: note.archivedAt } : {}), ...(note.displayName ? { displayName: note.displayName } : {}) };
     };
     const uploads = result.data.uploads.map((image) => withNote(image, "upload"));
     const site = result.data.site.map((image) => withNote(image, "site"));

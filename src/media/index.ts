@@ -35,7 +35,8 @@ const STAGING = "staging/";
 const INDEX = "upload-index/";
 /** M11: a small object beside an upload — its display name and whether it is archived (no D1 table needed). */
 const NOTE = "media-note/";
-export type MediaNote = { displayName?: string; archivedAt?: string; archivedBy?: string };
+/** M18: `uploadedAt` is written at upload and outlives the staged copy, so a published upload keeps its date. */
+export type MediaNote = { displayName?: string; archivedAt?: string; archivedBy?: string; uploadedAt?: string };
 /** M11 (Mr Spa): a display name — NFKC, no control characters, single spaces, 1–120 characters; undefined when not usable. */
 export const cleanDisplayName = (value: unknown) => {
   if (typeof value !== "string") return undefined;
@@ -96,6 +97,7 @@ export const createMediaStore = ({ bucket, settings, now = () => new Date() }: {
     if (size.width && size.height) { metadata.width = String(size.width); metadata.height = String(size.height); }
     await bucket.put(keyOf(path), bytes, { httpMetadata: { contentType: info.mime, cacheControl: "no-store" }, customMetadata: metadata });
     await bucket.put(`${INDEX}${sha}`, path);
+    await bucket.put(noteKey(path), "", { httpMetadata: { contentType: "application/octet-stream" }, customMetadata: { uploadedAt: metadata.uploadedAt } });
     return { src: path, ...(size.width && size.height ? { width: size.width, height: size.height } : {}), bytes: bytes.length, type: info.mime, uploadedAt: metadata.uploadedAt, uploadedBy: userId, name: metadata.name, reused: false };
   };
 
@@ -146,7 +148,7 @@ export const createMediaStore = ({ bucket, settings, now = () => new Date() }: {
       const page = await bucket.list({ prefix: NOTE, ...(cursor ? { cursor } : {}), limit: 1000, include: ["customMetadata"] });
       for (const object of page.objects) {
         const meta = object.customMetadata ?? {};
-        const note: MediaNote = { ...(meta.displayName ? { displayName: meta.displayName } : {}), ...(meta.archivedAt ? { archivedAt: meta.archivedAt, archivedBy: meta.archivedBy ?? "" } : {}) };
+        const note: MediaNote = { ...(meta.displayName ? { displayName: meta.displayName } : {}), ...(meta.archivedAt ? { archivedAt: meta.archivedAt, archivedBy: meta.archivedBy ?? "" } : {}), ...(meta.uploadedAt ? { uploadedAt: meta.uploadedAt } : {}) };
         found.set(`/${object.key.slice(NOTE.length)}`, note);
       }
       cursor = page.truncated ? page.cursor : undefined;
