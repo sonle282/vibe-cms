@@ -557,7 +557,7 @@ a.vc-row:hover { background: var(--rail-bg); }
 .vc-more-button { width: 32px; height: 32px; font-size: 18px; }
 .vc-list-name { display: inline-flex; align-items: center; gap: 12px; }
 .vc-list-thumb { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; overflow: hidden; border-radius: var(--radius-8); background: var(--surface-off); color: var(--text-disabled); }
-.vc-list-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.vc-list-thumb img { width: 100%; height: 100%; object-fit: contain; }
 .vc-table td:has(.vc-list-thumb) { padding-top: 6px; padding-bottom: 6px; }
 
 /* Media: the library on the canvas, the chosen image in the inspector on the right. */
@@ -696,6 +696,9 @@ label.vc-button[role="button"] { cursor: pointer; }
 .vc-sheet-chips { padding: 0 24px 12px; border-bottom: 1px solid var(--hairline); }
 .vc-sheet-chips[hidden], .vc-sheet-search[hidden], .vc-sheet-count[hidden] { display: none; }
 .vc-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.vc-sheet-chips { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.vc-sort { display: inline-flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
+.vc-sort .vc-sort-select { width: auto; min-height: 32px; padding-top: 4px; padding-bottom: 4px; font-size: 13px; }
 .vc-chip { height: 30px; padding: 0 12px; border: 1px solid var(--border-input); border-radius: var(--radius-6); background: #fff; color: var(--text); font: 500 13px/1 var(--font-ui); cursor: pointer; }
 .vc-chip:hover { background: var(--canvas); }
 .vc-chip[aria-pressed="true"] { border-color: var(--text); background: var(--text); color: #fff; }
@@ -708,7 +711,8 @@ label.vc-button[role="button"] { cursor: pointer; }
 @media (max-width: 860px) { .vc-sheet-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .vc-sheet-tile { display: grid; gap: 2px; min-width: 0; cursor: pointer; }
 .vc-sheet-thumb { position: relative; display: block; height: 128px; margin-bottom: 6px; overflow: hidden; border-radius: var(--radius-10); background: var(--canvas); box-shadow: 0 0 0 1px #1d1d1f0a; transition: box-shadow var(--motion-hover); }
-.vc-sheet-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* M19: the whole image, on the canvas colour (a phone banner is tall, a hero is wide). */
+.vc-sheet-thumb img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .vc-sheet-tile:hover .vc-sheet-thumb { box-shadow: 0 0 0 1px var(--border-input); }
 .vc-sheet-tile[aria-selected="true"] .vc-sheet-thumb { box-shadow: 0 0 0 2px var(--accent); }
 .vc-sheet-badge { position: absolute; top: 8px; left: 8px; padding: 3px 7px; border-radius: var(--radius-6); background: #1d1d1fc7; color: #fff; font-size: 11px; font-weight: 600; }
