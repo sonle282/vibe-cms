@@ -3,6 +3,34 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.31.0 — 2026-10-29 (the owner's UX: drafts carried over, Publish in one step, a Start screen, Vietnamese)
+
+From a UX review of the Mr Spa admin with its owner (F2–F9). **Site action: `npx vibe-cms migrate` (remote)** — migration
+`0006_draft_source.sql` adds one nullable column; until it runs, drafts work as before, without F3. Optional new
+settings: `site.locale`, `start`.
+
+- **F3 — a draft is carried over when someone else publishes.** A draft keeps the content it started from (0006). When
+  the website moves on, opening the draft, My drafts and Publish merge it field by field: what only the website changed
+  comes in, what only the draft changed stays. Only a field both changed stops the publish; the editor names it ("Price
+  changed on the website too") with **Keep my version** and **Start again from the website**. A draft saved before 0.31
+  still says "the website changed", as before.
+- **F4 — Publish in one step.** Unsaved changes no longer hold Publish: it reviews what is on screen, saves the draft and
+  publishes. Cancel saves nothing. When Publish is off, the reason is written next to it (not only on hover).
+- **F2 — a publish that has not reached the website is said on every screen.** When the site's build failed
+  (`publish.buildCheck`, if the token can read check runs) or the change is not live after twice `publish.typicalMinutes`
+  (no permission needed), a notice above every screen says so, with Check again and Hide; once live it says so.
+  Review & publish now checks the build too.
+- **F8 — a Start screen.** `start: { quick: [{ label, help?, file | collection (+ new / item) | href }] }` makes `/admin`
+  a Start screen: the jobs people do most, their drafts with Review & publish, the latest publishes. Without `start`,
+  `/admin` opens the first page as before.
+- **F5 — the admin in Vietnamese.** `site: { locale: "vi" }` shows the admin's own words in Vietnamese (Bản nháp, Lưu
+  nháp, Đăng lên web, Đang lên web… thường mất 2–5 phút). What people type and the site's content are never translated;
+  labels and help in `cms.config.ts` are shown as written (write them in Vietnamese too).
+- **F7 — list thumbnails from a gallery.** A record whose only images are in a list of images shows the first one in its
+  list. **F9 — Discard draft is named in words** (a trash icon and "Discard draft", no longer an undo arrow).
+- Installing the package keeps a site's packages as they are again: `mdast-util-find-and-replace` is held below 3.0.4
+  (3.0.4 asks for a newer `unist-util-visit-parents`).
+
 ## 0.30.0 — 2026-10-27 (Sort in the image library; whole images in the thumbnails)
 
 **M19 — Sort and whole thumbnails.** Site action: none (`vibe-cms update`).

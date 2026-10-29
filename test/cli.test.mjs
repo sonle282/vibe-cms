@@ -62,7 +62,7 @@ test("setup on a fake account: creates the 3 resources once, writes the bindings
   const account = s.read().accounts.default;
   assert.deepEqual([account.d1.map((db) => db.name), account.kv.map((ns) => ns.title), account.r2], [["demo-cms"], ["demo-session"], ["demo-media"]]);
   assert.match(first.out, /D1 demo-cms: created[\s\S]*KV demo-session: created[\s\S]*R2 demo-media: created/);
-  assert.match(first.out, /migrations applied \(remote\): 0001_draft_index\.sql, 0002_draft_content\.sql, 0003_audit_log\.sql, 0004_users\.sql, 0005_audit_log_auth\.sql/);
+  assert.match(first.out, /migrations applied \(remote\): 0001_draft_index\.sql, 0002_draft_content\.sql, 0003_audit_log\.sql, 0004_users\.sql, 0005_audit_log_auth\.sql, 0006_draft_source\.sql/);
   assert.match(first.out, /wrangler secret put VIBE_GITHUB_TOKEN/, "next steps name the secrets; the CLI never sets them");
   const config = s.config();
   assert.ok(config.startsWith("// Local only (wrangler dev)."), "the comment at the top is kept");

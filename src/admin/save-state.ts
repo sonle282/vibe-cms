@@ -40,6 +40,8 @@ export type SaveState = {
 };
 
 export const SAVE_FIRST = "Save a draft first";
+/** F4: Publish with unsaved changes saves them, then publishes — one step. */
+export const SAVE_AND_PUBLISH = "Saves your changes, then publishes them.";
 export const PUBLISHING_LABEL = "Publishing… this usually takes a few minutes";
 /** M6: "Publishing… this usually takes 5–10 minutes" (publish.typicalMinutes). */
 export const publishingLabel = (typicalMinutes?: string) => (typicalMinutes ? `Publishing… this usually takes ${typicalMinutes} ${typicalMinutes === "1" ? "minute" : "minutes"}` : PUBLISHING_LABEL);
@@ -71,21 +73,22 @@ export const deriveSaveState = (input: SaveStateInput): SaveState => {
     kind, label, shortLabel,
     // A problem while there are unsaved edits keeps Save available (e.g. try again after a failed save).
     saveEnabled: input.canSave && dirty && kind !== "busy",
-    publishEnabled: !dirty && !input.busy && input.hasDraft && input.publishBlockReason === null,
-    publishTooltip: dirty ? SAVE_FIRST : input.publishBlockReason ?? "Review changes before publishing.",
+    // F4: unsaved changes no longer hold Publish: it saves them first (when they can be saved).
+    publishEnabled: !input.busy && (dirty ? input.canSave : input.hasDraft) && input.publishBlockReason === null,
+    publishTooltip: input.publishBlockReason ?? (dirty ? SAVE_AND_PUBLISH : "Review changes before publishing."),
     tooltip: kind === "published" && input.detail ? `${label} · ${input.detail}` : label,
   };
 };
 
 /**
  * Why Publish is blocked, in the Mr Spa CMS's words and order (the checks a site's own plugin adds come later, M14).
+ * F4: unsaved changes are not a reason (Publish saves them); `changes` counts only for a saved draft with none unsaved.
  */
 export const publishBlockReason = (facts: { conflict: boolean; dirty: boolean; hasDraft: boolean; invalid: boolean; changes: number }) => {
   if (facts.conflict) return "Someone else changed this content. Reload before publishing.";
-  if (facts.dirty) return "Save your changes before publishing.";
-  if (!facts.hasDraft) return "Save a draft before publishing.";
   if (facts.invalid) return "Fix the highlighted fields before publishing.";
-  if (!facts.changes) return "No changes to publish yet.";
+  if (facts.dirty) return null;
+  if (!facts.hasDraft || !facts.changes) return "No changes to publish yet.";
   return null;
 };
 

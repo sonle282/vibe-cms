@@ -138,6 +138,9 @@ body.vc-page:has(.vc-app) { overflow: hidden; }
 .vc-rail-item { position: relative; display: grid; place-items: center; align-content: center; gap: 3px; width: 52px; min-height: 52px; margin: 0 auto; padding: 0 2px; border-radius: var(--radius-12); color: var(--text-secondary); text-decoration: none; transition: background-color var(--motion-hover), color var(--motion-hover); }
 .vc-rail-item .vc-icon { width: 20px; height: 20px; }
 .vc-rail-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-11); font-weight: 500; line-height: 1.2; }
+/* F5: a longer word (Vietnamese "Bản nháp", "Người dùng") goes on two lines instead of being cut. */
+:lang(vi) .vc-rail-label { overflow: visible; white-space: normal; text-align: center; overflow-wrap: normal; }
+:lang(vi) .vc-rail-item { padding: 4px 0; }
 .vc-rail-item:hover { background: var(--surface-hover); color: var(--text); }
 .vc-rail-item[aria-current="page"] { background: var(--accent-rail); color: var(--accent); }
 .vc-rail-item .vc-badge { position: absolute; top: 3px; right: 7px; min-width: 16px; height: 16px; padding: 0 4px; margin: 0; border-radius: var(--radius-full); background: var(--danger-fill); font-size: var(--text-10); }
@@ -163,8 +166,12 @@ body.vc-page:has(.vc-app) { overflow: hidden; }
 .vc-top-center { display: flex; justify-content: center; }
 .vc-top-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
 .vc-actions { display: flex; align-items: center; gap: 8px; }
+.vc-publish-reason { max-width: 280px; font-size: var(--text-12); line-height: 1.3; color: var(--text-secondary); text-align: right; }
+.vc-publish-reason[hidden] { display: none; }
 .vc-top-icon { flex: 0 0 auto; width: 36px; height: 36px; border-radius: var(--radius-10); text-decoration: none; }
 .vc-top-icon:hover:not(:disabled), .vc-top-icon:focus-visible { border-color: var(--hairline); }
+/* F9: a top-bar action named in words (Discard draft). */
+.vc-top-labelled { width: auto; gap: 6px; padding: 0 10px; font-size: var(--text-13); font-weight: 600; white-space: nowrap; }
 /* M1: the one save state of the open record (Mr Spa): a dot and its words; shortened, never cut, on a narrow bar. */
 .vc-save-state { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; margin-right: 4px; color: var(--text-secondary); font-size: var(--text-13); white-space: nowrap; }
 .vc-state-dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: var(--radius-full); background: var(--dot-idle); }
@@ -201,6 +208,11 @@ body.vc-page:has(.vc-app) { overflow: hidden; }
 .vc-lead { color: var(--text-secondary); margin-top: 0; margin-bottom: 20px; }
 .vc-banner { padding: 12px 16px; margin-top: 0; margin-bottom: 16px; border-radius: var(--radius-12); background: var(--warning-bg); color: var(--warning); }
 .vc-banner p { margin: 0 0 8px; } .vc-banner p:last-child { margin: 0; }
+.vc-banner-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.vc-app-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 12px 24px 0; padding: 12px 16px; border-radius: var(--radius-12); background: var(--warning-bg); color: var(--warning); }
+.vc-app-notice[hidden] { display: none; }
+.vc-app-notice p { flex: 1 1 320px; margin: 0; }
+.vc-app-notice-actions { display: flex; gap: 8px; }
 .vc-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 950; display: flex; align-items: center; gap: 14px; max-width: min(560px, calc(100vw - 32px)); padding: 10px 10px 10px 16px; border-radius: var(--radius-12); background: var(--toast-bg); color: #fff; font-size: 14px; box-shadow: var(--shadow-toast); }
 .vc-toast-text { margin: 0; }
 .vc-toast-action { flex: 0 0 auto; height: var(--control-compact); padding: 0 12px; border: 0; border-radius: var(--radius-8); background: transparent; color: #7cb8f7; font: 600 14px/1 var(--font-ui); cursor: pointer; }
@@ -304,6 +316,8 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
 
 @media (max-width: 760px) {
   .vc-top { padding: 0 12px 0 16px; gap: 8px; }
+  .vc-publish-reason { max-width: 140px; font-size: var(--text-11); }
+  .vc-app-notice { margin: 8px 16px 0; }
   .vc-body { padding: 16px 16px 80px; }
   .vc-hours-times { grid-template-columns: 1fr 1fr; }
 }
@@ -1163,3 +1177,14 @@ a.vc-row-menu-item { display: flex; align-items: center; color: var(--text); tex
 /* ---------------------------------------------------------------- M14: the site's admin plugins (panels; a plugin that failed) */
 .vc-list-panels { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin: 0 0 16px; }
 .vc-plugin-problem { margin: 0; color: var(--danger); font-size: 13px; line-height: 1.5; }
+
+/* ---------- F8: Start */
+.vc-start { display: grid; gap: 28px; max-width: 960px; }
+.vc-start-jobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+.vc-start-job { position: relative; display: grid; gap: 4px; min-height: 72px; padding: 16px 40px 16px 18px; border: 1px solid var(--hairline); border-radius: var(--radius-14); background: var(--surface); color: var(--text); text-decoration: none; }
+.vc-start-job:hover, .vc-start-job:focus-visible { border-color: var(--accent); }
+.vc-start-job strong { font-size: var(--text-15); }
+.vc-start-job span { color: var(--text-secondary); font-size: var(--text-13); line-height: 1.4; }
+.vc-start-job .vc-icon { position: absolute; top: 50%; right: 14px; transform: translateY(-50%); color: var(--text-secondary); }
+.vc-start-more { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.vc-start-empty { margin: 0; padding: 20px 18px; border: 1px solid var(--hairline); border-radius: var(--radius-14); background: var(--surface); color: var(--text-secondary); font-size: var(--text-14); }

@@ -94,6 +94,13 @@ export type LinkField = Base & { type: "link" };
 /** M4: a phone number as people read it ("(215) 772-1111"), checked for `site.phone.country`. */
 export type PhoneField = Base & { type: "phone" };
 
+/**
+ * F8: a quick job on the Start screen, in the owner's words ("Change a price", "Order the products"). It opens one
+ * screen: `file` a page's editor, `collection` its list (with `new: true` a new record), `item` + `collection` one
+ * record, `href` any admin address ("/admin/media").
+ */
+export type StartJob = { label: string; help?: string; file?: string; collection?: string; item?: string; new?: boolean; href?: string };
+
 export type Field = TextField | RichTextField | ImageField | SelectField | HoursField | ObjectField | ListField | ReferenceField | TupleField | PickField | ToggleField | NumberField | LinkField | PhoneField;
 export type FieldType = Field["type"];
 export const FIELD_TYPES: readonly FieldType[] = ["text", "richText", "image", "select", "hours", "object", "list", "reference", "tuple", "pick", "toggle", "number", "link", "phone"];
@@ -297,6 +304,8 @@ export type CmsConfig = {
      * e.g. [{ path: "/booking/", label: "Booking" }].
      */
     pages?: ReadonlyArray<{ path: string; label: string }>;
+    /** F5: the admin's language — "en" (default) or "vi" (Vietnamese). Labels and help in cms.config are shown as written. */
+    locale?: "en" | "vi";
   };
   /** branch = the production branch the CMS commits to. */
   repo: { owner: string; name: string; branch: string };
@@ -329,8 +338,16 @@ export type CmsConfig = {
    * M6: publishing, as the admin tells it. `typicalMinutes` = how long the site's build usually takes ("5–10": the
    * status says "Publishing… this usually takes 5–10 minutes"; default "a few"); `buildCheck` = the name of the GitHub
    * check run that builds the site (e.g. "Workers Builds"): when it fails, the admin says so instead of waiting.
+   * F2: a publish not live after twice typicalMinutes (its upper end; else 20 minutes) is said on every screen. That
+   * needs no GitHub permission; buildCheck needs the token to read check runs (a fine-grained token cannot: it only
+   * says "late" then).
    */
   publish?: { typicalMinutes?: string; buildCheck?: string };
+  /**
+   * F8: the Start screen, the first screen after signing in (/admin): what is waiting for you (drafts), the jobs
+   * people do most (`quick`), and what was published lately. Without it /admin opens the first page, as before.
+   */
+  start?: { quick?: StartJob[] };
   media?: {
     dir?: string;
     /** P12h: the address uploads are served at until the site is built with them (default: dir without "public"). */

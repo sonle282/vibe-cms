@@ -568,19 +568,46 @@ test("P8 shell: someone published first → not published, the draft is named; a
   const h = await publishShell();
   try {
     await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Mine" }));
-    h.github.pushOther({ "src/data/site.json": h.github.files()["src/data/site.json"].replace("Sampletown", "Othertown") });
+    h.github.pushOther({ "src/data/site.json": h.github.files()["src/data/site.json"].replace(/"tagline": "[^"]*"/, '"tagline": "Theirs"') });
     await h.go("/admin/drafts/review");
     h.root.querySelector('[data-action="publish-now"]').click();
     await h.until(() => !h.root.querySelector(".vc-banner").hidden, "the refusal");
-    assert.match(h.root.querySelector(".vc-banner").textContent, /Not published: Salon info changed on the website after you started editing/);
+    assert.match(h.root.querySelector(".vc-banner").textContent, /Not published: Salon info \(Tagline\) changed on the website after you started editing\. Open it, choose which version to keep/);
     assert.ok(h.root.querySelector('[data-resource="file:site"]').classList.contains("vc-review-conflict"));
     // Once the site has rebuilt, the draft is known to be stale before trying.
     h.redeploy();
     await h.go("/admin/pages");
     await h.go("/admin/drafts/review");
     assert.equal(h.root.querySelector(".vc-pick").checked, false);
-    assert.match(h.root.querySelector(".vc-review-stale").textContent, /cannot be published as it is/);
+    assert.match(h.root.querySelector(".vc-review-stale").textContent, /^Tagline also changed on the website .* cannot be published as it is\. Open it and choose which version to keep\.$/);
     assert.equal(h.root.querySelector('[data-action="publish-now"]').disabled, true);
+  } finally { await h.close(); }
+});
+
+test("F3 shell: a draft someone else's publish only touched elsewhere is carried over; a real conflict offers Keep my version", async () => {
+  const h = await publishShell();
+  try {
+    await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Mine" }));
+    // Another field changed on the website: the draft is carried over, nothing to choose.
+    h.github.pushOther({ "src/data/site.json": h.github.files()["src/data/site.json"].replace("Sampletown", "Othertown") });
+    h.redeploy();
+    await h.go("/admin/pages/site");
+    assert.equal(h.root.querySelector(".vc-banner").hidden, true);
+    assert.equal(h.root.querySelector('[data-path="tagline"] input').value, "Mine");
+    // The same field: the banner names it and offers both ways.
+    h.github.pushOther({ "src/data/site.json": h.github.files()["src/data/site.json"].replace(/"tagline": "[^"]*"/, '"tagline": "Theirs"') });
+    h.redeploy();
+    await h.go("/admin/pages");
+    await h.go("/admin/pages/site");
+    const banner = h.root.querySelector(".vc-banner");
+    assert.equal(banner.hidden, false);
+    assert.match(banner.querySelector("p").textContent, /^Someone published a change to Tagline after you started this draft\. Keep your version/);
+    assert.deepEqual([...banner.querySelectorAll("button")].map((button) => button.textContent), ["Keep my version", "Start again from the website"]);
+    assert.equal(h.root.querySelector('[data-action="publish"]').disabled, true);
+    assert.equal(h.root.querySelector('[data-action="publish"]').dataset.tooltip, "Tagline changed on the website too. Choose which version to keep first.");
+    banner.querySelector('[data-action="keep-mine"]').click();
+    await h.until(() => h.root.querySelector(".vc-banner")?.hidden === true && !h.root.querySelector('[data-action="publish"]').disabled, "the draft carried over");
+    assert.equal(h.root.querySelector('[data-path="tagline"] input').value, "Mine");
   } finally { await h.close(); }
 });
 
@@ -598,7 +625,7 @@ test("P8 shell: a publish remembered from before a reload is watched; after the 
   } finally { await h.close(); }
 });
 
-test("P8 shell: nothing to publish; the editor's Review & publish needs a saved draft", async () => {
+test("P8 shell: nothing to publish; F4: Publish takes unsaved changes too", async () => {
   const h = await publishShell();
   try {
     await h.go("/admin/drafts/review");
@@ -608,10 +635,11 @@ test("P8 shell: nothing to publish; the editor's Review & publish needs a saved 
     // M1 (Mr Spa): Publish is always there; off, with the reason.
     assert.equal(review.hidden, false);
     assert.equal(review.disabled, true);
-    assert.equal(review.dataset.tooltip, "Save a draft before publishing.");
+    assert.equal(review.dataset.tooltip, "No changes to publish yet.");
+    assert.equal(h.root.querySelector('[data-role="publish-reason"]').hidden, true, "nothing changed: no words beside Publish");
     type(h.window, h.root.querySelector('[data-path="tagline"] input'), "Changed");
-    assert.equal(review.disabled, true, "unsaved changes: save first");
-    assert.equal(review.dataset.tooltip, "Save a draft first");
+    assert.equal(review.disabled, false, "F4: unsaved changes: Publish saves them first");
+    assert.equal(review.dataset.tooltip, "Saves your changes, then publishes them.");
     h.root.querySelector('[data-action="save"]').click();
     await h.until(() => !review.disabled, "the saved draft");
     assert.equal(review.dataset.tooltip, "Review changes before publishing.");
@@ -635,6 +663,40 @@ test("P8 shell: nothing to publish; the editor's Review & publish needs a saved 
     review.click();
     h.window.document.dispatchEvent(new h.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     assert.equal(dialog(), null);
+  } finally { await h.close(); }
+});
+
+test("F4 shell: Publish with unsaved changes reviews them, saves the draft and publishes in one go; Cancel saves nothing", async () => {
+  const h = await publishShell();
+  try {
+    await h.go("/admin/pages/site");
+    type(h.window, h.root.querySelector('[data-path="tagline"] input'), "One step");
+    const publish = h.root.querySelector('[data-action="publish"]');
+    publish.click();
+    await settle();
+    const dialog = () => h.window.document.querySelector(".vc-dialog");
+    assert.equal(dialog().querySelector(".vc-review-group li strong").textContent, "Changed: Tagline");
+    [...dialog().querySelectorAll("button")].find((button) => button.textContent === "Cancel").click();
+    await settle();
+    assert.equal(await h.drafts.get("usr_owner", "file:site"), undefined, "Cancel: nothing saved");
+    publish.click();
+    h.press("Continue to publish");
+    await h.until(() => /"tagline": "One step"/.test(h.github.files()["src/data/site.json"]), "the commit");
+    await h.until(() => h.state() === "Publishing… this usually takes a few minutes", "publishing");
+    assert.equal(h.root.querySelector('[data-role="publish-reason"]').hidden, true);
+  } finally { await h.close(); }
+});
+
+test("F4 shell: why Publish is off is said beside it, not only on hover", async () => {
+  const h = await publishShell();
+  try {
+    await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Mine" }));
+    h.github.pushOther({ "src/data/site.json": h.github.files()["src/data/site.json"].replace(/"tagline": "[^"]*"/, '"tagline": "Theirs"') });
+    h.redeploy();
+    await h.go("/admin/pages/site");
+    const why = h.root.querySelector('[data-role="publish-reason"]');
+    assert.equal(h.root.querySelector('[data-action="publish"]').disabled, true);
+    assert.deepEqual([why.hidden, why.textContent], [false, "Tagline changed on the website too. Choose which version to keep first."]);
   } finally { await h.close(); }
 });
 
@@ -664,6 +726,44 @@ test("M6 shell: Publish = Review changes → Publish {name}; Publishing… then 
     h.root.querySelector('[data-action="check-again"]').click();
     await h.until(() => h.state() === "No changes" || h.state() === "Live on demo.example", "live");
     assert.equal(h.storage.get("vibe-cms:publishing"), undefined, "the receipt goes once live");
+  } finally { await h.close(); }
+});
+
+test("F2 shell: a late publish is said on every screen, with Check again and Hide", async () => {
+  const storage = new Map([["vibe-cms:publishing", JSON.stringify({ expected: "sha256:" + "1".repeat(64), at: Date.now() - 60_000, userId: "usr_owner", labels: ["Salon info"], resources: ["file:site"] })]]);
+  const h = await publishShell({ storage, maxWaitMs: 1_000 });
+  try {
+    const notice = () => h.root.querySelector('[data-role="publish-notice"]');
+    await h.until(() => !notice().hidden, "the notice");
+    await h.go("/admin/pages");
+    assert.equal(notice().hidden, false, "on another screen too");
+    assert.match(notice().querySelector("p").textContent, /^“Salon info” is not on the website yet, 1m \d+s after Publish\. The build may be queued or may have failed\.$/);
+    assert.deepEqual([...notice().querySelectorAll("button")].map((button) => button.textContent), ["Check again", "Hide"]);
+    notice().querySelector('[data-action="notice-dismiss"]').click();
+    assert.equal(notice().hidden, true);
+    assert.equal(h.storage.get("vibe-cms:publishing"), undefined, "Hide forgets the publish");
+  } finally { await h.close(); }
+});
+
+test("F2 shell: a failed build is said on every screen; once fixed and live, Check again clears it and says it is live", async () => {
+  const cfg = { ...config, publish: { typicalMinutes: "2–5", buildCheck: "Workers Builds" } };
+  const h = await publishShell({ cfg });
+  try {
+    await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Will fail first" }));
+    await h.go("/admin/pages/site");
+    h.root.querySelector('[data-action="publish"]').click();
+    h.press("Continue to publish");
+    await h.until(() => /Will fail first/.test(h.github.files()["src/data/site.json"]), "the commit");
+    h.github.setCheckRuns(h.github.head(), [{ id: 1, name: "Workers Builds: demo", status: "completed", conclusion: "failure" }]);
+    const notice = () => h.root.querySelector('[data-role="publish-notice"]');
+    await h.until(() => !notice().hidden, "the notice");
+    await h.go("/admin/pages");
+    assert.match(notice().querySelector("p").textContent, /^“Salon info” did not reach the website: the website build failed \(commit [0-9a-f]{8}\)\. The website still shows the previous version\./);
+    h.github.setCheckRuns(h.github.head(), [{ id: 2, name: "Workers Builds: demo", status: "completed", conclusion: "success" }]);
+    h.redeploy();
+    notice().querySelector('[data-action="notice-check"]').click();
+    await h.until(() => notice().hidden, "cleared once live");
+    await h.until(() => h.root.querySelector(".vc-toast:not([hidden])")?.textContent.includes("Salon info is live on demo.example."), "the live toast");
   } finally { await h.close(); }
 });
 
@@ -1044,4 +1144,78 @@ test("P9 / M1 shell: the record's page is on the canvas (cmsPreview=1); Laptop /
   // A new record of a collection listed on one page: the list page (the record is shown there as it is typed).
   await go("/admin/catalog/services/new");
   assert.equal(pane().querySelector("iframe").getAttribute("src"), "/services/?cmsPreview=1");
+});
+
+test("F8 config: start.quick jobs are checked — one target each, and it must exist", async () => {
+  const { checkCmsConfig } = await import("../dist/index.js");
+  const errors = (start) => checkCmsConfig({ ...config, start }).errors.map((problem) => `${problem.path}: ${problem.message}`);
+  assert.deepEqual(errors({ quick: [{ label: "Change the tagline", file: "site" }, { label: "Add a service", collection: "services", new: true }, { label: "Photos", href: "/admin/media" }] }), []);
+  assert.deepEqual(errors({ quick: [{ label: "x", file: "nope" }] }), ['start.quick[0].file: is not a file of cms.config (got "nope")']);
+  assert.deepEqual(errors({ quick: [{ label: "x", file: "site", collection: "services" }] }), ["start.quick[0]: must open exactly one of file, collection or href"]);
+  assert.deepEqual(errors({ quick: [{ label: "", href: "https://evil.example" }] }), ["start.quick[0].label: is required: the job in the owner's words", 'start.quick[0].href: must be an admin address starting with "/admin"']);
+  assert.deepEqual(errors({ jobs: [] }), ["start.jobs: unknown setting"]);
+});
+
+test("F8 shell: /admin is the Start screen — quick jobs, my drafts waiting, Review & publish; without start it opens the first page", async () => {
+  const cfg = { ...config, start: { quick: [{ label: "Change the tagline", help: "The line under the salon name", file: "site" }, { label: "Add a service", collection: "services", new: true }] } };
+  const h = await publishShell({ cfg });
+  try {
+    await h.go("/admin");
+    assert.equal(h.window.location.pathname, "/admin");
+    assert.equal(h.root.querySelector("h1").textContent, "Hello, Owner");
+    assert.equal(h.root.querySelector('[data-rail="start"]').getAttribute("aria-current"), "page");
+    assert.deepEqual([...h.root.querySelectorAll(".vc-start-job")].map((job) => [job.querySelector("strong").textContent, job.getAttribute("href")]), [["Change the tagline", "/admin/pages/site"], ["Add a service", "/admin/catalog/services/new"]]);
+    assert.equal(h.root.querySelector(".vc-start-empty").textContent, "Nothing is waiting for you: everything you saved is on the website.");
+    await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Waiting" }));
+    await h.go("/admin/pages");
+    await h.go("/admin");
+    assert.equal(h.root.querySelector("#vc-start-waiting").textContent, "Waiting for you · 1 draft");
+    assert.equal(h.root.querySelector('.vc-start [data-resource="file:site"] .vc-draft-label').textContent, "Salon info");
+    assert.equal(h.root.querySelector('[data-action="start-review"]').textContent, "Review & publish it");
+  } finally { await h.close(); }
+  const plain = await publishShell();
+  try {
+    await plain.go("/admin");
+    assert.equal(plain.window.location.pathname, "/admin/pages/site");
+    assert.equal(plain.root.querySelector('[data-rail="start"]'), null);
+  } finally { await plain.close(); }
+});
+
+test("F5: the dictionary — exact words, patterns with their parts translated, spaces kept, unknown words left alone", async () => {
+  const { translate, vi } = await import("../dist/admin/index.js");
+  assert.equal(translate(vi, "Publish"), "Đăng lên web");
+  assert.equal(translate(vi, " Save draft "), " Lưu nháp ");
+  assert.equal(translate(vi, "3 unsaved changes"), "3 thay đổi chưa lưu");
+  assert.equal(translate(vi, "Publishing… this usually takes 2–5 minutes"), "Đang lên web… thường mất 2–5 phút");
+  assert.equal(translate(vi, "Waiting for you · 2 drafts"), "Đang chờ bạn · 2 bản nháp");
+  assert.equal(translate(vi, "New sản phẩm"), "Sản phẩm mới");
+  assert.equal(translate(vi, "Add điểm nổi bật"), "Thêm điểm nổi bật");
+  assert.equal(translate(vi, "New Arrival Chair"), "New Arrival Chair", "a Title Case name is content, not the UI's “New …”");
+  assert.equal(translate(vi, "Ghế T18"), "Ghế T18");
+  assert.equal(translate(vi, translate(vi, "Live on demo.example")), "Đã lên web demo.example", "translating twice changes nothing");
+});
+
+test("F5 shell: site.locale vi — the rail, the Start screen, the editor's buttons and the save state in Vietnamese; typed text and record names stay", async () => {
+  const cfg = { ...config, site: { ...config.site, locale: "vi" }, start: { quick: [{ label: "Đổi câu giới thiệu", file: "site" }] } };
+  const h = await publishShell({ cfg });
+  try {
+    await h.go("/admin");
+    const settled = async () => { await new Promise((resolve) => setTimeout(resolve, 0)); };
+    await settled();
+    assert.equal(h.window.document.documentElement.lang, "vi");
+    assert.deepEqual([...h.root.querySelectorAll(".vc-rail-label")].slice(0, 2).map((label) => label.textContent), ["Bắt đầu", "Trang"]);
+    assert.equal(h.root.querySelector("h1").textContent, "Chào Owner");
+    assert.equal(h.root.querySelector("#vc-start-quick").textContent, "Làm nhanh");
+    assert.equal(h.root.querySelector(".vc-start-empty").textContent, "Không có việc nào chờ bạn: mọi thứ bạn lưu đã lên web.");
+    await h.go("/admin/pages/site");
+    await settled();
+    assert.equal(h.root.querySelector('[data-action="save"]').textContent, "Lưu nháp");
+    assert.equal(h.root.querySelector('[data-action="publish"]').textContent, "Đăng lên web");
+    const input = h.root.querySelector('[data-path="tagline"] input');
+    type(h.window, input, "Save draft");
+    await settled();
+    assert.equal(input.value, "Save draft", "what people type is never translated");
+    assert.equal(h.state(), "1 thay đổi chưa lưu");
+    assert.equal(h.root.querySelector('[data-action="publish"]').dataset.tooltip, "Lưu phần đã sửa rồi đăng lên web.");
+  } finally { await h.close(); }
 });

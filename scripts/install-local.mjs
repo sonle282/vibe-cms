@@ -85,7 +85,7 @@ try {
 
   // README → step 4: setup (local: no account) — twice, the second changes nothing.
   const setup1 = ok(await vibe(["setup", "--site", "demo", "--local"], site), "vibe-cms setup");
-  assert.match(setup1, /wrangler\.jsonc: 5 changes[\s\S]*migrations applied \(local\): 0001_draft_index\.sql, .*0005_audit_log_auth\.sql/);
+  assert.match(setup1, /wrangler\.jsonc: 5 changes[\s\S]*migrations applied \(local\): 0001_draft_index\.sql, .*0006_draft_source\.sql/);
   const wrangler1 = readFileSync(join(site, "wrangler.jsonc"), "utf8");
   assert.match(wrangler1, /"migrations_dir": "node_modules\/@sonle282\/vibe-cms\/migrations"/, "migrations come from the installed package");
   const setup2 = ok(await vibe(["setup", "--site", "demo", "--local"], site), "vibe-cms setup (again)");

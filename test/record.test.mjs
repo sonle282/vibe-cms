@@ -83,10 +83,10 @@ test("M9 record editor (Mr Spa): sections on the left, cards, no ID / Status box
   // Clicking a to-do goes to its field.
   h.side().querySelector(".vc-publish-check").click();
   assert.equal(h.window.document.activeElement, h.root.querySelector('[data-path="name"] input'));
-  // Everything done but not saved: the reason Publish waits is said under the list.
+  // Everything done but not saved: Publish can go (it saves first).
   h.type("name", "Alex Again");
   assert.equal(h.side().querySelectorAll(".vc-record-side-card")[1].querySelector("h2").textContent, "Ready to publish");
-  assert.equal(h.side().querySelector(".vc-record-ready-list + .vc-record-side-note").textContent, "Save your changes before publishing.");
+  assert.equal(h.side().querySelector(".vc-record-ready-list + .vc-record-side-note").hidden, true, "F4: Publish saves them first: nothing to say");
   // Saved: a saved draft.
   [...h.root.querySelectorAll(".vc-actions button")].find((button) => button.textContent === "Save draft").click();
   await until(() => web.querySelector(".vc-record-side-note").textContent.startsWith("You have a saved draft"), "the saved draft");

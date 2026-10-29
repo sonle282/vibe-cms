@@ -7,12 +7,14 @@
  * bottom), the top bar (breadcrumb, Laptop / Tablet / Mobile, the one save state, View live / Version history /
  * Discard draft / Reload and keep my changes / Check again — folded into ⋯ on a narrow bar —, Save draft, Publish).
  */
-import type { DocumentLayout, Field } from "../config/index.js";
+import type { DocumentLayout, Field, StartJob } from "../config/index.js";
 import type { PickChoices } from "../check/picks.js";
 import { checkRecordValues } from "../check/values.js";
 import { createClient, humanMessage, xhrUpload, type ApiFail, type Client, type Fetch } from "./api.js";
 import type { AdminBoot, BootCollection, BootFile } from "./boot.js";
-import { clear, h, icon, uid } from "./dom.js";
+import { append, clear, h, icon, uid } from "./dom.js";
+import { watchLocale } from "./i18n.js";
+import { vi } from "./locale-vi.js";
 import { confirmDialog, openDialog, type ConfirmOptions } from "./dialog.js";
 import { createToast } from "./toast.js";
 import { installTooltips } from "./tooltip.js";
@@ -107,7 +109,7 @@ export const changeFields = (target: { kind: "file"; file: BootFile } | { kind: 
   return { [status.field]: { type: "select", label: "Status", options: [status.live, status.draft, ...(status.archived ? [status.archived] : [])] } as Field, ...fields };
 };
 
-type DraftRow = { resource: string; kind: "file" | "item"; key: string; id: string | null; label: string; group: string; updatedAt: string; revision: number; isNew: boolean; stale: boolean };
+type DraftRow = { resource: string; kind: "file" | "item"; key: string; id: string | null; label: string; group: string; updatedAt: string; revision: number; isNew: boolean; stale: boolean; conflicts?: string[] };
 type PublishResult = { commitSha: string | null; resources: string[]; files: string[]; expectedLiveVersion: string; warnings: Array<{ resource: string; code: string; fields?: string[] }>; attempts: number };
 /** M6: the publish receipt (localStorage, until the change is live): `commit` = the commit, for the build check. */
 type PendingPublish = { expected: string; at: number; userId: string; labels: string[]; resources?: string[]; commit?: string };
@@ -117,7 +119,7 @@ const PENDING_KEY = "vibe-cms:publishing";
 
 type Screen = { title: string; crumbs: Array<[string, string?]>; dirty?: () => number; save?: () => Promise<void>; leave?: () => void; refreshState?: () => void; resource?: string };
 
-type FileView = { resource: string; label: string; content: unknown; version: string; draft: null | { content: unknown; revision: number; sourceVersion: string; stale: boolean; updatedAt: string }; choices?: PickChoices };
+type FileView = { resource: string; label: string; content: unknown; version: string; draft: null | { content: unknown; revision: number; sourceVersion: string; stale: boolean; conflicts?: string[]; updatedAt: string }; choices?: PickChoices };
 /** P12g: pick values in plain words in the review ("packages/the-essential-reset" → "The Essential Reset"). */
 const choiceLabelsOf = (choices: PickChoices | undefined) => Object.fromEntries(Object.values(choices ?? {}).flat().map((choice) => [choice.value, choice.label]));
 type ListView = { key: string; label: string; itemLabel: string; items: Array<{ id: string; resource: string; label: string; version: string | null; hasDraft: boolean; isNew?: boolean; image?: string;
@@ -126,6 +128,12 @@ type ListView = { key: string; label: string; itemLabel: string; items: Array<{ 
 type ContentView = { files: Array<{ key: string; label: string; hasDraft: boolean; off?: boolean }>; collections: Array<{ key: string; label: string; itemLabel: string; count: number; drafts: number }> };
 
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
+/** F3: the fields a draft and the website both changed, in words ("Name, Price and 2 more"). */
+const fieldList = (labels: string[]) => {
+  const shown = labels.length > 4 ? labels.slice(0, 3) : labels;
+  const rest = labels.length - shown.length;
+  return rest ? `${shown.join(", ")} and ${rest} more` : shown.length > 1 ? `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}` : shown[0] ?? "";
+};
 
 export const startAdmin = (options: AdminOptions) => {
   const { root, boot } = options;
@@ -141,7 +149,10 @@ export const startAdmin = (options: AdminOptions) => {
   const askLeave = (count: number) => ask(leaveMessage(count), { cancel: "Keep editing", confirm: "Discard changes", danger: true });
   const now = options.now ?? (() => Date.now());
   const pollMs = options.pollMs ?? 10_000;
-  const maxWaitMs = options.maxWaitMs ?? 20 * 60_000;
+  // F2: "not on the website yet" after twice the usual build time (publish.typicalMinutes, its upper end; at least
+  // 5 minutes), else after 20 minutes.
+  const typicalUpper = Number((boot.publish?.typicalMinutes ?? "").split(/[^0-9.]+/).filter(Boolean).pop());
+  const maxWaitMs = options.maxWaitMs ?? (typicalUpper > 0 ? Math.max(5, 2 * typicalUpper) * 60_000 : 20 * 60_000);
   const storage = options.storage === undefined ? (() => { try { return win.localStorage; } catch { return null; } })() : options.storage;
   const { user } = boot;
   const media = boot.media ?? { uploads: false, base: "/assets/uploads", maxBytes: 10 * 1024 * 1024 };
@@ -193,6 +204,8 @@ export const startAdmin = (options: AdminOptions) => {
   const draftBadge = h(doc, "span", { class: "vc-badge", "aria-hidden": "true", hidden: true });
   const draftsItem = railItem("drafts", adminHref.drafts(), "Drafts", "inbox", draftBadge);
   const navItems = [
+    // F8: the Start screen, first on the rail when the site has one.
+    ...(boot.start ? [railItem("start", ADMIN_BASE, "Start", "home")] : []),
     railItem("pages", adminHref.pages(), "Pages", "file-text"),
     ...boot.collections.filter((collection) => !collection.under).map((collection) => railItem(`list:${collection.key}`, adminHref.list(collection.key), collection.label, collection.icon ?? "list")),
     railItem("media", adminHref.media(), "Media", "image"),
@@ -286,10 +299,14 @@ export const startAdmin = (options: AdminOptions) => {
   const body = h(doc, "div", { class: "vc-body" });
   const toasts = createToast(doc);
   const toast = toasts.element;
-  const main = h(doc, "main", { class: "vc-main", id: "vc-main" }, h(doc, "header", { class: "vc-top" }, crumbs, topCenter, h(doc, "div", { class: "vc-top-right" }, saveState, topMore, actions)), body);
+  // F2: a publish that has not reached the website is said on every screen, not only on the record that was published.
+  const publishNotice = h(doc, "div", { class: "vc-app-notice", role: "alert", "data-role": "publish-notice", hidden: true });
+  const main = h(doc, "main", { class: "vc-main", id: "vc-main" }, h(doc, "header", { class: "vc-top" }, crumbs, topCenter, h(doc, "div", { class: "vc-top-right" }, saveState, topMore, actions)), publishNotice, body);
   clear(root);
   root.append(h(doc, "div", { class: "vc-app" }, nav, main), toast);
   installTooltips(doc);
+  // F5: the admin in the site's language (site.locale).
+  if (boot.site.locale === "vi") { doc.documentElement.lang = "vi"; watchLocale(vi, doc, root); }
 
   const say = toasts.say;
   const leaveMessage = (count: number) => `Leave without saving?\n\nYou have ${count ? plural(count, "unsaved change") : "unsaved changes"}${current?.title ? ` on ${current.title}` : ""}. If you leave, they are lost.`;
@@ -333,6 +350,7 @@ export const startAdmin = (options: AdminOptions) => {
 
   /** The rail item of a screen (Mr Spa: a record opens under its collection; People and Activity under Users). */
   const railKeyOf = (target: AdminRoute) => {
+    if (target.kind === "home") return "start";
     if (target.kind === "pages" || target.kind === "file") return "pages";
     if (target.kind === "list" || target.kind === "new" || target.kind === "item") return `list:${collectionOf(target.key)?.under ?? target.key}`;
     if (target.kind === "drafts" || target.kind === "review") return "drafts";
@@ -385,8 +403,8 @@ export const startAdmin = (options: AdminOptions) => {
     const historyFor = target.kind === "history" ? target.resource : undefined;
     const historyOver = historyFor ? historyTarget(historyFor) : undefined;
     if (historyOver) { win.history.replaceState(null, "", historyOver.href); target = parseAdminPath(win.location.pathname); }
-    // Mr Spa: /admin opens the first page's editor.
-    if (target.kind === "home" || target.kind === "account") {
+    // Mr Spa: /admin opens the first page's editor — F8: or the Start screen, when the site has one.
+    if ((target.kind === "home" && !boot.start) || target.kind === "account") {
       win.history.replaceState(null, "", boot.files[0] ? adminHref.file(boot.files[0].key) : adminHref.pages());
       target = parseAdminPath(win.location.pathname);
     }
@@ -401,6 +419,8 @@ export const startAdmin = (options: AdminOptions) => {
     const leaving = currentPath;
     currentPath = path;
     if (leaving !== path && liveState?.state === "live") liveState = undefined;
+    // F2: moving to another screen checks a late publish again (no timer runs once it is late).
+    if (leaving !== path) recheckLate();
     const mine = (generation += 1);
     clear(actions);
     clear(topCenter);
@@ -411,7 +431,8 @@ export const startAdmin = (options: AdminOptions) => {
     body.append(h(doc, "p", { class: "vc-loading" }, "Loading…"));
     const stillHere = () => mine === generation;
     try {
-      if (target.kind === "pages") await overview(stillHere);
+      if (target.kind === "home") await startScreen(stillHere);
+      else if (target.kind === "pages") await overview(stillHere);
       else if (target.kind === "file") await editFile(target.key, stillHere);
       else if (target.kind === "list") await listCollection(target.key, stillHere);
       else if (target.kind === "new") await editItem(target.key, undefined, stillHere);
@@ -684,7 +705,7 @@ export const startAdmin = (options: AdminOptions) => {
     });
     const count = h(doc, "span", { class: "vc-list-count", role: "status", "aria-live": "polite" });
     const tbody = h(doc, "tbody");
-    const hasImage = Object.values(collection.fields).some((field) => field.type === "image");
+    const hasImage = Object.values(collection.fields).some((field) => field.type === "image" || (field.type === "list" && field.of.type === "image"));
     const headers = [collection.itemLabel, ...columns.map((column) => column.label ?? listFieldOf(collection, column.field)?.label ?? column.field), "Status"];
 
     const rowText = (item: ListView["items"][number]) => [item.label, item.id, detailOf(item), ...columns.map((column) => shown(column, item.values?.[column.field])), ...(list.search ?? []).map((name) => shown({ field: name }, item.values?.[name]))].join(" ").toLocaleLowerCase();
@@ -897,11 +918,13 @@ export const startAdmin = (options: AdminOptions) => {
     const banner = h(doc, "div", { class: "vc-banner", role: "alert", hidden: true });
     const showBanner = (text: string, ...extra: Node[]) => { clear(banner); banner.append(h(doc, "p", {}, text), ...extra); banner.hidden = false; };
     const title = heading("");
+    title.setAttribute("data-no-translate", ""); // F5: the record's own name
     // U2: one primary button per screen, like the Mr Spa CMS — Publish; Save draft is the plain button next to it.
     const save = h(doc, "button", { type: "button", class: "vc-button", "data-action": "save" }, "Save draft");
     const resourceOf = () => (input.kind === "file" ? `file:${input.file.key}` : `item:${input.collection.key}:${input.id ?? String(form.value()[input.collection.idField] ?? "")}`);
     // U3: Publish opens the review of this draft — what changes, then publish.
     const publish = h(doc, "button", { type: "button", class: "vc-button vc-primary", "data-action": "publish", onclick: () => publishHere() }, "Publish");
+    const publishReason = h(doc, "span", { class: "vc-publish-reason", "data-role": "publish-reason", role: "status", hidden: true });
     const live = view?.content ?? undefined;
     /** The record is on the website (a saved draft then says only its changes are not live yet). */
     const recordLive = Boolean(collection && !isNew && live !== undefined && live !== null);
@@ -919,7 +942,9 @@ export const startAdmin = (options: AdminOptions) => {
       const over = historyTarget(resource);
       if (over) openHistory(kit, resource, over, () => { void go(over.href, { force: true }); });
     }, "Version history") : null;
-    const discard = topIcon("discard", "Discard draft", "undo", () => { void discardHere(); });
+    // F9 (2026-10-29): Discard deletes work, so it says so in words, in the danger colour, with a bin — not an icon alone
+    // that looked like Undo. It still asks before deleting.
+    const discard = h(doc, "button", { type: "button", class: "vc-icon-button vc-top-icon vc-top-labelled vc-danger", "data-action": "discard", "aria-label": "Discard draft", onclick: () => { void discardHere(); } }, icon(doc, "trash"), h(doc, "span", {}, "Discard draft"));
     const reloadKeep = topIcon("reload-keep", "Reload and keep my changes", "rotate-ccw", () => { void reloadKeepingChanges(); });
     const checkAgain = topIcon("check-again", "Check again whether the publish is live", "refresh", () => { void checkLive(); }, "Check again");
 
@@ -930,6 +955,8 @@ export const startAdmin = (options: AdminOptions) => {
       return summarizeChanges({ fields: listedFields, before: live, after: saved, references: labels, choiceLabels: choiceLabelsOf(view?.choices), ...(collection && !live ? { newRecord: { itemLabel: collection.itemLabel, title: titleText() } } : {}) });
     };
     const stale = Boolean(view?.draft?.stale);
+    // F3: a stale draft that could not be carried over by itself: the fields both sides changed ([] = not known).
+    const conflicts = view?.draft?.conflicts ?? [];
     /** M9: redraws the record editor's right column (set once it exists). */
     let recordUpdate: ((count: number, blocked: string | null) => void) | undefined;
     const refresh = () => {
@@ -940,7 +967,8 @@ export const startAdmin = (options: AdminOptions) => {
       inspector?.setTitle(titleText());
       const liveNow = hasDraft ? undefined : publishedStateOf(resourceOf());
       const published = liveNow === "failed" ? undefined : liveNow;
-      const reason = stale ? "The website changed after this draft was started. Discard it and make your change again."
+      const reason = stale ? conflicts.length ? `${fieldList(conflicts)} changed on the website too. Choose which version to keep first.` : "The website changed after this draft was started. Discard it and make your change again."
+        : count && badLinks ? INVALID_LINK_REASON
         : publishBlockReason({ conflict, dirty: count > 0, hasDraft, invalid: Boolean(problem), changes: hasDraft && !count ? changesToPublish().length : 0 });
       const state = deriveSaveState({
         unsaved: count, hasDraft, canSave: !conflict && !saving && !discarding && !badLinks, publishBlockReason: reason, recordLive, host: siteHost(),
@@ -958,6 +986,10 @@ export const startAdmin = (options: AdminOptions) => {
       // Mr Spa: while saving, Publish reads "Saving…" too.
       publish.textContent = publishing ? "Publishing…" : saving ? "Saving…" : discarding ? "Discarding…" : "Publish";
       publish.dataset.tooltip = state.publishTooltip;
+      // F4: why Publish is off, in words next to it (a tooltip needs a mouse; the record editor says it in its side card).
+      const why = !recordSide && publish.disabled && state.kind !== "busy" && state.kind !== "published" && (count > 0 || hasDraft || stale) ? state.publishTooltip : "";
+      publishReason.textContent = why;
+      publishReason.hidden = !why;
       discard.hidden = !(hasDraft || count > 0) || saving || discarding;
       reloadKeep.hidden = !conflict;
       checkAgain.hidden = published !== "waiting" && liveNow !== "failed";
@@ -1296,8 +1328,9 @@ export const startAdmin = (options: AdminOptions) => {
     /** Mr Spa: "1 validation error" / "N validation errors". */
     const validationProblem = (count: number) => (count === 1 ? "1 validation error" : `${count} validation errors`);
 
-    const doSave = async () => {
-      if (saving || conflict || !dirty()) return;
+    /** Saves the draft; true when it is saved. `stay` (F4, Publish saving first): a new record keeps this screen. */
+    const doSave = async ({ stay = false } = {}): Promise<boolean> => {
+      if (saving || conflict || !dirty()) return false;
       banner.hidden = true;
       const problems = validate();
       if (problems.length) {
@@ -1305,7 +1338,7 @@ export const startAdmin = (options: AdminOptions) => {
         problem = validationProblem(problems.length);
         refresh();
         form.focus(problems[0].path.replace(/\[\d+\].*$/, "")) || form.focus(problems[0].path);
-        return;
+        return false;
       }
       form.clearErrors();
       problem = "";
@@ -1336,8 +1369,8 @@ export const startAdmin = (options: AdminOptions) => {
           showBanner(`Saved, with some HTML removed for safety: ${unsafe.map((entry) => `${where(entry.path)} — ${entry.removed.join(", ")}`).join("; ")}. Scripts, event handlers (onclick…), styles, frames and javascript: links are never kept.`);
         }
         void refreshDrafts();
-        if (isNew && collection) await go(adminHref.item(collection.key, id!), { replace: true, force: true });
-        return;
+        if (isNew && collection && !stay) await go(adminHref.item(collection.key, id!), { replace: true, force: true });
+        return true;
       }
       if (result.status === 401 || result.error === "password_change_required") { problem = result.message; showBanner(result.message, h(doc, "a", { href: ADMIN_BASE, class: "vc-button", target: "_self" }, "Sign in again")); }
       else if (result.error === "locked_field" && Array.isArray(result.data.fields)) { form.showErrors((result.data.fields as Array<{ path: string; message: string }>).map((entry) => ({ path: entry.path, message: entry.message }))); problem = result.message; }
@@ -1346,6 +1379,7 @@ export const startAdmin = (options: AdminOptions) => {
       else if (result.error === "draft_conflict") { conflict = true; problem = "This page was updated elsewhere. Reload to get the latest version — your unsaved changes will be kept to re-apply."; }
       else problem = result.message;
       refresh();
+      return false;
     };
 
     /** M1: reload this record and put my unsaved edits back on it (they show as unsaved changes again). */
@@ -1358,20 +1392,40 @@ export const startAdmin = (options: AdminOptions) => {
 
     // M6 (Mr Spa): "Review changes" (by section) → "Publish {name}" → publish; Publish reads "Publishing…" and the
     // outcome is the save state (no toast).
+    // F4: with unsaved changes, Publish reviews what is on screen, then saves it and publishes — one step.
     const publishHere = async () => {
-      if (publish.disabled || dirty() || publishing) return;
+      if (publish.disabled || publishing || saving) return;
       const name = titleText();
-      const changes = summarizeChanges({ fields: listedFields, before: live, after: saved, references: referenceLabels(), choiceLabels: choiceLabelsOf(view?.choices), full: true, ...(collection && !live ? { newRecord: { itemLabel: collection.itemLabel, title: name } } : {}) });
+      const unsaved = dirty() > 0;
+      const changes = summarizeChanges({ fields: listedFields, before: live, after: unsaved ? form.value() : saved, references: referenceLabels(), choiceLabels: choiceLabelsOf(view?.choices), full: true, ...(collection && !live ? { newRecord: { itemLabel: collection.itemLabel, title: name } } : {}) });
       if (!changes.length) { problem = "There are no changes to publish."; refresh(); return; }
       if (!(await confirmPublish(name, reviewGroups(changes, sectionList, name)))) return;
+      const created = isNew && collection ? adminHref.item(collection.key, String(form.value()[collection.idField])) : undefined;
+      if (unsaved && !(await doSave({ stay: true }))) return;
       publishing = true;
       problem = "";
       refresh();
       const result = await publishResource(resourceOf(), name);
       publishing = false;
-      if (!result.ok) { problem = publishProblem(result); refresh(); return; }
+      if (!result.ok) {
+        problem = publishProblem(result);
+        refresh();
+        return;
+      }
       hasDraft = false;
       forgetRecovery(storage, resourceOf());
+      await go(created ?? currentPath, { replace: true, force: true });
+    };
+
+    // F3 "Keep my version": the draft starts again from the website's version; in the fields both changed, mine wins.
+    const keepMineHere = async () => {
+      if (!input.url || saving) return;
+      saving = true;
+      refresh();
+      const result = await api.put<unknown>(input.url, { content: form.value(), expectedRevision: revision, keepMine: true });
+      saving = false;
+      if (!result.ok) { problem = result.message; refresh(); return; }
+      void refreshDrafts();
       await go(currentPath, { replace: true, force: true });
     };
 
@@ -1402,8 +1456,13 @@ export const startAdmin = (options: AdminOptions) => {
 
     save.addEventListener("click", () => { void doSave(); });
     setTopIcons([viewLive, historyLink, discard, reloadKeep, checkAgain]);
-    actions.append(save, publish);
-    if (stale) showBanner("The website changed after this draft was started (someone published). Publishing this draft is refused until you discard it and make your change again on the current content.");
+    actions.append(publishReason, save, publish);
+    if (stale && conflicts.length && input.url) {
+      showBanner(`Someone published a change to ${fieldList(conflicts)} after you started this draft. Keep your version (the website's other changes are kept as well), or start again from the website.`,
+        h(doc, "div", { class: "vc-banner-actions" },
+          h(doc, "button", { type: "button", class: "vc-button", "data-action": "keep-mine", onclick: () => { void keepMineHere(); } }, "Keep my version"),
+          h(doc, "button", { type: "button", class: "vc-button", "data-action": "start-again", onclick: () => { void discardHere(); } }, "Start again from the website")));
+    } else if (stale) showBanner("The website changed after this draft was started (someone published). Publishing this draft is refused until you discard it and make your change again on the current content.");
     const crumbsFor: Array<[string, string?]> = [...input.crumbs, [titleText() || "…"]];
     // M7 (Mr Spa): Search & sharing has its title in the top bar only.
     if (seoLayout) title.classList.add("vc-sr-only");
@@ -1421,7 +1480,7 @@ export const startAdmin = (options: AdminOptions) => {
       // U2: the device switch in the middle of the top bar.
       topCenter.append(preview.devices);
     }
-    show({ title: titleText(), crumbs: crumbsFor, dirty, save: doSave, refreshState: refresh, resource: resourceOf(), leave: () => { body.classList.remove("vc-body-seo"); body.classList.remove("vc-body-record"); body.classList.remove("vc-body-document"); body.removeEventListener("scroll", recordScroll); recovery?.stop(); if (flushRecovery === recovery?.flush) flushRecovery = undefined; if (dirty()) forgetRecovery(storage, resourceOf()); preview?.destroy(); inspector?.destroy(); body.classList.remove("vc-body-wide"); } }, split ? [split] : content);
+    show({ title: titleText(), crumbs: crumbsFor, dirty, save: async () => { await doSave(); }, refreshState: refresh, resource: resourceOf(), leave: () => { body.classList.remove("vc-body-seo"); body.classList.remove("vc-body-record"); body.classList.remove("vc-body-document"); body.removeEventListener("scroll", recordScroll); recovery?.stop(); if (flushRecovery === recovery?.flush) flushRecovery = undefined; if (dirty()) forgetRecovery(storage, resourceOf()); preview?.destroy(); inspector?.destroy(); body.classList.remove("vc-body-wide"); } }, split ? [split] : content);
     preview?.start();
     refresh();
     // M4: a Link field turning invalid / valid turns Save off / on.
@@ -1459,7 +1518,11 @@ export const startAdmin = (options: AdminOptions) => {
   /** U3: why the editor's Publish dialog could not publish, in plain words. */
   const publishProblem = (result: ApiFail) => {
     if (result.status === 401) return "You are signed out. Sign in again, then publish.";
-    if (result.error === "source_changed") return "Not published: the website changed after you started editing. Discard the draft and make your change again on the current content.";
+    if (result.error === "source_changed") {
+      const fields = Object.values((result.data.conflicts ?? {}) as Record<string, string[]>).flat();
+      return fields.length ? `Not published: ${fieldList(fields)} changed on the website after you started editing. Reload this page to choose which version to keep.`
+        : "Not published: the website changed after you started editing. Discard the draft and make your change again on the current content.";
+    }
     if (result.error === "locked_field") return "Not published: only an admin can change some of these fields.";
     if (result.error === "invalid_content") return `Not published: some fields need attention — ${(Array.isArray(result.data.errors) ? (result.data.errors as Array<{ message: string }>) : []).map((entry) => entry.message).join(" ") || result.message}`;
     return `Not published. ${result.message}`;
@@ -1581,7 +1644,7 @@ export const startAdmin = (options: AdminOptions) => {
         h(doc, "div", { class: "vc-drafts-what" },
           h(doc, "span", { class: "vc-draft-type" }, typeOf(row)),
           h(doc, "strong", { class: "vc-draft-label" }, row.label),
-          h(doc, "span", { class: "vc-draft-changes", ...(row.stale ? { "data-state": "conflict" } : {}) }, row.stale ? `${what} · The live version changed since; reload the draft before publishing.` : what),
+          h(doc, "span", { class: "vc-draft-changes", ...(row.stale ? { "data-state": "conflict" } : {}) }, row.stale ? row.conflicts?.length ? `${what} · ${fieldList(row.conflicts)} also changed on the website: open it to choose which to keep.` : `${what} · The live version changed since; reload the draft before publishing.` : what),
           h(doc, "span", { class: "vc-drafts-saved" }, `Saved ${new Date(row.updatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`)),
         h(doc, "div", { class: "vc-draft-actions" },
           h(doc, "span", { class: "vc-drafts-status" },
@@ -1606,6 +1669,51 @@ export const startAdmin = (options: AdminOptions) => {
         h(doc, "section", {}, h(doc, "h2", { class: "vc-drafts-heading" }, "Waiting to publish"), h(doc, "ul", { class: "vc-drafts-list" }, rows.length ? waiting : [empty]),
           h(doc, "p", { class: "vc-drafts-note" }, "Each person keeps their own drafts. Nothing here is on the website until it is published.")),
         recentRows.length ? h(doc, "section", {}, h(doc, "h2", { class: "vc-drafts-heading" }, "Recently published"), h(doc, "ul", { class: "vc-drafts-list" }, recentRows)) : null),
+    ]);
+  };
+
+  // ---------------------------------------------------------------- F8: Start
+
+  /** F8: where a quick job goes. */
+  const jobHref = (job: StartJob) => job.href ?? (job.file !== undefined ? adminHref.file(job.file)
+    : job.item !== undefined ? adminHref.item(job.collection!, job.item) : job.new ? adminHref.newItem(job.collection!) : adminHref.list(job.collection!));
+
+  /**
+   * F8: the first screen after signing in — what is waiting for this person (their drafts; a late or failed publish is
+   * the notice above every screen), the jobs people do most (start.quick), and what was published lately.
+   */
+  const startScreen = async (stillHere: () => boolean) => {
+    const crumbsFor: Array<[string, string?]> = [["Start"]];
+    const [listed, recent] = await Promise.all([refreshDrafts(), user.role === "owner" ? api.get<{ entries: PublishEntry[] }>("/api/cms/activity?kind=publish") : Promise.resolve(undefined)]);
+    if (!stillHere()) return;
+    if (!listed.ok) return failed(listed, crumbsFor);
+    const rows = listed.data.drafts;
+    const draftRows = rows.slice(0, 5).map((row) => h(doc, "li", { class: "vc-drafts-card", "data-resource": row.resource },
+      h(doc, "div", { class: "vc-drafts-what" },
+        h(doc, "strong", { class: "vc-draft-label" }, row.label),
+        h(doc, "span", { class: "vc-draft-changes", ...(row.stale ? { "data-state": "conflict" } : {}) }, row.stale
+          ? row.conflicts?.length ? `${fieldList(row.conflicts)} also changed on the website: open it to choose which to keep.` : "The website changed since this draft was started."
+          : `${row.isNew ? "Not on the website yet" : row.group} · saved ${timeOf(row.updatedAt)}`)),
+      h(doc, "div", { class: "vc-draft-actions" }, link(hrefOfDraft(row), "Open", { class: "vc-button" }))));
+    const waiting = rows.length
+      ? [h(doc, "ul", { class: "vc-drafts-list" }, draftRows),
+        h(doc, "div", { class: "vc-start-more" },
+          link(adminHref.review(), rows.length === 1 ? "Review & publish it" : `Review & publish all ${rows.length}`, { class: "vc-button vc-primary", "data-action": "start-review" }),
+          rows.length > draftRows.length ? link(adminHref.drafts(), `See all ${rows.length} drafts`, { class: "vc-button" }) : null)]
+      : [h(doc, "p", { class: "vc-start-empty" }, "Nothing is waiting for you: everything you saved is on the website.")];
+    const quick = boot.start?.quick ?? [];
+    const jobs = quick.map((job) => h(doc, "li", {}, h(doc, "a", { href: jobHref(job), class: "vc-start-job", "data-job": job.label },
+      h(doc, "strong", {}, job.label), job.help ? h(doc, "span", {}, job.help) : null, icon(doc, "chevron"))));
+    const published = recent?.ok ? recent.data.entries.filter((entry) => entry.action === "succeeded").slice(0, 5) : [];
+    const recentRows = published.map((entry) => h(doc, "li", { class: "vc-drafts-card" },
+      h(doc, "div", { class: "vc-drafts-what" }, h(doc, "strong", { class: "vc-draft-label" }, entry.what), h(doc, "span", { class: "vc-drafts-saved" }, `Published by ${entry.who ?? "someone"} · ${shortDate(entry.at)}`))));
+    show({ title: "Start", crumbs: crumbsFor }, [
+      heading(`Hello, ${user.displayName}`),
+      h(doc, "p", { class: "vc-lead" }, `What would you like to change on ${boot.site.name} today?`),
+      h(doc, "div", { class: "vc-start" },
+        jobs.length ? h(doc, "section", { class: "vc-start-section", "aria-labelledby": "vc-start-quick" }, h(doc, "h2", { class: "vc-drafts-heading", id: "vc-start-quick" }, "Quick jobs"), h(doc, "ul", { class: "vc-start-jobs" }, jobs)) : null,
+        h(doc, "section", { class: "vc-start-section", "aria-labelledby": "vc-start-waiting" }, h(doc, "h2", { class: "vc-drafts-heading", id: "vc-start-waiting" }, rows.length ? `Waiting for you · ${plural(rows.length, "draft")}` : "Waiting for you"), ...waiting),
+        recentRows.length ? h(doc, "section", { class: "vc-start-section", "aria-labelledby": "vc-start-recent" }, h(doc, "h2", { class: "vc-drafts-heading", id: "vc-start-recent" }, "Published lately"), h(doc, "ul", { class: "vc-drafts-list" }, recentRows)) : null),
     ]);
   };
 
@@ -1652,7 +1760,9 @@ export const startAdmin = (options: AdminOptions) => {
           h(doc, "label", { for: id, id: `${id}-title`, class: "vc-review-title" }, row.label, h(doc, "span", { class: "vc-review-group" }, ` · ${row.group}`)),
           h(doc, "span", { class: "vc-review-meta" }, `Saved ${timeOf(row.updatedAt)}`),
           link(hrefOfDraft(row), "Open", { class: "vc-review-open" })),
-        row.stale ? h(doc, "p", { class: "vc-review-stale" }, "The website changed after this draft was started, so it cannot be published as it is. Open it, discard the draft and make your change again.") : null,
+        row.stale ? h(doc, "p", { class: "vc-review-stale" }, row.conflicts?.length
+          ? `${fieldList(row.conflicts)} also changed on the website after this draft was started, so it cannot be published as it is. Open it and choose which version to keep.`
+          : "The website changed after this draft was started, so it cannot be published as it is. Open it, discard the draft and make your change again.") : null,
         !view.ok ? h(doc, "p", { class: "vc-error" }, view.message)
           : changes.length ? h(doc, "ul", { class: "vc-changes" }, changes.map(changeItem))
             : h(doc, "p", { class: "vc-note" }, "No differences from the website. Publishing it only clears the draft."));
@@ -1685,7 +1795,10 @@ export const startAdmin = (options: AdminOptions) => {
         if (result.error === "source_changed") {
           const changed = Array.isArray(result.data.resources) ? (result.data.resources as string[]) : [];
           for (const entry of boxes) if (changed.includes(entry.row.resource)) entry.card.classList.add("vc-review-conflict");
-          showBanner(`Not published: ${changed.map(labelOf).join(", ") || "some content"} changed on the website after you started editing. Open ${changed.length === 1 ? "it" : "each one"}, discard the draft and make your change again — or untick ${changed.length === 1 ? "it" : "them"} and publish the rest.`);
+          const fields = (result.data.conflicts ?? {}) as Record<string, string[]>;
+          const named = changed.map((resource) => (fields[resource]?.length ? `${labelOf(resource)} (${fieldList(fields[resource])})` : labelOf(resource)));
+          const known = changed.every((resource) => fields[resource]?.length);
+          showBanner(`Not published: ${named.join(", ") || "some content"} changed on the website after you started editing. Open ${changed.length === 1 ? "it" : "each one"}, ${known ? "choose which version to keep" : "discard the draft and make your change again"} — or untick ${changed.length === 1 ? "it" : "them"} and publish the rest.`);
           return;
         }
         if (result.error === "locked_field" && Array.isArray(result.data.fields)) { showBanner("Not published: only an admin can change some of these fields.", h(doc, "ul", {}, (result.data.fields as Array<{ message: string }>).map((entry) => h(doc, "li", {}, entry.message)))); return; }
@@ -1696,7 +1809,7 @@ export const startAdmin = (options: AdminOptions) => {
       const published = result.data;
       void refreshDrafts();
       const names = published.resources.map(labelOf);
-      if (published.commitSha) watchLive({ expected: published.expectedLiveVersion, at: now(), userId: user.id, labels: names, resources: published.resources });
+      if (published.commitSha) watchLive({ expected: published.expectedLiveVersion, at: now(), userId: user.id, labels: names, resources: published.resources, commit: published.commitSha });
       clear(actions);
       const warnings = published.warnings.filter((warning) => warning.code === "rewrote_whole_file");
       const sanitizedNotes = published.warnings.filter((warning) => warning.code === "sanitized");
@@ -1738,7 +1851,35 @@ export const startAdmin = (options: AdminOptions) => {
   // M6 (Mr Spa): the chip's tooltip counts the time since Publish, every second, while it builds.
   const startElapsed = () => { if (!elapsedTimer) elapsedTimer = setInterval(() => current?.refreshState?.(), 1000); };
   const stopElapsed = () => { if (elapsedTimer) clearInterval(elapsedTimer); elapsedTimer = undefined; };
+  /** F2: the app-wide notice for a publish that failed to build or is late; it goes once the change is live. */
+  const updateNotice = () => {
+    clear(publishNotice);
+    const state = liveState?.state;
+    if (!liveState || (state !== "failed" && state !== "waiting")) { publishNotice.hidden = true; return; }
+    const { pending } = liveState;
+    const what = pending.labels.length ? fieldList(pending.labels.map((label) => `“${label}”`)) : "Your change";
+    const text = state === "failed"
+      ? `${what} did not reach the website: the website build failed${pending.commit ? ` (commit ${pending.commit.slice(0, 8)})` : ""}. The website still shows the previous version. Publish again, or ask the person who looks after the website.`
+      : `${what} ${pending.labels.length > 1 ? "are" : "is"} not on the website yet, ${elapsedText(now() - pending.at)} after Publish${boot.publish?.typicalMinutes ? ` (it usually takes ${boot.publish.typicalMinutes} minutes)` : ""}. The build may be queued or may have failed.`;
+    const dismiss = () => { remember(null); stopElapsed(); liveState = undefined; updateNotice(); current?.refreshState?.(); };
+    append(publishNotice,
+      h(doc, "p", {}, text),
+      h(doc, "div", { class: "vc-app-notice-actions" },
+        h(doc, "button", { type: "button", class: "vc-button", "data-action": "notice-check", onclick: () => { void liveTick(0); } }, "Check again"),
+        h(doc, "button", { type: "button", class: "vc-button vc-quiet", "data-action": "notice-dismiss", onclick: dismiss }, "Hide")));
+    publishNotice.hidden = false;
+  };
+  let lastRecheck = 0;
+  const recheckLate = () => {
+    if ((liveState?.state !== "waiting" && liveState?.state !== "failed") || now() - lastRecheck < 30_000) return;
+    lastRecheck = now();
+    void liveTick(0);
+  };
   const liveChanged = () => {
+    const before = publishNotice.hidden;
+    updateNotice();
+    // It was late or failed, and is live now: say so once, on whatever screen is open.
+    if (!before && liveState?.state === "live") say(`${fieldList(liveState.pending.labels) || "Your change"} is live on ${siteHost()}.`, "success");
     const screen = current;
     if (liveState?.state === "live" && screen?.resource && liveState.resources.includes(screen.resource) && !screen.dirty?.()) { void go(currentPath, { replace: true, force: true }); return; }
     screen?.refreshState?.();
@@ -1772,9 +1913,12 @@ export const startAdmin = (options: AdminOptions) => {
     if (liveTimer) clearTimeout(liveTimer);
     remember(pending);
     liveState = { state: "publishing", resources: pending.resources ?? [], pending };
+    updateNotice();
     startElapsed();
     void liveTick(0);
   };
+  // F2: coming back to the tab checks a late publish again.
+  doc.addEventListener("visibilitychange", () => { if (doc.visibilityState === "visible") recheckLate(); });
   // A publish started before a reload (by this person) is still watched: the receipt stays until it is live.
   try {
     const saved = JSON.parse(storage?.getItem(PENDING_KEY) ?? "null") as PendingPublish | null;

@@ -51,7 +51,7 @@ test("end-to-end: draft → publish → fake GitHub (every check)", async () => 
   try {
     const checks = await runApiScenario(h);
     assert.deepEqual(checks.filter((check) => !check.ok), []);
-    assert.equal(checks.length, 50);
+    assert.equal(checks.length, 58);
   } finally { await h.close(); }
 });
 
@@ -135,11 +135,16 @@ test("P8: GET /drafts lists my drafts (label, group, new / stale) — someone el
       ["item:services:gel-off", "Gel Off", "Services", true, false],
     ]);
     assert.ok(!JSON.stringify(mine.body).includes("tagline"), "no content in the list");
-    // Someone publishes the salon info: my draft started from an older version → stale.
+    // Someone publishes another field of the salon info: my draft is carried over (F3), not stale.
     h.github.pushOther({ "src/data/site.json": h.github.files()["src/data/site.json"].replace("Demo Salon", "Demo Salon 2") });
     await h.redeploy();
     const after = await h.request("GET", "/api/cms/drafts", { user: "usr_a:owner" });
-    assert.equal(after.body.drafts.find((row) => row.resource === "file:site").stale, true);
+    assert.equal(after.body.drafts.find((row) => row.resource === "file:site").stale, false);
+    // …and the tagline too: both changed it → stale, naming it.
+    h.github.pushOther({ "src/data/site.json": h.github.files()["src/data/site.json"].replace(/"tagline": "[^"]*"/, '"tagline": "Theirs"') });
+    await h.redeploy();
+    const stale = (await h.request("GET", "/api/cms/drafts", { user: "usr_a:owner" })).body.drafts.find((row) => row.resource === "file:site");
+    assert.deepEqual([stale.stale, stale.conflicts], [true, ["Tagline"]]);
   } finally { await h.close(); }
 });
 
