@@ -198,31 +198,40 @@ const SUMMARY = "user_id, resource, kind, resource_key, item_id, label, source_v
 
 /** Drafts in D1 (table cms_draft_index, migrations 0001 + 0002 + 0006). Revision checks are single atomic statements. */
 export const createD1DraftStore = (db: D1Like, now: () => string = () => new Date().toISOString()): DraftStore => {
+  // F3: a site deployed before `vibe-cms migrate` ran 0006 has no source_content yet — drafts still work, without it.
+  let sourceColumn: Promise<boolean> | undefined;
+  const hasSource = () => (sourceColumn ??= db.prepare("SELECT source_content FROM cms_draft_index LIMIT 0").all().then(() => true, () => false));
   const current = async (userId: string, resource: string) => Number((await db.prepare("SELECT revision FROM cms_draft_index WHERE user_id = ? AND resource = ?").bind(userId, resource).first<{ revision: number }>())?.revision ?? 0);
   return {
     async get(userId, resource) {
-      const row = await db.prepare(`SELECT ${SUMMARY}, content, source_content FROM cms_draft_index WHERE user_id = ? AND resource = ?`).bind(userId, resource).first<Row>();
+      const row = await db.prepare(`SELECT ${SUMMARY}, content${(await hasSource()) ? ", source_content" : ""} FROM cms_draft_index WHERE user_id = ? AND resource = ?`).bind(userId, resource).first<Row>();
       if (!row) return undefined;
       const { kind: _kind, resourceKey: _key, itemId: _id, ...rest } = fromRow(row);
       return { ...rest, content: JSON.parse(row.content ?? "null") as unknown, ...sourceOf(row.source_content ?? null) };
     },
     async save(input) {
-      const { resource, content, source } = prepare(input);
+      const prepared = prepare(input);
+      const { resource, content } = prepared;
+      const withSource = await hasSource();
+      const source = withSource ? prepared.source : null;
+      const col = withSource ? ", source_content" : "";
+      const val = withSource ? ", ?" : "";
+      const set = withSource ? " source_content = excluded.source_content," : "";
       const at = now();
       const label = input.label ?? "";
       const itemId = resource.kind === "item" ? resource.id : null;
       let row: { revision: number; label: string } | null;
       if (input.expectedRevision === undefined) {
-        row = await db.prepare(`INSERT INTO cms_draft_index (${SUMMARY}, content, source_content) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
-          ON CONFLICT (user_id, resource) DO UPDATE SET content = excluded.content, source_version = excluded.source_version, source_content = excluded.source_content, updated_at = excluded.updated_at,
+        row = await db.prepare(`INSERT INTO cms_draft_index (${SUMMARY}, content${col}) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?${val})
+          ON CONFLICT (user_id, resource) DO UPDATE SET content = excluded.content, source_version = excluded.source_version,${set} updated_at = excluded.updated_at,
             label = CASE WHEN excluded.label = '' THEN cms_draft_index.label ELSE excluded.label END, revision = cms_draft_index.revision + 1
-          RETURNING revision, label`).bind(input.userId, input.resource, resource.kind, resource.key, itemId, label, input.sourceVersion, at, content, source).first();
+          RETURNING revision, label`).bind(...[input.userId, input.resource, resource.kind, resource.key, itemId, label, input.sourceVersion, at, content, ...(withSource ? [source] : [])]).first();
       } else if (input.expectedRevision === 0) {
-        row = await db.prepare(`INSERT INTO cms_draft_index (${SUMMARY}, content, source_content) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
-          ON CONFLICT (user_id, resource) DO NOTHING RETURNING revision, label`).bind(input.userId, input.resource, resource.kind, resource.key, itemId, label, input.sourceVersion, at, content, source).first();
+        row = await db.prepare(`INSERT INTO cms_draft_index (${SUMMARY}, content${col}) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?${val})
+          ON CONFLICT (user_id, resource) DO NOTHING RETURNING revision, label`).bind(...[input.userId, input.resource, resource.kind, resource.key, itemId, label, input.sourceVersion, at, content, ...(withSource ? [source] : [])]).first();
       } else {
-        row = await db.prepare(`UPDATE cms_draft_index SET content = ?, source_version = ?, source_content = ?, updated_at = ?, label = CASE WHEN ? = '' THEN label ELSE ? END, revision = revision + 1
-          WHERE user_id = ? AND resource = ? AND revision = ? RETURNING revision, label`).bind(content, input.sourceVersion, source, at, label, label, input.userId, input.resource, input.expectedRevision).first();
+        row = await db.prepare(`UPDATE cms_draft_index SET content = ?, source_version = ?,${withSource ? " source_content = ?," : ""} updated_at = ?, label = CASE WHEN ? = '' THEN label ELSE ? END, revision = revision + 1
+          WHERE user_id = ? AND resource = ? AND revision = ? RETURNING revision, label`).bind(...[content, input.sourceVersion, ...(withSource ? [source] : []), at, label, label, input.userId, input.resource, input.expectedRevision]).first();
       }
       if (!row) throw new DraftConflictError(await current(input.userId, input.resource), input.expectedRevision ?? 0);
       return { userId: input.userId, resource: input.resource, label: row.label, content: JSON.parse(content) as unknown, sourceVersion: input.sourceVersion, ...sourceOf(source), revision: Number(row.revision), updatedAt: at };

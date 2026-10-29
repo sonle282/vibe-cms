@@ -62,3 +62,23 @@ test("bundled source: markdown-dir records use the slug and keep body", async ()
   const items = await createContentReader(config, source).items("blog");
   assert.deepEqual(items.map((item) => [item.resource, item.data.body]), [["item:blog:hello", "Body\n"], ["item:blog:b", ""]]);
 });
+
+test("drafts on SQL (node:sqlite with the migrations): the whole scenario passes", async () => {
+  const { createD1DraftStore } = await import("../dist/index.js");
+  const { createSqliteD1 } = await import("./helpers/sqlite-d1.mjs");
+  const checks = await runStoreScenario({ drafts: createD1DraftStore(createSqliteD1()) });
+  assert.deepEqual(checks.filter((check) => !check.ok), []);
+});
+
+test("F3: a site whose D1 has not run 0006 yet still saves and reads drafts (without their starting content)", async () => {
+  const { createD1DraftStore } = await import("../dist/index.js");
+  const { createSqliteD1 } = await import("./helpers/sqlite-d1.mjs");
+  const drafts = createD1DraftStore(createSqliteD1({ upTo: "0005_audit_log_auth.sql" }));
+  const saved = await drafts.save({ userId: "usr_a", resource: "file:site", content: { a: 1 }, sourceVersion: "sha256:x", sourceContent: { a: 0 }, expectedRevision: 0 });
+  assert.equal(saved.revision, 1);
+  assert.equal("sourceContent" in saved, false);
+  const again = await drafts.save({ userId: "usr_a", resource: "file:site", content: { a: 2 }, sourceVersion: "sha256:x", sourceContent: { a: 0 }, expectedRevision: 1 });
+  assert.equal(again.revision, 2);
+  const read = await drafts.get("usr_a", "file:site");
+  assert.deepEqual([read.content, "sourceContent" in read], [{ a: 2 }, false]);
+});

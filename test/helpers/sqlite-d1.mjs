@@ -6,9 +6,10 @@ import { DatabaseSync } from "node:sqlite";
 
 const migrations = new URL("../../migrations/", import.meta.url);
 
-export const createSqliteD1 = () => {
+/** `upTo` = the last migration to apply (a site that has not run the newer ones yet). */
+export const createSqliteD1 = ({ upTo } = {}) => {
   const db = new DatabaseSync(":memory:");
-  for (const file of readdirSync(migrations).filter((name) => name.endsWith(".sql")).sort()) db.exec(readFileSync(new URL(file, migrations), "utf8"));
+  for (const file of readdirSync(migrations).filter((name) => name.endsWith(".sql") && (!upTo || name <= upTo)).sort()) db.exec(readFileSync(new URL(file, migrations), "utf8"));
   const norm = (value) => (value === undefined ? null : typeof value === "boolean" ? (value ? 1 : 0) : value);
   const statement = (sql, params = []) => ({
     bind: (...values) => statement(sql, values.map(norm)),
