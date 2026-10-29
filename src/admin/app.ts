@@ -13,6 +13,8 @@ import { checkRecordValues } from "../check/values.js";
 import { createClient, humanMessage, xhrUpload, type ApiFail, type Client, type Fetch } from "./api.js";
 import type { AdminBoot, BootCollection, BootFile } from "./boot.js";
 import { append, clear, h, icon, uid } from "./dom.js";
+import { watchLocale } from "./i18n.js";
+import { vi } from "./locale-vi.js";
 import { confirmDialog, openDialog, type ConfirmOptions } from "./dialog.js";
 import { createToast } from "./toast.js";
 import { installTooltips } from "./tooltip.js";
@@ -303,6 +305,8 @@ export const startAdmin = (options: AdminOptions) => {
   clear(root);
   root.append(h(doc, "div", { class: "vc-app" }, nav, main), toast);
   installTooltips(doc);
+  // F5: the admin in the site's language (site.locale).
+  if (boot.site.locale === "vi") { doc.documentElement.lang = "vi"; watchLocale(vi, doc, root); }
 
   const say = toasts.say;
   const leaveMessage = (count: number) => `Leave without saving?\n\nYou have ${count ? plural(count, "unsaved change") : "unsaved changes"}${current?.title ? ` on ${current.title}` : ""}. If you leave, they are lost.`;
@@ -914,6 +918,7 @@ export const startAdmin = (options: AdminOptions) => {
     const banner = h(doc, "div", { class: "vc-banner", role: "alert", hidden: true });
     const showBanner = (text: string, ...extra: Node[]) => { clear(banner); banner.append(h(doc, "p", {}, text), ...extra); banner.hidden = false; };
     const title = heading("");
+    title.setAttribute("data-no-translate", ""); // F5: the record's own name
     // U2: one primary button per screen, like the Mr Spa CMS — Publish; Save draft is the plain button next to it.
     const save = h(doc, "button", { type: "button", class: "vc-button", "data-action": "save" }, "Save draft");
     const resourceOf = () => (input.kind === "file" ? `file:${input.file.key}` : `item:${input.collection.key}:${input.id ?? String(form.value()[input.collection.idField] ?? "")}`);

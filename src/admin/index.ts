@@ -34,3 +34,6 @@ export { priceNote, priceShown, priceValue, sameAsNote } from "./blocks.js";
 // M16: for admin plugins — the Link field's words ("Opens: …") and phone numbers, as the standard boxes use them.
 export { formatPhone, linkOpensText, phoneHrefValue, phoneProblem } from "../check/link.js";
 export { defineAdminPlugin, type AdminPlugin, type ControlContext, type ListRow, type PanelContext, type PluginControl, type PluginPanel } from "./plugins.js";
+// F5: the admin in the site's language.
+export { localize, translate, watchLocale, type Dictionary } from "./i18n.js";
+export { vi } from "./locale-vi.js";

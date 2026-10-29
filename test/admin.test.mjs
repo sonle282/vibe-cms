@@ -1180,3 +1180,41 @@ test("F8 shell: /admin is the Start screen — quick jobs, my drafts waiting, Re
     assert.equal(plain.root.querySelector('[data-rail="start"]'), null);
   } finally { await plain.close(); }
 });
+
+test("F5: the dictionary — exact words, patterns with their parts translated, spaces kept, unknown words left alone", async () => {
+  const { translate, vi } = await import("../dist/admin/index.js");
+  assert.equal(translate(vi, "Publish"), "Đăng lên web");
+  assert.equal(translate(vi, " Save draft "), " Lưu nháp ");
+  assert.equal(translate(vi, "3 unsaved changes"), "3 thay đổi chưa lưu");
+  assert.equal(translate(vi, "Publishing… this usually takes 2–5 minutes"), "Đang lên web… thường mất 2–5 phút");
+  assert.equal(translate(vi, "Waiting for you · 2 drafts"), "Đang chờ bạn · 2 bản nháp");
+  assert.equal(translate(vi, "New product"), "product mới");
+  assert.equal(translate(vi, "New Arrival Chair"), "New Arrival Chair", "a Title Case name is content, not the UI's “New …”");
+  assert.equal(translate(vi, "Ghế T18"), "Ghế T18");
+  assert.equal(translate(vi, translate(vi, "Live on demo.example")), "Đã lên web demo.example", "translating twice changes nothing");
+});
+
+test("F5 shell: site.locale vi — the rail, the Start screen, the editor's buttons and the save state in Vietnamese; typed text and record names stay", async () => {
+  const cfg = { ...config, site: { ...config.site, locale: "vi" }, start: { quick: [{ label: "Đổi câu giới thiệu", file: "site" }] } };
+  const h = await publishShell({ cfg });
+  try {
+    await h.go("/admin");
+    const settled = async () => { await new Promise((resolve) => setTimeout(resolve, 0)); };
+    await settled();
+    assert.equal(h.window.document.documentElement.lang, "vi");
+    assert.deepEqual([...h.root.querySelectorAll(".vc-rail-label")].slice(0, 2).map((label) => label.textContent), ["Bắt đầu", "Trang"]);
+    assert.equal(h.root.querySelector("h1").textContent, "Chào Owner");
+    assert.equal(h.root.querySelector("#vc-start-quick").textContent, "Làm nhanh");
+    assert.equal(h.root.querySelector(".vc-start-empty").textContent, "Không có việc nào chờ bạn: mọi thứ bạn lưu đã lên web.");
+    await h.go("/admin/pages/site");
+    await settled();
+    assert.equal(h.root.querySelector('[data-action="save"]').textContent, "Lưu nháp");
+    assert.equal(h.root.querySelector('[data-action="publish"]').textContent, "Đăng lên web");
+    const input = h.root.querySelector('[data-path="tagline"] input');
+    type(h.window, input, "Save draft");
+    await settled();
+    assert.equal(input.value, "Save draft", "what people type is never translated");
+    assert.equal(h.state(), "1 thay đổi chưa lưu");
+    assert.equal(h.root.querySelector('[data-action="publish"]').dataset.tooltip, "Lưu phần đã sửa rồi đăng lên web.");
+  } finally { await h.close(); }
+});

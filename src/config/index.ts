@@ -304,6 +304,8 @@ export type CmsConfig = {
      * e.g. [{ path: "/booking/", label: "Booking" }].
      */
     pages?: ReadonlyArray<{ path: string; label: string }>;
+    /** F5: the admin's language — "en" (default) or "vi" (Vietnamese). Labels and help in cms.config are shown as written. */
+    locale?: "en" | "vi";
   };
   /** branch = the production branch the CMS commits to. */
   repo: { owner: string; name: string; branch: string };

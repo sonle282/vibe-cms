@@ -35,7 +35,7 @@ export type BootMedia = { uploads: boolean; base: string; maxBytes: number };
  * M4: `pages` = what a Link field's Page list offers ([path, name]): every file and collection with a fixed `preview`
  * (a collection's list page; also the admin-only ones — the pages are public), then site.pages; `phone` = site.phone.
  */
-export type BootSite = { name: string; url: string; pages: Array<[string, string]>; phone?: { country: string } };
+export type BootSite = { name: string; url: string; pages: Array<[string, string]>; phone?: { country: string }; locale?: "vi" };
 /** M6: how publishing is told ("this usually takes 5–10 minutes"). */
 export type BootPublish = { typicalMinutes?: string };
 /** F8: the Start screen's quick jobs (only those opening a screen this person can open). */
@@ -51,7 +51,7 @@ export const linkPages = (config: CmsConfig): Array<[string, string]> => {
 };
 
 export const adminBoot = (config: CmsConfig, user: BootUser, options: { uploads?: boolean } = {}): AdminBoot => ({
-  site: { name: config.site.name, url: config.site.url, pages: linkPages(config), ...(config.site.phone ? { phone: { country: config.site.phone.country } } : {}) },
+  site: { name: config.site.name, url: config.site.url, pages: linkPages(config), ...(config.site.phone ? { phone: { country: config.site.phone.country } } : {}), ...(config.site.locale === "vi" ? { locale: "vi" as const } : {}) },
   user,
   ...(config.publish?.typicalMinutes ? { publish: { typicalMinutes: config.publish.typicalMinutes } } : {}),
   ...(config.start ? { start: { quick: (config.start.quick ?? []).filter((job) => {

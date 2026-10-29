@@ -295,7 +295,8 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
     if (site.timezone !== undefined) {
       try { new Intl.DateTimeFormat("en", { timeZone: String(site.timezone) }); } catch { err(context, "site.timezone", `unknown time zone ${show(site.timezone)}`, 'use an IANA name, e.g. "America/New_York"'); }
     }
-    for (const key of Object.keys(site)) if (!["name", "url", "timezone", "phone", "pages"].includes(key)) err(context, `site.${key}`, "unknown setting", "allowed: name, url, timezone, phone, pages");
+    for (const key of Object.keys(site)) if (!["name", "url", "timezone", "phone", "pages", "locale"].includes(key)) err(context, `site.${key}`, "unknown setting", "allowed: name, url, timezone, phone, pages, locale");
+    if (site.locale !== undefined && site.locale !== "en" && site.locale !== "vi") err(context, "site.locale", `must be "en" or "vi" (got ${show(site.locale)})`, 'e.g. locale: "vi"');
     // M4: phone numbers follow the site's country; Link fields may also open site.pages.
     if (site.phone !== undefined) {
       if (!isRecord(site.phone) || typeof site.phone.country !== "string" || !/^[A-Z]{2}$/.test(site.phone.country)) err(context, "site.phone", `must be { country: "<2-letter code>" } (got ${show(site.phone)})`, 'e.g. phone: { country: "US" }');
