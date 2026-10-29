@@ -5,7 +5,10 @@
  * [data-no-translate]). A string the dictionary does not know stays in English.
  */
 
-/** Exact strings, then patterns tried in order (anchored; `$1`… are the captured parts, themselves translated). */
+/**
+ * Exact strings, then patterns tried in order (anchored; `$1`… are the captured parts, themselves translated; `$^1`
+ * the same with its first letter in capitals).
+ */
 export type Dictionary = { exact: Record<string, string>; patterns: Array<[RegExp, string]> };
 
 const ATTRIBUTES = ["aria-label", "data-tooltip", "placeholder", "title"];
@@ -27,7 +30,10 @@ export const translate = (dictionary: Dictionary, text: string, depth = 0): stri
     for (const [pattern, replacement] of dictionary.patterns) {
       const match = pattern.exec(core);
       if (!match) continue;
-      const out = replacement.replace(/\$(\d)/g, (_, index: string) => translate(dictionary, match[Number(index)] ?? "", depth + 1));
+      const out = replacement.replace(/\$(\^?)(\d)/g, (_, upper: string, index: string) => {
+        const part = translate(dictionary, match[Number(index)] ?? "", depth + 1);
+        return upper ? part.charAt(0).toLocaleUpperCase("vi") + part.slice(1) : part;
+      });
       return lead + out + tail;
     }
   }

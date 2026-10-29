@@ -1188,7 +1188,8 @@ test("F5: the dictionary — exact words, patterns with their parts translated, 
   assert.equal(translate(vi, "3 unsaved changes"), "3 thay đổi chưa lưu");
   assert.equal(translate(vi, "Publishing… this usually takes 2–5 minutes"), "Đang lên web… thường mất 2–5 phút");
   assert.equal(translate(vi, "Waiting for you · 2 drafts"), "Đang chờ bạn · 2 bản nháp");
-  assert.equal(translate(vi, "New product"), "product mới");
+  assert.equal(translate(vi, "New sản phẩm"), "Sản phẩm mới");
+  assert.equal(translate(vi, "Add điểm nổi bật"), "Thêm điểm nổi bật");
   assert.equal(translate(vi, "New Arrival Chair"), "New Arrival Chair", "a Title Case name is content, not the UI's “New …”");
   assert.equal(translate(vi, "Ghế T18"), "Ghế T18");
   assert.equal(translate(vi, translate(vi, "Live on demo.example")), "Đã lên web demo.example", "translating twice changes nothing");
