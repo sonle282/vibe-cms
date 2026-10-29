@@ -3,10 +3,13 @@
 #   "@sonle282/vibe-cms": "https://github.com/sonle282/vibe-cms/releases/download/vX.Y.Z/vibe-cms-X.Y.Z.tgz"
 # Nothing goes to npm or GitHub Packages. A tag is only pushed after the reviewer approves the release, on the merge of
 # the release PR — whose CI already ran every check (npm run check) on that code; here: build + the tarball check only.
+# Or run it by hand on main (Actions › release › Run workflow, or the API): it creates the tag v<package.json version> on
+# that commit itself — for a session or person who may push branches but not tags.
 name: release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 permissions:
   contents: write
 concurrency:
@@ -25,8 +28,16 @@ jobs:
       - name: Tag matches package.json
         run: |
           version=$(node -p "require('./package.json').version")
-          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${version}"; exit 1; fi
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            if [ "${GITHUB_REF}" != "refs/heads/main" ]; then echo "::error::run it on main (got ${GITHUB_REF})"; exit 1; fi
+            tag="v${version}"
+            if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null; then echo "::error::${tag} already exists: bump package.json first"; exit 1; fi
+          else
+            tag="${GITHUB_REF_NAME}"
+            if [ "${tag}" != "v${version}" ]; then echo "::error::tag ${tag} does not match package.json version ${version}"; exit 1; fi
+          fi
           echo "VERSION=${version}" >> "$GITHUB_ENV"
+          echo "TAG=${tag}" >> "$GITHUB_ENV"
       - name: CHANGELOG has this version
         run: |
           awk -v v="${VERSION}" '$0 ~ "^## " v " " {found=1; next} /^## / {if (found) exit} found' docs/CHANGELOG.md > release-notes.md
@@ -45,10 +56,13 @@ jobs:
             echo "Install (pinned, no token):"
             echo
             echo '```bash'
-            echo "npm i https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/vibe-cms-${VERSION}.tgz"
+            echo "npm i https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/vibe-cms-${VERSION}.tgz"
             echo '```'
           } >> release-notes.md
       - name: GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" "vibe-cms-${VERSION}.tgz" "vibe-cms-${VERSION}.tgz.sha256" --verify-tag --title "${GITHUB_REF_NAME}" --notes-file release-notes.md
+        # A run by hand creates the tag on this commit; a pushed tag must already be there.
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then where=(--target "${GITHUB_SHA}"); else where=(--verify-tag); fi
+          gh release create "${TAG}" "vibe-cms-${VERSION}.tgz" "vibe-cms-${VERSION}.tgz.sha256" "${where[@]}" --title "${TAG}" --notes-file release-notes.md
