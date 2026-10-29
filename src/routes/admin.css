@@ -138,6 +138,9 @@ body.vc-page:has(.vc-app) { overflow: hidden; }
 .vc-rail-item { position: relative; display: grid; place-items: center; align-content: center; gap: 3px; width: 52px; min-height: 52px; margin: 0 auto; padding: 0 2px; border-radius: var(--radius-12); color: var(--text-secondary); text-decoration: none; transition: background-color var(--motion-hover), color var(--motion-hover); }
 .vc-rail-item .vc-icon { width: 20px; height: 20px; }
 .vc-rail-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-11); font-weight: 500; line-height: 1.2; }
+/* F5: a longer word (Vietnamese "Bản nháp", "Người dùng") goes on two lines instead of being cut. */
+:lang(vi) .vc-rail-label { overflow: visible; white-space: normal; text-align: center; overflow-wrap: normal; }
+:lang(vi) .vc-rail-item { padding: 4px 0; }
 .vc-rail-item:hover { background: var(--surface-hover); color: var(--text); }
 .vc-rail-item[aria-current="page"] { background: var(--accent-rail); color: var(--accent); }
 .vc-rail-item .vc-badge { position: absolute; top: 3px; right: 7px; min-width: 16px; height: 16px; padding: 0 4px; margin: 0; border-radius: var(--radius-full); background: var(--danger-fill); font-size: var(--text-10); }
