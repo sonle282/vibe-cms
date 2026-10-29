@@ -12,7 +12,7 @@ import type { PickChoices } from "../check/picks.js";
 import { checkRecordValues } from "../check/values.js";
 import { createClient, humanMessage, xhrUpload, type ApiFail, type Client, type Fetch } from "./api.js";
 import type { AdminBoot, BootCollection, BootFile } from "./boot.js";
-import { clear, h, icon, uid } from "./dom.js";
+import { append, clear, h, icon, uid } from "./dom.js";
 import { confirmDialog, openDialog, type ConfirmOptions } from "./dialog.js";
 import { createToast } from "./toast.js";
 import { installTooltips } from "./tooltip.js";
@@ -147,7 +147,10 @@ export const startAdmin = (options: AdminOptions) => {
   const askLeave = (count: number) => ask(leaveMessage(count), { cancel: "Keep editing", confirm: "Discard changes", danger: true });
   const now = options.now ?? (() => Date.now());
   const pollMs = options.pollMs ?? 10_000;
-  const maxWaitMs = options.maxWaitMs ?? 20 * 60_000;
+  // F2: "not on the website yet" after twice the usual build time (publish.typicalMinutes, its upper end; at least
+  // 5 minutes), else after 20 minutes.
+  const typicalUpper = Number((boot.publish?.typicalMinutes ?? "").split(/[^0-9.]+/).filter(Boolean).pop());
+  const maxWaitMs = options.maxWaitMs ?? (typicalUpper > 0 ? Math.max(5, 2 * typicalUpper) * 60_000 : 20 * 60_000);
   const storage = options.storage === undefined ? (() => { try { return win.localStorage; } catch { return null; } })() : options.storage;
   const { user } = boot;
   const media = boot.media ?? { uploads: false, base: "/assets/uploads", maxBytes: 10 * 1024 * 1024 };
@@ -292,7 +295,9 @@ export const startAdmin = (options: AdminOptions) => {
   const body = h(doc, "div", { class: "vc-body" });
   const toasts = createToast(doc);
   const toast = toasts.element;
-  const main = h(doc, "main", { class: "vc-main", id: "vc-main" }, h(doc, "header", { class: "vc-top" }, crumbs, topCenter, h(doc, "div", { class: "vc-top-right" }, saveState, topMore, actions)), body);
+  // F2: a publish that has not reached the website is said on every screen, not only on the record that was published.
+  const publishNotice = h(doc, "div", { class: "vc-app-notice", role: "alert", "data-role": "publish-notice", hidden: true });
+  const main = h(doc, "main", { class: "vc-main", id: "vc-main" }, h(doc, "header", { class: "vc-top" }, crumbs, topCenter, h(doc, "div", { class: "vc-top-right" }, saveState, topMore, actions)), publishNotice, body);
   clear(root);
   root.append(h(doc, "div", { class: "vc-app" }, nav, main), toast);
   installTooltips(doc);
@@ -407,6 +412,8 @@ export const startAdmin = (options: AdminOptions) => {
     const leaving = currentPath;
     currentPath = path;
     if (leaving !== path && liveState?.state === "live") liveState = undefined;
+    // F2: moving to another screen checks a late publish again (no timer runs once it is late).
+    if (leaving !== path) recheckLate();
     const mine = (generation += 1);
     clear(actions);
     clear(topCenter);
@@ -1748,7 +1755,7 @@ export const startAdmin = (options: AdminOptions) => {
       const published = result.data;
       void refreshDrafts();
       const names = published.resources.map(labelOf);
-      if (published.commitSha) watchLive({ expected: published.expectedLiveVersion, at: now(), userId: user.id, labels: names, resources: published.resources });
+      if (published.commitSha) watchLive({ expected: published.expectedLiveVersion, at: now(), userId: user.id, labels: names, resources: published.resources, commit: published.commitSha });
       clear(actions);
       const warnings = published.warnings.filter((warning) => warning.code === "rewrote_whole_file");
       const sanitizedNotes = published.warnings.filter((warning) => warning.code === "sanitized");
@@ -1790,7 +1797,35 @@ export const startAdmin = (options: AdminOptions) => {
   // M6 (Mr Spa): the chip's tooltip counts the time since Publish, every second, while it builds.
   const startElapsed = () => { if (!elapsedTimer) elapsedTimer = setInterval(() => current?.refreshState?.(), 1000); };
   const stopElapsed = () => { if (elapsedTimer) clearInterval(elapsedTimer); elapsedTimer = undefined; };
+  /** F2: the app-wide notice for a publish that failed to build or is late; it goes once the change is live. */
+  const updateNotice = () => {
+    clear(publishNotice);
+    const state = liveState?.state;
+    if (!liveState || (state !== "failed" && state !== "waiting")) { publishNotice.hidden = true; return; }
+    const { pending } = liveState;
+    const what = pending.labels.length ? fieldList(pending.labels.map((label) => `“${label}”`)) : "Your change";
+    const text = state === "failed"
+      ? `${what} did not reach the website: the website build failed${pending.commit ? ` (commit ${pending.commit.slice(0, 8)})` : ""}. The website still shows the previous version. Publish again, or ask the person who looks after the website.`
+      : `${what} ${pending.labels.length > 1 ? "are" : "is"} not on the website yet, ${elapsedText(now() - pending.at)} after Publish${boot.publish?.typicalMinutes ? ` (it usually takes ${boot.publish.typicalMinutes} minutes)` : ""}. The build may be queued or may have failed.`;
+    const dismiss = () => { remember(null); stopElapsed(); liveState = undefined; updateNotice(); current?.refreshState?.(); };
+    append(publishNotice,
+      h(doc, "p", {}, text),
+      h(doc, "div", { class: "vc-app-notice-actions" },
+        h(doc, "button", { type: "button", class: "vc-button", "data-action": "notice-check", onclick: () => { void liveTick(0); } }, "Check again"),
+        h(doc, "button", { type: "button", class: "vc-button vc-quiet", "data-action": "notice-dismiss", onclick: dismiss }, "Hide")));
+    publishNotice.hidden = false;
+  };
+  let lastRecheck = 0;
+  const recheckLate = () => {
+    if ((liveState?.state !== "waiting" && liveState?.state !== "failed") || now() - lastRecheck < 30_000) return;
+    lastRecheck = now();
+    void liveTick(0);
+  };
   const liveChanged = () => {
+    const before = publishNotice.hidden;
+    updateNotice();
+    // It was late or failed, and is live now: say so once, on whatever screen is open.
+    if (!before && liveState?.state === "live") say(`${fieldList(liveState.pending.labels) || "Your change"} is live on ${siteHost()}.`, "success");
     const screen = current;
     if (liveState?.state === "live" && screen?.resource && liveState.resources.includes(screen.resource) && !screen.dirty?.()) { void go(currentPath, { replace: true, force: true }); return; }
     screen?.refreshState?.();
@@ -1824,9 +1859,12 @@ export const startAdmin = (options: AdminOptions) => {
     if (liveTimer) clearTimeout(liveTimer);
     remember(pending);
     liveState = { state: "publishing", resources: pending.resources ?? [], pending };
+    updateNotice();
     startElapsed();
     void liveTick(0);
   };
+  // F2: coming back to the tab checks a late publish again.
+  doc.addEventListener("visibilitychange", () => { if (doc.visibilityState === "visible") recheckLate(); });
   // A publish started before a reload (by this person) is still watched: the receipt stays until it is live.
   try {
     const saved = JSON.parse(storage?.getItem(PENDING_KEY) ?? "null") as PendingPublish | null;

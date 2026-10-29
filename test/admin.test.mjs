@@ -729,6 +729,44 @@ test("M6 shell: Publish = Review changes → Publish {name}; Publishing… then 
   } finally { await h.close(); }
 });
 
+test("F2 shell: a late publish is said on every screen, with Check again and Hide", async () => {
+  const storage = new Map([["vibe-cms:publishing", JSON.stringify({ expected: "sha256:" + "1".repeat(64), at: Date.now() - 60_000, userId: "usr_owner", labels: ["Salon info"], resources: ["file:site"] })]]);
+  const h = await publishShell({ storage, maxWaitMs: 1_000 });
+  try {
+    const notice = () => h.root.querySelector('[data-role="publish-notice"]');
+    await h.until(() => !notice().hidden, "the notice");
+    await h.go("/admin/pages");
+    assert.equal(notice().hidden, false, "on another screen too");
+    assert.match(notice().querySelector("p").textContent, /^“Salon info” is not on the website yet, 1m \d+s after Publish\. The build may be queued or may have failed\.$/);
+    assert.deepEqual([...notice().querySelectorAll("button")].map((button) => button.textContent), ["Check again", "Hide"]);
+    notice().querySelector('[data-action="notice-dismiss"]').click();
+    assert.equal(notice().hidden, true);
+    assert.equal(h.storage.get("vibe-cms:publishing"), undefined, "Hide forgets the publish");
+  } finally { await h.close(); }
+});
+
+test("F2 shell: a failed build is said on every screen; once fixed and live, Check again clears it and says it is live", async () => {
+  const cfg = { ...config, publish: { typicalMinutes: "2–5", buildCheck: "Workers Builds" } };
+  const h = await publishShell({ cfg });
+  try {
+    await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Will fail first" }));
+    await h.go("/admin/pages/site");
+    h.root.querySelector('[data-action="publish"]').click();
+    h.press("Continue to publish");
+    await h.until(() => /Will fail first/.test(h.github.files()["src/data/site.json"]), "the commit");
+    h.github.setCheckRuns(h.github.head(), [{ id: 1, name: "Workers Builds: demo", status: "completed", conclusion: "failure" }]);
+    const notice = () => h.root.querySelector('[data-role="publish-notice"]');
+    await h.until(() => !notice().hidden, "the notice");
+    await h.go("/admin/pages");
+    assert.match(notice().querySelector("p").textContent, /^“Salon info” did not reach the website: the website build failed \(commit [0-9a-f]{8}\)\. The website still shows the previous version\./);
+    h.github.setCheckRuns(h.github.head(), [{ id: 2, name: "Workers Builds: demo", status: "completed", conclusion: "success" }]);
+    h.redeploy();
+    notice().querySelector('[data-action="notice-check"]').click();
+    await h.until(() => notice().hidden, "cleared once live");
+    await h.until(() => h.root.querySelector(".vc-toast:not([hidden])")?.textContent.includes("Salon info is live on demo.example."), "the live toast");
+  } finally { await h.close(); }
+});
+
 test("M6: live checks at 0, 10, 20, 30, 45 s, then every 60 s, for at most 20 minutes", async () => {
   const { LIVE_CHECK_STEPS } = await import("../dist/admin/app.js");
   assert.deepEqual(LIVE_CHECK_STEPS, [10_000, 20_000, 30_000, 45_000, 60_000]);

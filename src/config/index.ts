@@ -329,6 +329,9 @@ export type CmsConfig = {
    * M6: publishing, as the admin tells it. `typicalMinutes` = how long the site's build usually takes ("5–10": the
    * status says "Publishing… this usually takes 5–10 minutes"; default "a few"); `buildCheck` = the name of the GitHub
    * check run that builds the site (e.g. "Workers Builds"): when it fails, the admin says so instead of waiting.
+   * F2: a publish not live after twice typicalMinutes (its upper end; else 20 minutes) is said on every screen. That
+   * needs no GitHub permission; buildCheck needs the token to read check runs (a fine-grained token cannot: it only
+   * says "late" then).
    */
   publish?: { typicalMinutes?: string; buildCheck?: string };
   media?: {
