@@ -119,12 +119,18 @@ export type Draft = {
   content: unknown;
   /** Version of the source this draft started from — publish refuses when the source moved on (409). */
   sourceVersion: string;
+  /**
+   * F3: the content of that version, so the draft can be carried over field by field when the website moves on.
+   * Undefined = not kept (an older draft, a new record, or too large to keep twice).
+   */
+  sourceContent?: unknown;
   /** 1 on the first save, +1 on every save; checked atomically when expectedRevision is given. */
   revision: number;
   updatedAt: string;
 };
-export type DraftSummary = Omit<Draft, "content"> & { kind: "file" | "item"; resourceKey: string; itemId: string | null };
-export type SaveDraft = { userId: string; resource: string; label?: string; content: unknown; sourceVersion: string; expectedRevision?: number };
+export type DraftSummary = Omit<Draft, "content" | "sourceContent"> & { kind: "file" | "item"; resourceKey: string; itemId: string | null };
+/** sourceContent is stored as given: leave it out and the draft keeps none (pass the draft's own to keep it). */
+export type SaveDraft = { userId: string; resource: string; label?: string; content: unknown; sourceVersion: string; sourceContent?: unknown; expectedRevision?: number };
 
 export class DraftConflictError extends Error {
   constructor(public readonly current: number, public readonly expected: number) {
@@ -164,11 +170,15 @@ const prepare = (input: SaveDraft) => {
   const content = JSON.stringify(input.content ?? null);
   const bytes = new TextEncoder().encode(content).length;
   if (bytes > MAX_DRAFT_BYTES) throw new DraftTooLargeError(bytes);
-  return { resource, content };
+  // F3: the starting content is kept only while both fit in one row; without it the draft merely reports "stale".
+  let source = input.sourceContent === undefined ? null : JSON.stringify(input.sourceContent);
+  if (source !== null && bytes + new TextEncoder().encode(source).length > MAX_DRAFT_BYTES) source = null;
+  return { resource, content, source };
 };
+const sourceOf = (source: string | null) => (source === null ? {} : { sourceContent: JSON.parse(source) as unknown });
 const summary = (draft: Draft): DraftSummary => {
   const resource = parseResourceId(draft.resource);
-  const { content: _content, ...rest } = draft;
+  const { content: _content, sourceContent: _source, ...rest } = draft;
   return { ...rest, kind: resource.kind, resourceKey: resource.key, itemId: resource.kind === "item" ? resource.id : null };
 };
 
@@ -182,40 +192,40 @@ interface D1StatementLike {
   first<T = Record<string, unknown>>(): Promise<T | null>;
 }
 
-type Row = { user_id: string; resource: string; kind: "file" | "item"; resource_key: string; item_id: string | null; label: string; source_version: string; revision: number; updated_at: string; content?: string };
+type Row = { user_id: string; resource: string; kind: "file" | "item"; resource_key: string; item_id: string | null; label: string; source_version: string; revision: number; updated_at: string; content?: string; source_content?: string | null };
 const fromRow = (row: Row): DraftSummary => ({ userId: row.user_id, resource: row.resource, kind: row.kind, resourceKey: row.resource_key, itemId: row.item_id, label: row.label, sourceVersion: row.source_version, revision: Number(row.revision), updatedAt: row.updated_at });
 const SUMMARY = "user_id, resource, kind, resource_key, item_id, label, source_version, revision, updated_at";
 
-/** Drafts in D1 (table cms_draft_index, migrations 0001 + 0002). Revision checks are single atomic statements. */
+/** Drafts in D1 (table cms_draft_index, migrations 0001 + 0002 + 0006). Revision checks are single atomic statements. */
 export const createD1DraftStore = (db: D1Like, now: () => string = () => new Date().toISOString()): DraftStore => {
   const current = async (userId: string, resource: string) => Number((await db.prepare("SELECT revision FROM cms_draft_index WHERE user_id = ? AND resource = ?").bind(userId, resource).first<{ revision: number }>())?.revision ?? 0);
   return {
     async get(userId, resource) {
-      const row = await db.prepare(`SELECT ${SUMMARY}, content FROM cms_draft_index WHERE user_id = ? AND resource = ?`).bind(userId, resource).first<Row>();
+      const row = await db.prepare(`SELECT ${SUMMARY}, content, source_content FROM cms_draft_index WHERE user_id = ? AND resource = ?`).bind(userId, resource).first<Row>();
       if (!row) return undefined;
       const { kind: _kind, resourceKey: _key, itemId: _id, ...rest } = fromRow(row);
-      return { ...rest, content: JSON.parse(row.content ?? "null") as unknown };
+      return { ...rest, content: JSON.parse(row.content ?? "null") as unknown, ...sourceOf(row.source_content ?? null) };
     },
     async save(input) {
-      const { resource, content } = prepare(input);
+      const { resource, content, source } = prepare(input);
       const at = now();
       const label = input.label ?? "";
       const itemId = resource.kind === "item" ? resource.id : null;
       let row: { revision: number; label: string } | null;
       if (input.expectedRevision === undefined) {
-        row = await db.prepare(`INSERT INTO cms_draft_index (${SUMMARY}, content) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-          ON CONFLICT (user_id, resource) DO UPDATE SET content = excluded.content, source_version = excluded.source_version, updated_at = excluded.updated_at,
+        row = await db.prepare(`INSERT INTO cms_draft_index (${SUMMARY}, content, source_content) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+          ON CONFLICT (user_id, resource) DO UPDATE SET content = excluded.content, source_version = excluded.source_version, source_content = excluded.source_content, updated_at = excluded.updated_at,
             label = CASE WHEN excluded.label = '' THEN cms_draft_index.label ELSE excluded.label END, revision = cms_draft_index.revision + 1
-          RETURNING revision, label`).bind(input.userId, input.resource, resource.kind, resource.key, itemId, label, input.sourceVersion, at, content).first();
+          RETURNING revision, label`).bind(input.userId, input.resource, resource.kind, resource.key, itemId, label, input.sourceVersion, at, content, source).first();
       } else if (input.expectedRevision === 0) {
-        row = await db.prepare(`INSERT INTO cms_draft_index (${SUMMARY}, content) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-          ON CONFLICT (user_id, resource) DO NOTHING RETURNING revision, label`).bind(input.userId, input.resource, resource.kind, resource.key, itemId, label, input.sourceVersion, at, content).first();
+        row = await db.prepare(`INSERT INTO cms_draft_index (${SUMMARY}, content, source_content) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+          ON CONFLICT (user_id, resource) DO NOTHING RETURNING revision, label`).bind(input.userId, input.resource, resource.kind, resource.key, itemId, label, input.sourceVersion, at, content, source).first();
       } else {
-        row = await db.prepare(`UPDATE cms_draft_index SET content = ?, source_version = ?, updated_at = ?, label = CASE WHEN ? = '' THEN label ELSE ? END, revision = revision + 1
-          WHERE user_id = ? AND resource = ? AND revision = ? RETURNING revision, label`).bind(content, input.sourceVersion, at, label, label, input.userId, input.resource, input.expectedRevision).first();
+        row = await db.prepare(`UPDATE cms_draft_index SET content = ?, source_version = ?, source_content = ?, updated_at = ?, label = CASE WHEN ? = '' THEN label ELSE ? END, revision = revision + 1
+          WHERE user_id = ? AND resource = ? AND revision = ? RETURNING revision, label`).bind(content, input.sourceVersion, source, at, label, label, input.userId, input.resource, input.expectedRevision).first();
       }
       if (!row) throw new DraftConflictError(await current(input.userId, input.resource), input.expectedRevision ?? 0);
-      return { userId: input.userId, resource: input.resource, label: row.label, content: JSON.parse(content) as unknown, sourceVersion: input.sourceVersion, revision: Number(row.revision), updatedAt: at };
+      return { userId: input.userId, resource: input.resource, label: row.label, content: JSON.parse(content) as unknown, sourceVersion: input.sourceVersion, ...sourceOf(source), revision: Number(row.revision), updatedAt: at };
     },
     async discard(userId, resource) {
       return Boolean(await db.prepare("DELETE FROM cms_draft_index WHERE user_id = ? AND resource = ? RETURNING revision").bind(userId, resource).first());
@@ -235,11 +245,11 @@ export const createMemoryDraftStore = (now: () => string = () => new Date().toIS
   return {
     get: async (userId, resource) => structuredClone(rows.get(key(userId, resource))),
     save: async (input) => {
-      const { content } = prepare(input);
+      const { content, source } = prepare(input);
       const existing = rows.get(key(input.userId, input.resource));
       const revision = existing?.revision ?? 0;
       if (input.expectedRevision !== undefined && input.expectedRevision !== revision) throw new DraftConflictError(revision, input.expectedRevision);
-      const draft: Draft = { userId: input.userId, resource: input.resource, label: input.label || existing?.label || "", content: JSON.parse(content) as unknown, sourceVersion: input.sourceVersion, revision: revision + 1, updatedAt: now() };
+      const draft: Draft = { userId: input.userId, resource: input.resource, label: input.label || existing?.label || "", content: JSON.parse(content) as unknown, sourceVersion: input.sourceVersion, ...sourceOf(source), revision: revision + 1, updatedAt: now() };
       rows.set(key(input.userId, input.resource), draft);
       return structuredClone(draft);
     },

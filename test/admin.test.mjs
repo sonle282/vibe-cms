@@ -568,19 +568,46 @@ test("P8 shell: someone published first → not published, the draft is named; a
   const h = await publishShell();
   try {
     await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Mine" }));
-    h.github.pushOther({ "src/data/site.json": h.github.files()["src/data/site.json"].replace("Sampletown", "Othertown") });
+    h.github.pushOther({ "src/data/site.json": h.github.files()["src/data/site.json"].replace(/"tagline": "[^"]*"/, '"tagline": "Theirs"') });
     await h.go("/admin/drafts/review");
     h.root.querySelector('[data-action="publish-now"]').click();
     await h.until(() => !h.root.querySelector(".vc-banner").hidden, "the refusal");
-    assert.match(h.root.querySelector(".vc-banner").textContent, /Not published: Salon info changed on the website after you started editing/);
+    assert.match(h.root.querySelector(".vc-banner").textContent, /Not published: Salon info \(Tagline\) changed on the website after you started editing\. Open it, choose which version to keep/);
     assert.ok(h.root.querySelector('[data-resource="file:site"]').classList.contains("vc-review-conflict"));
     // Once the site has rebuilt, the draft is known to be stale before trying.
     h.redeploy();
     await h.go("/admin/pages");
     await h.go("/admin/drafts/review");
     assert.equal(h.root.querySelector(".vc-pick").checked, false);
-    assert.match(h.root.querySelector(".vc-review-stale").textContent, /cannot be published as it is/);
+    assert.match(h.root.querySelector(".vc-review-stale").textContent, /^Tagline also changed on the website .* cannot be published as it is\. Open it and choose which version to keep\.$/);
     assert.equal(h.root.querySelector('[data-action="publish-now"]').disabled, true);
+  } finally { await h.close(); }
+});
+
+test("F3 shell: a draft someone else's publish only touched elsewhere is carried over; a real conflict offers Keep my version", async () => {
+  const h = await publishShell();
+  try {
+    await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Mine" }));
+    // Another field changed on the website: the draft is carried over, nothing to choose.
+    h.github.pushOther({ "src/data/site.json": h.github.files()["src/data/site.json"].replace("Sampletown", "Othertown") });
+    h.redeploy();
+    await h.go("/admin/pages/site");
+    assert.equal(h.root.querySelector(".vc-banner").hidden, true);
+    assert.equal(h.root.querySelector('[data-path="tagline"] input').value, "Mine");
+    // The same field: the banner names it and offers both ways.
+    h.github.pushOther({ "src/data/site.json": h.github.files()["src/data/site.json"].replace(/"tagline": "[^"]*"/, '"tagline": "Theirs"') });
+    h.redeploy();
+    await h.go("/admin/pages");
+    await h.go("/admin/pages/site");
+    const banner = h.root.querySelector(".vc-banner");
+    assert.equal(banner.hidden, false);
+    assert.match(banner.querySelector("p").textContent, /^Someone published a change to Tagline after you started this draft\. Keep your version/);
+    assert.deepEqual([...banner.querySelectorAll("button")].map((button) => button.textContent), ["Keep my version", "Start again from the website"]);
+    assert.equal(h.root.querySelector('[data-action="publish"]').disabled, true);
+    assert.equal(h.root.querySelector('[data-action="publish"]').dataset.tooltip, "Tagline changed on the website too. Choose which version to keep first.");
+    banner.querySelector('[data-action="keep-mine"]').click();
+    await h.until(() => h.root.querySelector(".vc-banner")?.hidden === true && !h.root.querySelector('[data-action="publish"]').disabled, "the draft carried over");
+    assert.equal(h.root.querySelector('[data-path="tagline"] input').value, "Mine");
   } finally { await h.close(); }
 });
 

@@ -86,7 +86,7 @@ test("P21 setup on a site that had a CMS: its D1 / KV / R2 kept, nothing created
   const done = await cli(s.root, [...SETUP, "--rename-legacy"]);
   assert.equal(done.code, 0, done.err);
   assert.match(done.out, /D1 mrspainc-cms: already there[\s\S]*KV mrspainc-cms-SESSION: already used by SESSION, kept[\s\S]*R2 mrspainc-media: already there/);
-  assert.match(done.out, /the old CMS's tables renamed, every row kept \(remote\)[\s\S]*migrations applied \(remote\): 0001_draft_index\.sql, 0002_draft_content\.sql, 0003_audit_log\.sql, 0004_users\.sql, 0005_audit_log_auth\.sql/);
+  assert.match(done.out, /the old CMS's tables renamed, every row kept \(remote\)[\s\S]*migrations applied \(remote\): 0001_draft_index\.sql, 0002_draft_content\.sql, 0003_audit_log\.sql, 0004_users\.sql, 0005_audit_log_auth\.sql, 0006_draft_source\.sql/);
   assert.match(done.out, /wrangler secret put CMS_GITHUB_TOKEN\s+# fine-grained[^\n]*skip if it is set already/, "the site's own secret name");
   assert.deepEqual(s.calls().filter((call) => call.args.includes("create")), [], "nothing created");
   const config = JSON.parse(s.config());

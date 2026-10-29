@@ -107,11 +107,41 @@ export const runApiScenario = async ({ request, github, redeploy, auditRows }) =
   await editor.put("/api/cms/collections/services/items/classic-manicure", { content: { ...mani2.content, name: "Classic Manicure Supreme" }, expectedRevision: 0, sourceVersion: mani2.version });
   const current = JSON.parse(github.files()["src/data/services.json"]);
   github.pushOther({ "src/data/services.json": JSON.stringify(current.map((item) => (item.id === "classic-manicure" ? { ...item, extras: ["Hand massage"] } : item)), null, 2) + "\n" }, "someone edits the same record");
+  const carried = await editor.publish(["item:services:classic-manicure"]);
+  const afterCarried = JSON.parse(github.files()["src/data/services.json"]).find((item) => item.id === "classic-manicure");
+  check("F3: the same record, another field changed on the branch → carried over and published", carried.status === 200 && afterCarried.name === "Classic Manicure Supreme", carried);
+  check("…keeping the branch's change too", JSON.stringify(afterCarried.extras) === JSON.stringify(["Hand massage"]), afterCarried);
+  await redeploy();
+  const mani3 = (await editor.get("/api/cms/collections/services/items/classic-manicure")).body;
+  await editor.put("/api/cms/collections/services/items/classic-manicure", { content: { ...mani3.content, name: "Mine" }, expectedRevision: 0, sourceVersion: mani3.version });
+  const current3 = JSON.parse(github.files()["src/data/services.json"]);
+  github.pushOther({ "src/data/services.json": JSON.stringify(current3.map((item) => (item.id === "classic-manicure" ? { ...item, name: "Theirs" } : item)), null, 2) + "\n" }, "someone renames the same record");
   const headConflict = github.head();
   const conflict = await editor.publish(["item:services:classic-manicure"]);
-  check("the same record changed on the branch → 409 source_changed, no commit", conflict.status === 409 && conflict.body.error === "source_changed" && github.head() === headConflict, conflict);
-  check("…the draft is kept", (await editor.get("/api/cms/collections/services/items/classic-manicure")).body.draft?.content.name === "Classic Manicure Supreme");
+  check("the same field changed on the branch → 409 source_changed, no commit", conflict.status === 409 && conflict.body.error === "source_changed" && github.head() === headConflict, conflict);
+  check("…naming the field both changed", JSON.stringify(conflict.body.conflicts?.["item:services:classic-manicure"]) === JSON.stringify(["Name"]), conflict.body);
+  check("…the draft is kept", (await editor.get("/api/cms/collections/services/items/classic-manicure")).body.draft?.content.name === "Mine");
+  await redeploy();
+  const conflicted = (await editor.get("/api/cms/collections/services/items/classic-manicure")).body;
+  check("…and once deployed, opening it says stale with that field", conflicted.draft?.stale === true && JSON.stringify(conflicted.draft.conflicts) === JSON.stringify(["Name"]) && conflicted.draft.content.name === "Mine", conflicted.draft);
+  const myDrafts = (await editor.get("/api/cms/drafts")).body.drafts.find((row) => row.resource === "item:services:classic-manicure");
+  check("…as does My drafts", myDrafts?.stale === true && JSON.stringify(myDrafts.conflicts) === JSON.stringify(["Name"]), myDrafts);
   await editor.del("/api/cms/collections/services/items/classic-manicure");
+
+  // ---- F3: a draft is carried over when it is opened after someone else published another field
+  const siteOpen = (await editor.get("/api/cms/files/site")).body;
+  await editor.put("/api/cms/files/site", { content: { ...siteOpen.content, tagline: "Editor tagline" }, expectedRevision: 0, sourceVersion: siteOpen.version });
+  const ownerOpen = (await owner.get("/api/cms/files/site")).body;
+  await owner.put("/api/cms/files/site", { content: { ...ownerOpen.content, name: "Owner Salon" }, expectedRevision: 0, sourceVersion: ownerOpen.version });
+  const ownerPublished = await owner.publish(["file:site"]);
+  await redeploy();
+  const listedCarried = (await editor.get("/api/cms/drafts")).body.drafts.find((row) => row.resource === "file:site");
+  check("F3: My drafts carries a draft over → not stale", ownerPublished.status === 200 && listedCarried?.stale === false && listedCarried.revision === 2 && !("conflicts" in listedCarried), listedCarried);
+  const reopened = (await editor.get("/api/cms/files/site")).body;
+  check("…opening it shows both changes, started from the live version", reopened.draft?.stale === false && reopened.draft.content.tagline === "Editor tagline" && reopened.draft.content.name === "Owner Salon" && reopened.draft.sourceVersion === reopened.version, reopened.draft);
+  const publishCarried = await editor.publish(["file:site"]);
+  const siteNow = JSON.parse(github.files()["src/data/site.json"]);
+  check("…publishing it keeps the owner's name", publishCarried.status === 200 && siteNow.name === "Owner Salon" && siteNow.tagline === "Editor tagline", { publishCarried, siteNow });
   await redeploy();
 
   // ---- the branch moves during publish → retry; keeps moving → 502, nothing half-done

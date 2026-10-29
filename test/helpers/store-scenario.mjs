@@ -71,6 +71,17 @@ export const runStoreScenario = async ({ drafts }) => {
   check("a draft over MAX_DRAFT_BYTES → DraftTooLargeError, old draft kept", !tooBig.ok && tooBig.error instanceof DraftTooLargeError && (await drafts.get("usr_owner1", "file:big"))?.revision === 1, tooBig);
   await drafts.discard("usr_owner1", "file:big");
 
+  // F3: the content a draft started from is kept with it (all saves pass it on), but never in the summaries.
+  const withSource = await drafts.save({ userId: "usr_owner1", resource: "file:hours", content: { open: "9" }, sourceVersion: "sha256:bbb", sourceContent: { open: "8", close: "6" }, expectedRevision: 0 });
+  check("sourceContent is stored and read back", same((await drafts.get("usr_owner1", "file:hours"))?.sourceContent, { open: "8", close: "6" }) && same(withSource.sourceContent, { open: "8", close: "6" }), withSource);
+  check("summaries carry no sourceContent", (await drafts.mine("usr_owner1")).every((row) => !("sourceContent" in row)));
+  await drafts.save({ userId: "usr_owner1", resource: "file:hours", content: { open: "10" }, sourceVersion: "sha256:bbb", expectedRevision: 1 });
+  check("a save without sourceContent keeps none", !("sourceContent" in ((await drafts.get("usr_owner1", "file:hours")) ?? {})));
+  await drafts.save({ userId: "usr_owner1", resource: "file:hours", content: { text: "x".repeat(1_000_000) }, sourceVersion: "sha256:bbb", sourceContent: { text: "y".repeat(1_000_000) } });
+  const tooMuch = await drafts.get("usr_owner1", "file:hours");
+  check("content + source over MAX_DRAFT_BYTES: the draft is kept, its source is not", tooMuch?.content.text.length === 1_000_000 && !("sourceContent" in tooMuch), tooMuch?.revision);
+  await drafts.discard("usr_owner1", "file:hours");
+
   // Ids: internal user ids only (never an email); resource ids checked.
   const email = await outcome(drafts.save({ userId: "owner@example.com", resource: "file:site", content: {}, sourceVersion: "x" }));
   check("an email as user id is refused", !email.ok && email.error instanceof RangeError && /never an email/.test(email.error.message), email);

@@ -5,7 +5,7 @@
  * Routes (under /api/cms; every route needs an identity):
  *   GET    /content                         files + collections from cms.config (label, count, my drafts)
  *   GET    /files/:key                      live content + version + my draft
- *   PUT    /files/:key                      save my draft   { content, expectedRevision, sourceVersion (new draft) }
+ *   PUT    /files/:key                      save my draft   { content, expectedRevision, sourceVersion (new draft), keepMine? (F3) }
  *   DELETE /files/:key                      discard my draft
  *   GET    /collections/:key                records (id, label, version, my draft)
  *   GET    /collections/:key/items/:id      live record + version + my draft
@@ -29,6 +29,7 @@
 import type { CmsCollection, CmsConfig, CmsFile } from "../config/index.js";
 import { isAdminOnly } from "../config/roles.js";
 import { recordThumbnail } from "./record-image.js";
+import { conflictLabel, rebase } from "./rebase.js";
 import { checkRecordValues } from "../check/values.js";
 import { checkFixedLists } from "../check/structure.js";
 import { pickChoices } from "../check/picks.js";
@@ -54,6 +55,7 @@ export { createSiteRuntime, loopbackApiUrl, siteEnv, type SiteEnv } from "./runt
 export { adminBoot, bootJson, type AdminBoot } from "../admin/boot.js";
 export { buildState, createGitHubPublisher, GitPublishError, rateLimitWait, type CheckRun, type CommitAuthor, type CommitInput, type FileContent, type GitHubOptions, type GitPublisher, type HistoryCommit } from "./github.js";
 export { recordThumbnail } from "./record-image.js";
+export { conflictLabel, rebase, type Rebased } from "./rebase.js";
 
 // ---------------------------------------------------------------- identity
 
@@ -319,8 +321,32 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     return body as Record<string, unknown>;
   };
 
-  const draftView = (draft: Draft | undefined, version: string) =>
-    draft ? { content: draft.content, revision: draft.revision, sourceVersion: draft.sourceVersion, updatedAt: draft.updatedAt, label: draft.label, stale: draft.sourceVersion !== version } : null;
+  /** F3: `conflicts` = the fields both the website and the draft changed (labels), when the draft is stale. */
+  const draftView = (draft: Draft | undefined, version: string, conflicts?: string[]) =>
+    draft ? { content: draft.content, revision: draft.revision, sourceVersion: draft.sourceVersion, updatedAt: draft.updatedAt, label: draft.label, stale: draft.sourceVersion !== version, ...(conflicts && draft.sourceVersion !== version ? { conflicts } : {}) } : null;
+
+  /**
+   * F3: a draft started from content the website no longer has is carried over field by field: what only the website
+   * changed comes in, what only the draft changed stays. Clean → saved again from the current version (no longer stale);
+   * else it stays stale with the fields both sides changed (in words; [] = it cannot be carried over, e.g. a draft
+   * saved before its starting content was kept, or a record removed from the website).
+   */
+  const carryOver = async (user: Identity, target: Target, draft: Draft, current: { value: unknown; version: string }): Promise<{ draft: Draft; conflicts?: string[] }> => {
+    if (draft.sourceVersion === current.version) return { draft };
+    if (draft.sourceContent === undefined || current.value === undefined) return { draft, conflicts: [] };
+    const merged = rebase(draft.sourceContent, current.value, draft.content);
+    if (merged.conflicts.length) return { draft, conflicts: merged.conflicts.map((path) => conflictLabel(fieldsOfTarget(target), path)) };
+    try {
+      const saved = await saveDraftChecked({
+        config, role: user.role, drafts: need(deps.drafts, "storage"), audit: need(deps.audit, "storage"), source: current.value, now,
+        input: { userId: user.userId, resource: target.resource, label: draft.label, content: merged.content, sourceVersion: current.version, sourceContent: current.value, expectedRevision: draft.revision },
+      });
+      return { draft: saved };
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      return { draft, conflicts: [] }; // saved meanwhile in another tab, a lock, or too large: it stays stale
+    }
+  };
 
   // ---------------------------------------------------------------- handlers
 
@@ -399,11 +425,13 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     await requireAccess(user, target);
     const drafts = need(deps.drafts, "storage");
     const current = await live(target);
-    const draft = await drafts.get(user.userId, target.resource);
-    if (current.value === undefined && !draft) fail(404, "not_found", `${target.resource} does not exist.`);
+    const stored = await drafts.get(user.userId, target.resource);
+    if (current.value === undefined && !stored) fail(404, "not_found", `${target.resource} does not exist.`);
+    const carried = stored ? await carryOver(user, target, stored, current) : undefined;
+    const draft = carried?.draft;
     // P12g: the choices of its pick fields, from what is being edited (the draft, else the live content).
     const choices = pickChoices(target.kind === "file" ? target.file.fields : target.collection.fields, draft?.content ?? current.value);
-    const view = draftView(draft, current.version);
+    const view = draftView(draft, current.version, carried?.conflicts);
     if (view) view.content = await toAddresses(target, view.content);
     return json({ resource: target.resource, label: target.kind === "file" ? target.label : recordLabel(target.collection, current.value ?? draft?.content, target.id), content: (await toAddresses(target, current.value)) ?? null, version: current.version, draft: view, ...(Object.keys(choices).length ? { choices } : {}) });
   };
@@ -417,25 +445,36 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     if (typeof expectedRevision !== "number" || !Number.isInteger(expectedRevision) || expectedRevision < 0) fail(400, "expected_revision_required", "expectedRevision is required: 0 for a new draft, else the revision you loaded.");
     if (!body.content || typeof body.content !== "object" || Array.isArray(body.content)) fail(400, "bad_request", "content must be an object.");
     body.content = toNames(target, body.content);
+    const current = await live(target);
+    const existing = await drafts.get(user.userId, target.resource);
+    // F3 "Keep my version": a draft in conflict with the website starts again from the live version — what only the
+    // website changed comes in, the fields both changed keep the draft's value.
+    const keepMine = body.keepMine === true;
+    if (keepMine) {
+      if (!existing || existing.sourceContent === undefined || current.value === undefined) fail(409, "cannot_keep_mine", "This draft cannot be carried over to the website's version: discard it and make your change again.");
+      if (existing!.sourceVersion !== current.version) body.content = rebase(existing!.sourceContent, current.value, body.content).content;
+    }
     const checked = await checkValues(target, body.content);
     if (checked.errors.length) fail(422, "invalid_content", "The content does not match cms.config.", { errors: checked.errors });
-    const current = await live(target);
     const fixed = structureProblems(target, current.value, body.content);
     if (fixed.length) fail(422, target.kind === "item" && target.collection.fixed && current.value === undefined ? "fixed_collection" : "fixed_list", fixed[0].message, { errors: fixed });
     // The version the user OPENED, not the live one at save time: a publish by someone else in between must still be
     // caught at publish (409). A new draft must say it; an existing draft keeps the version it started from.
-    const existing = await drafts.get(user.userId, target.resource);
     let sourceVersion: string;
-    if (existing) sourceVersion = existing.sourceVersion;
+    let sourceContent: unknown;
+    if (keepMine) ({ version: sourceVersion, value: sourceContent } = current);
+    else if (existing) ({ sourceVersion, sourceContent } = existing);
     else {
       if (typeof body.sourceVersion !== "string" || !body.sourceVersion) fail(400, "source_version_required", "sourceVersion is required for a new draft: send the version of the content you opened (the GET's \"version\").");
       if (!/^(sha256:[0-9a-f]{64}|new|missing)$/.test(body.sourceVersion as string)) fail(400, "bad_request", "sourceVersion is not a content version.");
       sourceVersion = body.sourceVersion as string;
+      // F3: the content it started from, when that is what this Worker serves (else it is not known here).
+      if (sourceVersion === current.version && current.value !== undefined) sourceContent = current.value;
     }
     const label = target.kind === "file" ? target.label : recordLabel(target.collection, body.content, target.id);
     const cleaned = clean(target, body.content, current.value);
     try {
-      const draft = await saveDraftChecked({ config, role: user.role, drafts, audit, source: current.value, now, input: { userId: user.userId, resource: target.resource, label, content: cleaned.record, sourceVersion, expectedRevision: expectedRevision as number } });
+      const draft = await saveDraftChecked({ config, role: user.role, drafts, audit, source: current.value, now, input: { userId: user.userId, resource: target.resource, label, content: cleaned.record, sourceVersion, ...(sourceContent === undefined ? {} : { sourceContent }), expectedRevision: expectedRevision as number } });
       return json({ resource: target.resource, draft: draftView(draft, current.version), warnings: [...checked.warnings, ...unsafeOnly(cleaned.cleaned).map((entry) => ({ path: entry.path, message: `HTML removed for safety: ${entry.removed.join(", ")}` }))], cleaned: cleaned.cleaned });
     } catch (error) {
       if (error instanceof DraftConflictError) fail(409, "draft_conflict", error.message, { currentRevision: error.current });
@@ -454,10 +493,17 @@ export const createCmsApi = (deps: CmsApiDeps) => {
       try { target = targetOf(row.resource); } catch { continue; } // a file / collection removed from cms.config
       if (!mayOpen(user, entryOf(target))) continue; // owner-only, and this user is an editor now
       const current = await live(target);
+      // F3: a draft the website moved past is carried over here too, so the list only flags the real conflicts.
+      let summary: { sourceVersion: string; revision: number; updatedAt: string } = row;
+      let conflicts: string[] | undefined;
+      if (row.sourceVersion !== current.version) {
+        const stored = await drafts.get(user.userId, row.resource);
+        if (stored) ({ draft: summary, conflicts } = await carryOver(user, target, stored, current));
+      }
       out.push({
         resource: row.resource, kind: row.kind, key: row.resourceKey, id: row.itemId, label: row.label || target.label,
-        group: target.kind === "file" ? target.label : target.collection.label, updatedAt: row.updatedAt, revision: row.revision,
-        isNew: current.version === "new", stale: row.sourceVersion !== current.version,
+        group: target.kind === "file" ? target.label : target.collection.label, updatedAt: summary.updatedAt, revision: summary.revision,
+        isNew: current.version === "new", stale: summary.sourceVersion !== current.version, ...(conflicts && summary.sourceVersion !== current.version ? { conflicts } : {}),
       });
     }
     return json({ drafts: out });
@@ -503,14 +549,21 @@ export const createCmsApi = (deps: CmsApiDeps) => {
         const texts = await publisher.readFiles(head.sha, paths);
 
         // 1. The source each draft started from must still be what the branch has.
+        //    F3: if it moved on, the draft is carried over field by field; only fields both sides changed stop the publish.
         const changed: string[] = [];
+        const conflicts: Record<string, string[]> = {};
         const befores = new Map<string, unknown>();
-        for (const { target, draft } of loaded) {
+        for (const entry of loaded) {
+          const { target, draft } = entry;
           const branch = await onBranch(target, texts[pathOf(target)]);
           befores.set(target.resource, branch.value);
-          if (branch.version !== draft.sourceVersion) changed.push(target.resource);
+          if (branch.version === draft.sourceVersion) continue;
+          const merged = draft.sourceContent !== undefined && branch.value !== undefined ? rebase(draft.sourceContent, branch.value, draft.content) : undefined;
+          if (merged && !merged.conflicts.length) { entry.draft = { ...draft, content: merged.content }; continue; }
+          changed.push(target.resource);
+          conflicts[target.resource] = (merged?.conflicts ?? []).map((path) => conflictLabel(fieldsOfTarget(target), path));
         }
-        if (changed.length) return await failWith(409, "source_changed", "The content changed since you started editing — reload, check, and publish again.", { resources: changed });
+        if (changed.length) return await failWith(409, "source_changed", "The content changed since you started editing — reload, check, and publish again.", { resources: changed, conflicts });
 
         // P8c: rich text a user changed is cleaned again here (drafts saved before the cleaning existed, or by any client).
         const sanitized: Array<{ resource: string; fields: CleanedField[] }> = [];
@@ -660,8 +713,14 @@ export const createCmsApi = (deps: CmsApiDeps) => {
           try {
             const mine = await drafts.get(user.userId, target.resource);
             if (mine && mine.content && typeof mine.content === "object") {
-              const after = await onBranch(target, written.text);
-              await drafts.save({ userId: user.userId, resource: target.resource, label: mine.label, content: { ...(mine.content as Record<string, unknown>), [status!.field]: value }, sourceVersion: after.version, expectedRevision: mine.revision });
+              const content = { ...(mine.content as Record<string, unknown>), [status!.field]: value };
+              // F3: a draft that keeps its starting content stays on it: the next read carries it over (both sides set
+              // the same status, so that field merges cleanly). An older draft follows the new version as before.
+              if (mine.sourceContent !== undefined) await drafts.save({ userId: user.userId, resource: target.resource, label: mine.label, content, sourceVersion: mine.sourceVersion, sourceContent: mine.sourceContent, expectedRevision: mine.revision });
+              else {
+                const after = await onBranch(target, written.text);
+                await drafts.save({ userId: user.userId, resource: target.resource, label: mine.label, content, sourceVersion: after.version, expectedRevision: mine.revision });
+              }
             }
           } catch { /* the draft keeps its old version: publishing it later says it is stale */ }
         }
@@ -999,7 +1058,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     if (fixed.length) fail(422, "fixed_list", fixed[0].message, { errors: fixed });
     const label = target.kind === "file" ? target.label : recordLabel(target.collection, content, target.id);
     try {
-      const draft = await saveDraftChecked({ config, role: user.role, drafts, audit, source: current.value, now, input: { userId: user.userId, resource: target.resource, label, content, sourceVersion: current.version, expectedRevision: existing?.revision ?? 0 } });
+      const draft = await saveDraftChecked({ config, role: user.role, drafts, audit, source: current.value, now, input: { userId: user.userId, resource: target.resource, label, content, sourceVersion: current.version, ...(current.value === undefined ? {} : { sourceContent: current.value }), expectedRevision: existing?.revision ?? 0 } });
       return json({ resource: target.resource, commit, draft: draftView(draft, current.version) });
     } catch (error) {
       if (error instanceof DraftConflictError) fail(409, "draft_conflict", error.message, { currentRevision: error.current });

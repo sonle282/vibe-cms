@@ -107,7 +107,7 @@ export const changeFields = (target: { kind: "file"; file: BootFile } | { kind: 
   return { [status.field]: { type: "select", label: "Status", options: [status.live, status.draft, ...(status.archived ? [status.archived] : [])] } as Field, ...fields };
 };
 
-type DraftRow = { resource: string; kind: "file" | "item"; key: string; id: string | null; label: string; group: string; updatedAt: string; revision: number; isNew: boolean; stale: boolean };
+type DraftRow = { resource: string; kind: "file" | "item"; key: string; id: string | null; label: string; group: string; updatedAt: string; revision: number; isNew: boolean; stale: boolean; conflicts?: string[] };
 type PublishResult = { commitSha: string | null; resources: string[]; files: string[]; expectedLiveVersion: string; warnings: Array<{ resource: string; code: string; fields?: string[] }>; attempts: number };
 /** M6: the publish receipt (localStorage, until the change is live): `commit` = the commit, for the build check. */
 type PendingPublish = { expected: string; at: number; userId: string; labels: string[]; resources?: string[]; commit?: string };
@@ -117,7 +117,7 @@ const PENDING_KEY = "vibe-cms:publishing";
 
 type Screen = { title: string; crumbs: Array<[string, string?]>; dirty?: () => number; save?: () => Promise<void>; leave?: () => void; refreshState?: () => void; resource?: string };
 
-type FileView = { resource: string; label: string; content: unknown; version: string; draft: null | { content: unknown; revision: number; sourceVersion: string; stale: boolean; updatedAt: string }; choices?: PickChoices };
+type FileView = { resource: string; label: string; content: unknown; version: string; draft: null | { content: unknown; revision: number; sourceVersion: string; stale: boolean; conflicts?: string[]; updatedAt: string }; choices?: PickChoices };
 /** P12g: pick values in plain words in the review ("packages/the-essential-reset" → "The Essential Reset"). */
 const choiceLabelsOf = (choices: PickChoices | undefined) => Object.fromEntries(Object.values(choices ?? {}).flat().map((choice) => [choice.value, choice.label]));
 type ListView = { key: string; label: string; itemLabel: string; items: Array<{ id: string; resource: string; label: string; version: string | null; hasDraft: boolean; isNew?: boolean; image?: string;
@@ -126,6 +126,12 @@ type ListView = { key: string; label: string; itemLabel: string; items: Array<{ 
 type ContentView = { files: Array<{ key: string; label: string; hasDraft: boolean; off?: boolean }>; collections: Array<{ key: string; label: string; itemLabel: string; count: number; drafts: number }> };
 
 const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
+/** F3: the fields a draft and the website both changed, in words ("Name, Price and 2 more"). */
+const fieldList = (labels: string[]) => {
+  const shown = labels.length > 4 ? labels.slice(0, 3) : labels;
+  const rest = labels.length - shown.length;
+  return rest ? `${shown.join(", ")} and ${rest} more` : shown.length > 1 ? `${shown.slice(0, -1).join(", ")} and ${shown[shown.length - 1]}` : shown[0] ?? "";
+};
 
 export const startAdmin = (options: AdminOptions) => {
   const { root, boot } = options;
@@ -932,6 +938,8 @@ export const startAdmin = (options: AdminOptions) => {
       return summarizeChanges({ fields: listedFields, before: live, after: saved, references: labels, choiceLabels: choiceLabelsOf(view?.choices), ...(collection && !live ? { newRecord: { itemLabel: collection.itemLabel, title: titleText() } } : {}) });
     };
     const stale = Boolean(view?.draft?.stale);
+    // F3: a stale draft that could not be carried over by itself: the fields both sides changed ([] = not known).
+    const conflicts = view?.draft?.conflicts ?? [];
     /** M9: redraws the record editor's right column (set once it exists). */
     let recordUpdate: ((count: number, blocked: string | null) => void) | undefined;
     const refresh = () => {
@@ -942,7 +950,7 @@ export const startAdmin = (options: AdminOptions) => {
       inspector?.setTitle(titleText());
       const liveNow = hasDraft ? undefined : publishedStateOf(resourceOf());
       const published = liveNow === "failed" ? undefined : liveNow;
-      const reason = stale ? "The website changed after this draft was started. Discard it and make your change again."
+      const reason = stale ? conflicts.length ? `${fieldList(conflicts)} changed on the website too. Choose which version to keep first.` : "The website changed after this draft was started. Discard it and make your change again."
         : publishBlockReason({ conflict, dirty: count > 0, hasDraft, invalid: Boolean(problem), changes: hasDraft && !count ? changesToPublish().length : 0 });
       const state = deriveSaveState({
         unsaved: count, hasDraft, canSave: !conflict && !saving && !discarding && !badLinks, publishBlockReason: reason, recordLive, host: siteHost(),
@@ -1377,6 +1385,18 @@ export const startAdmin = (options: AdminOptions) => {
       await go(currentPath, { replace: true, force: true });
     };
 
+    // F3 "Keep my version": the draft starts again from the website's version; in the fields both changed, mine wins.
+    const keepMineHere = async () => {
+      if (!input.url || saving) return;
+      saving = true;
+      refresh();
+      const result = await api.put<unknown>(input.url, { content: form.value(), expectedRevision: revision, keepMine: true });
+      saving = false;
+      if (!result.ok) { problem = result.message; refresh(); return; }
+      void refreshDrafts();
+      await go(currentPath, { replace: true, force: true });
+    };
+
     // Mr Spa: the one Discard icon — a saved draft is deleted (the website keeps what it shows); unsaved edits only
     // are dropped (the last saved version shows again).
     const discardHere = async () => {
@@ -1405,7 +1425,12 @@ export const startAdmin = (options: AdminOptions) => {
     save.addEventListener("click", () => { void doSave(); });
     setTopIcons([viewLive, historyLink, discard, reloadKeep, checkAgain]);
     actions.append(save, publish);
-    if (stale) showBanner("The website changed after this draft was started (someone published). Publishing this draft is refused until you discard it and make your change again on the current content.");
+    if (stale && conflicts.length && input.url) {
+      showBanner(`Someone published a change to ${fieldList(conflicts)} after you started this draft. Keep your version (the website's other changes are kept as well), or start again from the website.`,
+        h(doc, "div", { class: "vc-banner-actions" },
+          h(doc, "button", { type: "button", class: "vc-button", "data-action": "keep-mine", onclick: () => { void keepMineHere(); } }, "Keep my version"),
+          h(doc, "button", { type: "button", class: "vc-button", "data-action": "start-again", onclick: () => { void discardHere(); } }, "Start again from the website")));
+    } else if (stale) showBanner("The website changed after this draft was started (someone published). Publishing this draft is refused until you discard it and make your change again on the current content.");
     const crumbsFor: Array<[string, string?]> = [...input.crumbs, [titleText() || "…"]];
     // M7 (Mr Spa): Search & sharing has its title in the top bar only.
     if (seoLayout) title.classList.add("vc-sr-only");
@@ -1461,7 +1486,11 @@ export const startAdmin = (options: AdminOptions) => {
   /** U3: why the editor's Publish dialog could not publish, in plain words. */
   const publishProblem = (result: ApiFail) => {
     if (result.status === 401) return "You are signed out. Sign in again, then publish.";
-    if (result.error === "source_changed") return "Not published: the website changed after you started editing. Discard the draft and make your change again on the current content.";
+    if (result.error === "source_changed") {
+      const fields = Object.values((result.data.conflicts ?? {}) as Record<string, string[]>).flat();
+      return fields.length ? `Not published: ${fieldList(fields)} changed on the website after you started editing. Reload this page to choose which version to keep.`
+        : "Not published: the website changed after you started editing. Discard the draft and make your change again on the current content.";
+    }
     if (result.error === "locked_field") return "Not published: only an admin can change some of these fields.";
     if (result.error === "invalid_content") return `Not published: some fields need attention — ${(Array.isArray(result.data.errors) ? (result.data.errors as Array<{ message: string }>) : []).map((entry) => entry.message).join(" ") || result.message}`;
     return `Not published. ${result.message}`;
@@ -1583,7 +1612,7 @@ export const startAdmin = (options: AdminOptions) => {
         h(doc, "div", { class: "vc-drafts-what" },
           h(doc, "span", { class: "vc-draft-type" }, typeOf(row)),
           h(doc, "strong", { class: "vc-draft-label" }, row.label),
-          h(doc, "span", { class: "vc-draft-changes", ...(row.stale ? { "data-state": "conflict" } : {}) }, row.stale ? `${what} · The live version changed since; reload the draft before publishing.` : what),
+          h(doc, "span", { class: "vc-draft-changes", ...(row.stale ? { "data-state": "conflict" } : {}) }, row.stale ? row.conflicts?.length ? `${what} · ${fieldList(row.conflicts)} also changed on the website: open it to choose which to keep.` : `${what} · The live version changed since; reload the draft before publishing.` : what),
           h(doc, "span", { class: "vc-drafts-saved" }, `Saved ${new Date(row.updatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`)),
         h(doc, "div", { class: "vc-draft-actions" },
           h(doc, "span", { class: "vc-drafts-status" },
@@ -1654,7 +1683,9 @@ export const startAdmin = (options: AdminOptions) => {
           h(doc, "label", { for: id, id: `${id}-title`, class: "vc-review-title" }, row.label, h(doc, "span", { class: "vc-review-group" }, ` · ${row.group}`)),
           h(doc, "span", { class: "vc-review-meta" }, `Saved ${timeOf(row.updatedAt)}`),
           link(hrefOfDraft(row), "Open", { class: "vc-review-open" })),
-        row.stale ? h(doc, "p", { class: "vc-review-stale" }, "The website changed after this draft was started, so it cannot be published as it is. Open it, discard the draft and make your change again.") : null,
+        row.stale ? h(doc, "p", { class: "vc-review-stale" }, row.conflicts?.length
+          ? `${fieldList(row.conflicts)} also changed on the website after this draft was started, so it cannot be published as it is. Open it and choose which version to keep.`
+          : "The website changed after this draft was started, so it cannot be published as it is. Open it, discard the draft and make your change again.") : null,
         !view.ok ? h(doc, "p", { class: "vc-error" }, view.message)
           : changes.length ? h(doc, "ul", { class: "vc-changes" }, changes.map(changeItem))
             : h(doc, "p", { class: "vc-note" }, "No differences from the website. Publishing it only clears the draft."));
@@ -1687,7 +1718,10 @@ export const startAdmin = (options: AdminOptions) => {
         if (result.error === "source_changed") {
           const changed = Array.isArray(result.data.resources) ? (result.data.resources as string[]) : [];
           for (const entry of boxes) if (changed.includes(entry.row.resource)) entry.card.classList.add("vc-review-conflict");
-          showBanner(`Not published: ${changed.map(labelOf).join(", ") || "some content"} changed on the website after you started editing. Open ${changed.length === 1 ? "it" : "each one"}, discard the draft and make your change again — or untick ${changed.length === 1 ? "it" : "them"} and publish the rest.`);
+          const fields = (result.data.conflicts ?? {}) as Record<string, string[]>;
+          const named = changed.map((resource) => (fields[resource]?.length ? `${labelOf(resource)} (${fieldList(fields[resource])})` : labelOf(resource)));
+          const known = changed.every((resource) => fields[resource]?.length);
+          showBanner(`Not published: ${named.join(", ") || "some content"} changed on the website after you started editing. Open ${changed.length === 1 ? "it" : "each one"}, ${known ? "choose which version to keep" : "discard the draft and make your change again"} — or untick ${changed.length === 1 ? "it" : "them"} and publish the rest.`);
           return;
         }
         if (result.error === "locked_field" && Array.isArray(result.data.fields)) { showBanner("Not published: only an admin can change some of these fields.", h(doc, "ul", {}, (result.data.fields as Array<{ message: string }>).map((entry) => h(doc, "li", {}, entry.message)))); return; }

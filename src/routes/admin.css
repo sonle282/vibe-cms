@@ -203,6 +203,7 @@ body.vc-page:has(.vc-app) { overflow: hidden; }
 .vc-lead { color: var(--text-secondary); margin-top: 0; margin-bottom: 20px; }
 .vc-banner { padding: 12px 16px; margin-top: 0; margin-bottom: 16px; border-radius: var(--radius-12); background: var(--warning-bg); color: var(--warning); }
 .vc-banner p { margin: 0 0 8px; } .vc-banner p:last-child { margin: 0; }
+.vc-banner-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .vc-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 950; display: flex; align-items: center; gap: 14px; max-width: min(560px, calc(100vw - 32px)); padding: 10px 10px 10px 16px; border-radius: var(--radius-12); background: var(--toast-bg); color: #fff; font-size: 14px; box-shadow: var(--shadow-toast); }
 .vc-toast-text { margin: 0; }
 .vc-toast-action { flex: 0 0 auto; height: var(--control-compact); padding: 0 12px; border: 0; border-radius: var(--radius-8); background: transparent; color: #7cb8f7; font: 600 14px/1 var(--font-ui); cursor: pointer; }

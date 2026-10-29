@@ -14,7 +14,7 @@ test("drafts: save / read / revision / concurrent saves / two users / two items 
   let clock = 0;
   const checks = await runStoreScenario({ drafts: createMemoryDraftStore(() => new Date(Date.UTC(2026, 8, 28, 12, 0, clock++)).toISOString()) });
   assert.deepEqual(checks.filter((check) => !check.ok), []);
-  assert.equal(checks.length, 25);
+  assert.equal(checks.length, 29);
 });
 
 test("resource ids round-trip", () => {
