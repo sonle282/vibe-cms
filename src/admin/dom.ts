@@ -75,6 +75,8 @@ const ICONS: Record<string, string[]> = {
   refresh: ["M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8", "M21 3v5h-5", "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16", "M8 16H3v5"],
   // F9: Discard draft (Lucide Trash2) — a destructive action, no longer the Undo arrow.
   trash: ["M3 6h18", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", "M10 11v6", "M14 11v6"],
+  // F8: Start (Lucide House).
+  home: ["M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8", "M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"],
   more: ["M12 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2z", "M19 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2z", "M5 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2z"],
 };
 export const icon = (doc: Document, name: keyof typeof ICONS | string) => {

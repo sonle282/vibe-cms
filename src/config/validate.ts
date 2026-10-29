@@ -55,7 +55,7 @@ const FIELD_OPTIONS: Record<string, string[]> = {
   link: [],
   phone: [],
 };
-const TOP_LEVEL = ["configVersion", "site", "repo", "roles", "contentDirs", "files", "collections", "publish", "media", "admin", "plugins", "bindings", "secrets"];
+const TOP_LEVEL = ["configVersion", "site", "repo", "roles", "contentDirs", "files", "collections", "publish", "start", "media", "admin", "plugins", "bindings", "secrets"];
 
 /** Why a git branch name is invalid (git check-ref-format rules), or undefined when it is fine. */
 export const branchProblem = (name: string): string | undefined => {
@@ -350,6 +350,31 @@ export const checkCmsConfig = (config: unknown): CheckResult => {
       for (const key of Object.keys(publish)) if (!["typicalMinutes", "buildCheck"].includes(key)) err(context, `publish.${key}`, "unknown setting", "publish has typicalMinutes and buildCheck");
       if (publish.typicalMinutes !== undefined && (typeof publish.typicalMinutes !== "string" || !/^\d{1,3}(?:\s*[–-]\s*\d{1,3})?$/.test(publish.typicalMinutes))) err(context, "publish.typicalMinutes", `must be minutes like "5" or "5–10" (got ${show(publish.typicalMinutes)})`, 'e.g. typicalMinutes: "5–10"');
       if (publish.buildCheck !== undefined && !filled(publish.buildCheck)) err(context, "publish.buildCheck", "must be the name of the GitHub check run that builds the site", 'e.g. buildCheck: "Workers Builds"');
+    }
+  }
+  // F8: the Start screen's quick jobs, each opening one screen that exists.
+  if (config.start !== undefined) {
+    const start = config.start as unknown;
+    if (!isRecord(start)) err(context, "start", "must be { quick? }", '{ quick: [{ label: "Order the products", file: "products-page" }] }');
+    else {
+      for (const key of Object.keys(start)) if (key !== "quick") err(context, `start.${key}`, "unknown setting", "start has quick");
+      const quick = start.quick;
+      if (quick !== undefined && !Array.isArray(quick)) err(context, "start.quick", "must be a list of jobs");
+      else for (const [index, job] of (quick ?? []).entries()) {
+        const at = `start.quick[${index}]`;
+        if (!isRecord(job)) { err(context, at, "must be { label, file | collection | href }"); continue; }
+        for (const key of Object.keys(job)) if (!["label", "help", "file", "collection", "item", "new", "href"].includes(key)) err(context, `${at}.${key}`, "unknown setting", "a job has label, help and one of file, collection (+ item or new), href");
+        if (!filled(job.label)) err(context, `${at}.label`, "is required: the job in the owner's words", 'e.g. label: "Change a price"');
+        if (job.help !== undefined && typeof job.help !== "string") err(context, `${at}.help`, "must be text");
+        const targets = ["file", "collection", "href"].filter((key) => job[key] !== undefined);
+        if (targets.length !== 1) err(context, at, "must open exactly one of file, collection or href");
+        if (job.file !== undefined && !(Array.isArray(config.files) ? config.files : []).some((file) => isRecord(file) && file.key === job.file)) err(context, `${at}.file`, `is not a file of cms.config (got ${show(job.file)})`);
+        if (job.collection !== undefined && !(Array.isArray(config.collections) ? config.collections : []).some((collection) => isRecord(collection) && collection.key === job.collection)) err(context, `${at}.collection`, `is not a collection of cms.config (got ${show(job.collection)})`);
+        if ((job.item !== undefined || job.new !== undefined) && job.collection === undefined) err(context, at, "item and new go with collection");
+        if (job.item !== undefined && !filled(job.item)) err(context, `${at}.item`, "must be a record id");
+        if (job.new !== undefined && typeof job.new !== "boolean") err(context, `${at}.new`, "must be true or false");
+        if (job.href !== undefined && (typeof job.href !== "string" || !/^\/admin(\/|$)/.test(job.href))) err(context, `${at}.href`, 'must be an admin address starting with "/admin"');
+      }
     }
   }
   if (config.media !== undefined) {

@@ -4,7 +4,7 @@
  * typed for the browser side (app.ts). P12b: files / collections with access: "admin" are left out for editors.
  */
 import { storeIdField } from "../config/store.js";
-import type { CmsCollection, CmsConfig, CmsFile, CollectionIcon, DocumentLayout, Field, Section } from "../config/index.js";
+import type { CmsCollection, CmsConfig, CmsFile, CollectionIcon, DocumentLayout, Field, Section, StartJob } from "../config/index.js";
 import { isAdminOnly } from "../config/roles.js";
 import type { Role } from "../locks/index.js";
 import { mediaSettings } from "../media/index.js";
@@ -38,7 +38,9 @@ export type BootMedia = { uploads: boolean; base: string; maxBytes: number };
 export type BootSite = { name: string; url: string; pages: Array<[string, string]>; phone?: { country: string } };
 /** M6: how publishing is told ("this usually takes 5–10 minutes"). */
 export type BootPublish = { typicalMinutes?: string };
-export type AdminBoot = { site: BootSite; user: BootUser; publish?: BootPublish; files: BootFile[]; collections: BootCollection[]; media?: BootMedia };
+/** F8: the Start screen's quick jobs (only those opening a screen this person can open). */
+export type BootStart = { quick: StartJob[] };
+export type AdminBoot = { site: BootSite; user: BootUser; publish?: BootPublish; start?: BootStart; files: BootFile[]; collections: BootCollection[]; media?: BootMedia };
 
 /** M4: the pages a link may open, in config order, each address once (the first name wins). */
 export const linkPages = (config: CmsConfig): Array<[string, string]> => {
@@ -52,6 +54,10 @@ export const adminBoot = (config: CmsConfig, user: BootUser, options: { uploads?
   site: { name: config.site.name, url: config.site.url, pages: linkPages(config), ...(config.site.phone ? { phone: { country: config.site.phone.country } } : {}) },
   user,
   ...(config.publish?.typicalMinutes ? { publish: { typicalMinutes: config.publish.typicalMinutes } } : {}),
+  ...(config.start ? { start: { quick: (config.start.quick ?? []).filter((job) => {
+    const entry = job.file !== undefined ? config.files.find((file) => file.key === job.file) : job.collection !== undefined ? config.collections.find((collection) => collection.key === job.collection) : undefined;
+    return !entry || !isAdminOnly(entry.access) || user.role === "owner";
+  }) } } : {}),
   media: { uploads: Boolean(options.uploads), base: mediaSettings(config.media).base, maxBytes: mediaSettings(config.media).maxBytes },
   files: config.files.filter((file) => !isAdminOnly(file.access) || user.role === "owner").map((file) => ({ key: file.key, label: file.label, ...(file.preview ? { preview: file.preview } : {}), ...(file.sections ? { sections: file.sections } : {}), fields: file.fields,
     ...Object.fromEntries((["group", "area", "description", "outline", "toggle", "layout", "seo", "document"] as const).filter((name) => file[name] !== undefined).map((name) => [name, file[name]])) })),

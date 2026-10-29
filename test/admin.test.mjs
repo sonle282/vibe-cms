@@ -1145,3 +1145,38 @@ test("P9 / M1 shell: the record's page is on the canvas (cmsPreview=1); Laptop /
   await go("/admin/catalog/services/new");
   assert.equal(pane().querySelector("iframe").getAttribute("src"), "/services/?cmsPreview=1");
 });
+
+test("F8 config: start.quick jobs are checked — one target each, and it must exist", async () => {
+  const { checkCmsConfig } = await import("../dist/index.js");
+  const errors = (start) => checkCmsConfig({ ...config, start }).errors.map((problem) => `${problem.path}: ${problem.message}`);
+  assert.deepEqual(errors({ quick: [{ label: "Change the tagline", file: "site" }, { label: "Add a service", collection: "services", new: true }, { label: "Photos", href: "/admin/media" }] }), []);
+  assert.deepEqual(errors({ quick: [{ label: "x", file: "nope" }] }), ['start.quick[0].file: is not a file of cms.config (got "nope")']);
+  assert.deepEqual(errors({ quick: [{ label: "x", file: "site", collection: "services" }] }), ["start.quick[0]: must open exactly one of file, collection or href"]);
+  assert.deepEqual(errors({ quick: [{ label: "", href: "https://evil.example" }] }), ["start.quick[0].label: is required: the job in the owner's words", 'start.quick[0].href: must be an admin address starting with "/admin"']);
+  assert.deepEqual(errors({ jobs: [] }), ["start.jobs: unknown setting"]);
+});
+
+test("F8 shell: /admin is the Start screen — quick jobs, my drafts waiting, Review & publish; without start it opens the first page", async () => {
+  const cfg = { ...config, start: { quick: [{ label: "Change the tagline", help: "The line under the salon name", file: "site" }, { label: "Add a service", collection: "services", new: true }] } };
+  const h = await publishShell({ cfg });
+  try {
+    await h.go("/admin");
+    assert.equal(h.window.location.pathname, "/admin");
+    assert.equal(h.root.querySelector("h1").textContent, "Hello, Owner");
+    assert.equal(h.root.querySelector('[data-rail="start"]').getAttribute("aria-current"), "page");
+    assert.deepEqual([...h.root.querySelectorAll(".vc-start-job")].map((job) => [job.querySelector("strong").textContent, job.getAttribute("href")]), [["Change the tagline", "/admin/pages/site"], ["Add a service", "/admin/catalog/services/new"]]);
+    assert.equal(h.root.querySelector(".vc-start-empty").textContent, "Nothing is waiting for you: everything you saved is on the website.");
+    await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Waiting" }));
+    await h.go("/admin/pages");
+    await h.go("/admin");
+    assert.equal(h.root.querySelector("#vc-start-waiting").textContent, "Waiting for you · 1 draft");
+    assert.equal(h.root.querySelector('.vc-start [data-resource="file:site"] .vc-draft-label').textContent, "Salon info");
+    assert.equal(h.root.querySelector('[data-action="start-review"]').textContent, "Review & publish it");
+  } finally { await h.close(); }
+  const plain = await publishShell();
+  try {
+    await plain.go("/admin");
+    assert.equal(plain.window.location.pathname, "/admin/pages/site");
+    assert.equal(plain.root.querySelector('[data-rail="start"]'), null);
+  } finally { await plain.close(); }
+});

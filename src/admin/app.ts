@@ -7,7 +7,7 @@
  * bottom), the top bar (breadcrumb, Laptop / Tablet / Mobile, the one save state, View live / Version history /
  * Discard draft / Reload and keep my changes / Check again — folded into ⋯ on a narrow bar —, Save draft, Publish).
  */
-import type { DocumentLayout, Field } from "../config/index.js";
+import type { DocumentLayout, Field, StartJob } from "../config/index.js";
 import type { PickChoices } from "../check/picks.js";
 import { checkRecordValues } from "../check/values.js";
 import { createClient, humanMessage, xhrUpload, type ApiFail, type Client, type Fetch } from "./api.js";
@@ -202,6 +202,8 @@ export const startAdmin = (options: AdminOptions) => {
   const draftBadge = h(doc, "span", { class: "vc-badge", "aria-hidden": "true", hidden: true });
   const draftsItem = railItem("drafts", adminHref.drafts(), "Drafts", "inbox", draftBadge);
   const navItems = [
+    // F8: the Start screen, first on the rail when the site has one.
+    ...(boot.start ? [railItem("start", ADMIN_BASE, "Start", "home")] : []),
     railItem("pages", adminHref.pages(), "Pages", "file-text"),
     ...boot.collections.filter((collection) => !collection.under).map((collection) => railItem(`list:${collection.key}`, adminHref.list(collection.key), collection.label, collection.icon ?? "list")),
     railItem("media", adminHref.media(), "Media", "image"),
@@ -344,6 +346,7 @@ export const startAdmin = (options: AdminOptions) => {
 
   /** The rail item of a screen (Mr Spa: a record opens under its collection; People and Activity under Users). */
   const railKeyOf = (target: AdminRoute) => {
+    if (target.kind === "home") return "start";
     if (target.kind === "pages" || target.kind === "file") return "pages";
     if (target.kind === "list" || target.kind === "new" || target.kind === "item") return `list:${collectionOf(target.key)?.under ?? target.key}`;
     if (target.kind === "drafts" || target.kind === "review") return "drafts";
@@ -396,8 +399,8 @@ export const startAdmin = (options: AdminOptions) => {
     const historyFor = target.kind === "history" ? target.resource : undefined;
     const historyOver = historyFor ? historyTarget(historyFor) : undefined;
     if (historyOver) { win.history.replaceState(null, "", historyOver.href); target = parseAdminPath(win.location.pathname); }
-    // Mr Spa: /admin opens the first page's editor.
-    if (target.kind === "home" || target.kind === "account") {
+    // Mr Spa: /admin opens the first page's editor — F8: or the Start screen, when the site has one.
+    if ((target.kind === "home" && !boot.start) || target.kind === "account") {
       win.history.replaceState(null, "", boot.files[0] ? adminHref.file(boot.files[0].key) : adminHref.pages());
       target = parseAdminPath(win.location.pathname);
     }
@@ -424,7 +427,8 @@ export const startAdmin = (options: AdminOptions) => {
     body.append(h(doc, "p", { class: "vc-loading" }, "Loading…"));
     const stillHere = () => mine === generation;
     try {
-      if (target.kind === "pages") await overview(stillHere);
+      if (target.kind === "home") await startScreen(stillHere);
+      else if (target.kind === "pages") await overview(stillHere);
       else if (target.kind === "file") await editFile(target.key, stillHere);
       else if (target.kind === "list") await listCollection(target.key, stillHere);
       else if (target.kind === "new") await editItem(target.key, undefined, stillHere);
@@ -1660,6 +1664,51 @@ export const startAdmin = (options: AdminOptions) => {
         h(doc, "section", {}, h(doc, "h2", { class: "vc-drafts-heading" }, "Waiting to publish"), h(doc, "ul", { class: "vc-drafts-list" }, rows.length ? waiting : [empty]),
           h(doc, "p", { class: "vc-drafts-note" }, "Each person keeps their own drafts. Nothing here is on the website until it is published.")),
         recentRows.length ? h(doc, "section", {}, h(doc, "h2", { class: "vc-drafts-heading" }, "Recently published"), h(doc, "ul", { class: "vc-drafts-list" }, recentRows)) : null),
+    ]);
+  };
+
+  // ---------------------------------------------------------------- F8: Start
+
+  /** F8: where a quick job goes. */
+  const jobHref = (job: StartJob) => job.href ?? (job.file !== undefined ? adminHref.file(job.file)
+    : job.item !== undefined ? adminHref.item(job.collection!, job.item) : job.new ? adminHref.newItem(job.collection!) : adminHref.list(job.collection!));
+
+  /**
+   * F8: the first screen after signing in — what is waiting for this person (their drafts; a late or failed publish is
+   * the notice above every screen), the jobs people do most (start.quick), and what was published lately.
+   */
+  const startScreen = async (stillHere: () => boolean) => {
+    const crumbsFor: Array<[string, string?]> = [["Start"]];
+    const [listed, recent] = await Promise.all([refreshDrafts(), user.role === "owner" ? api.get<{ entries: PublishEntry[] }>("/api/cms/activity?kind=publish") : Promise.resolve(undefined)]);
+    if (!stillHere()) return;
+    if (!listed.ok) return failed(listed, crumbsFor);
+    const rows = listed.data.drafts;
+    const draftRows = rows.slice(0, 5).map((row) => h(doc, "li", { class: "vc-drafts-card", "data-resource": row.resource },
+      h(doc, "div", { class: "vc-drafts-what" },
+        h(doc, "strong", { class: "vc-draft-label" }, row.label),
+        h(doc, "span", { class: "vc-draft-changes", ...(row.stale ? { "data-state": "conflict" } : {}) }, row.stale
+          ? row.conflicts?.length ? `${fieldList(row.conflicts)} also changed on the website: open it to choose which to keep.` : "The website changed since this draft was started."
+          : `${row.isNew ? "Not on the website yet" : row.group} · saved ${timeOf(row.updatedAt)}`)),
+      h(doc, "div", { class: "vc-draft-actions" }, link(hrefOfDraft(row), "Open", { class: "vc-button" }))));
+    const waiting = rows.length
+      ? [h(doc, "ul", { class: "vc-drafts-list" }, draftRows),
+        h(doc, "div", { class: "vc-start-more" },
+          link(adminHref.review(), rows.length === 1 ? "Review & publish it" : `Review & publish all ${rows.length}`, { class: "vc-button vc-primary", "data-action": "start-review" }),
+          rows.length > draftRows.length ? link(adminHref.drafts(), `See all ${rows.length} drafts`, { class: "vc-button" }) : null)]
+      : [h(doc, "p", { class: "vc-start-empty" }, "Nothing is waiting for you: everything you saved is on the website.")];
+    const quick = boot.start?.quick ?? [];
+    const jobs = quick.map((job) => h(doc, "li", {}, h(doc, "a", { href: jobHref(job), class: "vc-start-job", "data-job": job.label },
+      h(doc, "strong", {}, job.label), job.help ? h(doc, "span", {}, job.help) : null, icon(doc, "chevron"))));
+    const published = recent?.ok ? recent.data.entries.filter((entry) => entry.action === "succeeded").slice(0, 5) : [];
+    const recentRows = published.map((entry) => h(doc, "li", { class: "vc-drafts-card" },
+      h(doc, "div", { class: "vc-drafts-what" }, h(doc, "strong", { class: "vc-draft-label" }, entry.what), h(doc, "span", { class: "vc-drafts-saved" }, `Published by ${entry.who ?? "someone"} · ${shortDate(entry.at)}`))));
+    show({ title: "Start", crumbs: crumbsFor }, [
+      heading(`Hello, ${user.displayName}`),
+      h(doc, "p", { class: "vc-lead" }, `What would you like to change on ${boot.site.name} today?`),
+      h(doc, "div", { class: "vc-start" },
+        jobs.length ? h(doc, "section", { class: "vc-start-section", "aria-labelledby": "vc-start-quick" }, h(doc, "h2", { class: "vc-drafts-heading", id: "vc-start-quick" }, "Quick jobs"), h(doc, "ul", { class: "vc-start-jobs" }, jobs)) : null,
+        h(doc, "section", { class: "vc-start-section", "aria-labelledby": "vc-start-waiting" }, h(doc, "h2", { class: "vc-drafts-heading", id: "vc-start-waiting" }, rows.length ? `Waiting for you · ${plural(rows.length, "draft")}` : "Waiting for you"), ...waiting),
+        recentRows.length ? h(doc, "section", { class: "vc-start-section", "aria-labelledby": "vc-start-recent" }, h(doc, "h2", { class: "vc-drafts-heading", id: "vc-start-recent" }, "Published lately"), h(doc, "ul", { class: "vc-drafts-list" }, recentRows)) : null),
     ]);
   };
 

@@ -1174,3 +1174,14 @@ a.vc-row-menu-item { display: flex; align-items: center; color: var(--text); tex
 /* ---------------------------------------------------------------- M14: the site's admin plugins (panels; a plugin that failed) */
 .vc-list-panels { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin: 0 0 16px; }
 .vc-plugin-problem { margin: 0; color: var(--danger); font-size: 13px; line-height: 1.5; }
+
+/* ---------- F8: Start */
+.vc-start { display: grid; gap: 28px; max-width: 960px; }
+.vc-start-jobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin: 0; padding: 0; list-style: none; }
+.vc-start-job { position: relative; display: grid; gap: 4px; min-height: 72px; padding: 16px 40px 16px 18px; border: 1px solid var(--hairline); border-radius: var(--radius-14); background: var(--surface); color: var(--text); text-decoration: none; }
+.vc-start-job:hover, .vc-start-job:focus-visible { border-color: var(--accent); }
+.vc-start-job strong { font-size: var(--text-15); }
+.vc-start-job span { color: var(--text-secondary); font-size: var(--text-13); line-height: 1.4; }
+.vc-start-job .vc-icon { position: absolute; top: 50%; right: 14px; transform: translateY(-50%); color: var(--text-secondary); }
+.vc-start-more { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.vc-start-empty { margin: 0; padding: 20px 18px; border: 1px solid var(--hairline); border-radius: var(--radius-14); background: var(--surface); color: var(--text-secondary); font-size: var(--text-14); }

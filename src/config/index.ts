@@ -94,6 +94,13 @@ export type LinkField = Base & { type: "link" };
 /** M4: a phone number as people read it ("(215) 772-1111"), checked for `site.phone.country`. */
 export type PhoneField = Base & { type: "phone" };
 
+/**
+ * F8: a quick job on the Start screen, in the owner's words ("Change a price", "Order the products"). It opens one
+ * screen: `file` a page's editor, `collection` its list (with `new: true` a new record), `item` + `collection` one
+ * record, `href` any admin address ("/admin/media").
+ */
+export type StartJob = { label: string; help?: string; file?: string; collection?: string; item?: string; new?: boolean; href?: string };
+
 export type Field = TextField | RichTextField | ImageField | SelectField | HoursField | ObjectField | ListField | ReferenceField | TupleField | PickField | ToggleField | NumberField | LinkField | PhoneField;
 export type FieldType = Field["type"];
 export const FIELD_TYPES: readonly FieldType[] = ["text", "richText", "image", "select", "hours", "object", "list", "reference", "tuple", "pick", "toggle", "number", "link", "phone"];
@@ -334,6 +341,11 @@ export type CmsConfig = {
    * says "late" then).
    */
   publish?: { typicalMinutes?: string; buildCheck?: string };
+  /**
+   * F8: the Start screen, the first screen after signing in (/admin): what is waiting for you (drafts), the jobs
+   * people do most (`quick`), and what was published lately. Without it /admin opens the first page, as before.
+   */
+  start?: { quick?: StartJob[] };
   media?: {
     dir?: string;
     /** P12h: the address uploads are served at until the site is built with them (default: dir without "public"). */
