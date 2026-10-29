@@ -170,6 +170,10 @@ test("shell: the top bar of an editor — the save state, View live, Version his
   const input = h.root.querySelector('[data-path="tagline"] input');
   input.value = "Changed"; input.dispatchEvent(new h.window.Event("input", { bubbles: true }));
   assert.equal(icon("discard").hidden, false);
+  // F9: Discard is named in words and in the danger colour, with a bin (not the Undo arrow).
+  assert.equal(icon("discard").textContent, "Discard draft");
+  assert.ok(icon("discard").classList.contains("vc-danger"));
+  assert.ok(icon("discard").querySelector(".vc-icon-trash"));
   assert.equal(top.querySelector(".vc-state-short").textContent, "1 unsaved");
   icon("discard").click();
   await settle(); await settle(); await h.app.idle();

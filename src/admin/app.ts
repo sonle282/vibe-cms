@@ -684,7 +684,7 @@ export const startAdmin = (options: AdminOptions) => {
     });
     const count = h(doc, "span", { class: "vc-list-count", role: "status", "aria-live": "polite" });
     const tbody = h(doc, "tbody");
-    const hasImage = Object.values(collection.fields).some((field) => field.type === "image");
+    const hasImage = Object.values(collection.fields).some((field) => field.type === "image" || (field.type === "list" && field.of.type === "image"));
     const headers = [collection.itemLabel, ...columns.map((column) => column.label ?? listFieldOf(collection, column.field)?.label ?? column.field), "Status"];
 
     const rowText = (item: ListView["items"][number]) => [item.label, item.id, detailOf(item), ...columns.map((column) => shown(column, item.values?.[column.field])), ...(list.search ?? []).map((name) => shown({ field: name }, item.values?.[name]))].join(" ").toLocaleLowerCase();
@@ -919,7 +919,9 @@ export const startAdmin = (options: AdminOptions) => {
       const over = historyTarget(resource);
       if (over) openHistory(kit, resource, over, () => { void go(over.href, { force: true }); });
     }, "Version history") : null;
-    const discard = topIcon("discard", "Discard draft", "undo", () => { void discardHere(); });
+    // F9 (2026-10-29): Discard deletes work, so it says so in words, in the danger colour, with a bin — not an icon alone
+    // that looked like Undo. It still asks before deleting.
+    const discard = h(doc, "button", { type: "button", class: "vc-icon-button vc-top-icon vc-top-labelled vc-danger", "data-action": "discard", "aria-label": "Discard draft", onclick: () => { void discardHere(); } }, icon(doc, "trash"), h(doc, "span", {}, "Discard draft"));
     const reloadKeep = topIcon("reload-keep", "Reload and keep my changes", "rotate-ccw", () => { void reloadKeepingChanges(); });
     const checkAgain = topIcon("check-again", "Check again whether the publish is live", "refresh", () => { void checkLive(); }, "Check again");
 

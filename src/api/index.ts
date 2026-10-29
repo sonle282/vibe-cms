@@ -28,6 +28,7 @@
  */
 import type { CmsCollection, CmsConfig, CmsFile } from "../config/index.js";
 import { isAdminOnly } from "../config/roles.js";
+import { recordThumbnail } from "./record-image.js";
 import { checkRecordValues } from "../check/values.js";
 import { checkFixedLists } from "../check/structure.js";
 import { pickChoices } from "../check/picks.js";
@@ -52,6 +53,7 @@ import type { Identify, Identity, RateLimiter } from "../auth/index.js";
 export { createSiteRuntime, loopbackApiUrl, siteEnv, type SiteEnv } from "./runtime.js";
 export { adminBoot, bootJson, type AdminBoot } from "../admin/boot.js";
 export { buildState, createGitHubPublisher, GitPublishError, rateLimitWait, type CheckRun, type CommitAuthor, type CommitInput, type FileContent, type GitHubOptions, type GitPublisher, type HistoryCommit } from "./github.js";
+export { recordThumbnail } from "./record-image.js";
 
 // ---------------------------------------------------------------- identity
 
@@ -148,17 +150,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
   const systemOf = (collection: CmsCollection) => [idFieldOf(collection), ...(collection.status ? [collection.status.field] : []), ...(collection.store.kind === "markdown-dir" ? ["body"] : [])];
   const fileOf = (key: string) => config.files.find((entry) => entry.key === key) ?? fail(404, "not_found", `No file "${key}" in cms.config.`);
   const collectionOf = (key: string) => config.collections.find((entry) => entry.key === key) ?? fail(404, "not_found", `No collection "${key}" in cms.config.`);
-  /** U4: the first image of a record (its thumbnail in the list), when it has one. */
-  const recordImage = (collection: CmsCollection, record: unknown) => {
-    const data = record && typeof record === "object" ? (record as Record<string, unknown>) : {};
-    for (const [key, field] of Object.entries(collection.fields)) {
-      if (field.type !== "image") continue;
-      const value = data[key];
-      const src = typeof value === "string" ? value : value && typeof value === "object" && typeof (value as { src?: unknown }).src === "string" ? String((value as { src: string }).src) : "";
-      if (src) return src;
-    }
-    return undefined;
-  };
+  const recordImage = (collection: CmsCollection, record: unknown) => recordThumbnail(collection.fields, record);
   const recordLabel = (collection: CmsCollection, record: unknown, id: string) => {
     const data = record && typeof record === "object" ? (record as Record<string, unknown>) : {};
     const textKey = Object.keys(collection.fields).find((key) => collection.fields[key].type === "text" && key !== idFieldOf(collection) && typeof data[key] === "string" && data[key]);

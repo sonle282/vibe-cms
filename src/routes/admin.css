@@ -165,6 +165,8 @@ body.vc-page:has(.vc-app) { overflow: hidden; }
 .vc-actions { display: flex; align-items: center; gap: 8px; }
 .vc-top-icon { flex: 0 0 auto; width: 36px; height: 36px; border-radius: var(--radius-10); text-decoration: none; }
 .vc-top-icon:hover:not(:disabled), .vc-top-icon:focus-visible { border-color: var(--hairline); }
+/* F9: a top-bar action named in words (Discard draft). */
+.vc-top-labelled { width: auto; gap: 6px; padding: 0 10px; font-size: var(--text-13); font-weight: 600; white-space: nowrap; }
 /* M1: the one save state of the open record (Mr Spa): a dot and its words; shortened, never cut, on a narrow bar. */
 .vc-save-state { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; margin-right: 4px; color: var(--text-secondary); font-size: var(--text-13); white-space: nowrap; }
 .vc-state-dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: var(--radius-full); background: var(--dot-idle); }
