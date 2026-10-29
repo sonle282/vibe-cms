@@ -60,13 +60,18 @@ test("save state: the Mr Spa CMS's words, its short words, and when Save / Publi
   // Publish: a saved draft, nothing unsaved, no reason.
   assert.equal(deriveSaveState({ ...base, hasDraft: true }).publishEnabled, true);
   assert.equal(deriveSaveState({ ...base, hasDraft: true }).publishTooltip, "Review changes before publishing.");
-  assert.deepEqual([deriveSaveState({ ...base, hasDraft: true, unsaved: 2 }).publishEnabled, deriveSaveState({ ...base, hasDraft: true, unsaved: 2 }).publishTooltip], [false, "Save a draft first"]);
+  // F4: unsaved changes do not hold Publish — it saves them, then publishes; unless they cannot be saved.
+  assert.deepEqual([deriveSaveState({ ...base, hasDraft: true, unsaved: 2 }).publishEnabled, deriveSaveState({ ...base, hasDraft: true, unsaved: 2 }).publishTooltip], [true, "Saves your changes, then publishes them."]);
+  assert.equal(deriveSaveState({ ...base, unsaved: 1 }).publishEnabled, true, "no draft yet: Publish saves the first one");
+  assert.equal(deriveSaveState({ ...base, unsaved: 1, canSave: false }).publishEnabled, false);
+  assert.equal(deriveSaveState({ ...base, unsaved: 1, busy: "Saving draft…" }).publishEnabled, false);
   assert.equal(deriveSaveState({ ...base, hasDraft: true, publishBlockReason: "No changes to publish yet." }).publishTooltip, "No changes to publish yet.");
   // The reasons, in the Mr Spa CMS's order.
   const reason = (facts) => publishBlockReason({ conflict: false, dirty: false, hasDraft: true, invalid: false, changes: 1, ...facts });
   assert.equal(reason({ conflict: true, dirty: true }), "Someone else changed this content. Reload before publishing.");
-  assert.equal(reason({ dirty: true, hasDraft: false }), "Save your changes before publishing.");
-  assert.equal(reason({ hasDraft: false }), "Save a draft before publishing.");
+  assert.equal(reason({ dirty: true, hasDraft: false, changes: 0 }), null);
+  assert.equal(reason({ dirty: true, invalid: true }), "Fix the highlighted fields before publishing.");
+  assert.equal(reason({ hasDraft: false }), "No changes to publish yet.");
   assert.equal(reason({ invalid: true }), "Fix the highlighted fields before publishing.");
   assert.equal(reason({ changes: 0 }), "No changes to publish yet.");
   assert.equal(reason({}), null);

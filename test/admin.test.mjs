@@ -625,7 +625,7 @@ test("P8 shell: a publish remembered from before a reload is watched; after the 
   } finally { await h.close(); }
 });
 
-test("P8 shell: nothing to publish; the editor's Review & publish needs a saved draft", async () => {
+test("P8 shell: nothing to publish; F4: Publish takes unsaved changes too", async () => {
   const h = await publishShell();
   try {
     await h.go("/admin/drafts/review");
@@ -635,10 +635,11 @@ test("P8 shell: nothing to publish; the editor's Review & publish needs a saved 
     // M1 (Mr Spa): Publish is always there; off, with the reason.
     assert.equal(review.hidden, false);
     assert.equal(review.disabled, true);
-    assert.equal(review.dataset.tooltip, "Save a draft before publishing.");
+    assert.equal(review.dataset.tooltip, "No changes to publish yet.");
+    assert.equal(h.root.querySelector('[data-role="publish-reason"]').hidden, true, "nothing changed: no words beside Publish");
     type(h.window, h.root.querySelector('[data-path="tagline"] input'), "Changed");
-    assert.equal(review.disabled, true, "unsaved changes: save first");
-    assert.equal(review.dataset.tooltip, "Save a draft first");
+    assert.equal(review.disabled, false, "F4: unsaved changes: Publish saves them first");
+    assert.equal(review.dataset.tooltip, "Saves your changes, then publishes them.");
     h.root.querySelector('[data-action="save"]').click();
     await h.until(() => !review.disabled, "the saved draft");
     assert.equal(review.dataset.tooltip, "Review changes before publishing.");
@@ -662,6 +663,40 @@ test("P8 shell: nothing to publish; the editor's Review & publish needs a saved 
     review.click();
     h.window.document.dispatchEvent(new h.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     assert.equal(dialog(), null);
+  } finally { await h.close(); }
+});
+
+test("F4 shell: Publish with unsaved changes reviews them, saves the draft and publishes in one go; Cancel saves nothing", async () => {
+  const h = await publishShell();
+  try {
+    await h.go("/admin/pages/site");
+    type(h.window, h.root.querySelector('[data-path="tagline"] input'), "One step");
+    const publish = h.root.querySelector('[data-action="publish"]');
+    publish.click();
+    await settle();
+    const dialog = () => h.window.document.querySelector(".vc-dialog");
+    assert.equal(dialog().querySelector(".vc-review-group li strong").textContent, "Changed: Tagline");
+    [...dialog().querySelectorAll("button")].find((button) => button.textContent === "Cancel").click();
+    await settle();
+    assert.equal(await h.drafts.get("usr_owner", "file:site"), undefined, "Cancel: nothing saved");
+    publish.click();
+    h.press("Continue to publish");
+    await h.until(() => /"tagline": "One step"/.test(h.github.files()["src/data/site.json"]), "the commit");
+    await h.until(() => h.state() === "Publishing… this usually takes a few minutes", "publishing");
+    assert.equal(h.root.querySelector('[data-role="publish-reason"]').hidden, true);
+  } finally { await h.close(); }
+});
+
+test("F4 shell: why Publish is off is said beside it, not only on hover", async () => {
+  const h = await publishShell();
+  try {
+    await saveDraft(h, "/api/cms/files/site", (content) => ({ ...content, tagline: "Mine" }));
+    h.github.pushOther({ "src/data/site.json": h.github.files()["src/data/site.json"].replace(/"tagline": "[^"]*"/, '"tagline": "Theirs"') });
+    h.redeploy();
+    await h.go("/admin/pages/site");
+    const why = h.root.querySelector('[data-role="publish-reason"]');
+    assert.equal(h.root.querySelector('[data-action="publish"]').disabled, true);
+    assert.deepEqual([why.hidden, why.textContent], [false, "Tagline changed on the website too. Choose which version to keep first."]);
   } finally { await h.close(); }
 });
 

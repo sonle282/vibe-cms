@@ -908,6 +908,7 @@ export const startAdmin = (options: AdminOptions) => {
     const resourceOf = () => (input.kind === "file" ? `file:${input.file.key}` : `item:${input.collection.key}:${input.id ?? String(form.value()[input.collection.idField] ?? "")}`);
     // U3: Publish opens the review of this draft — what changes, then publish.
     const publish = h(doc, "button", { type: "button", class: "vc-button vc-primary", "data-action": "publish", onclick: () => publishHere() }, "Publish");
+    const publishReason = h(doc, "span", { class: "vc-publish-reason", "data-role": "publish-reason", role: "status", hidden: true });
     const live = view?.content ?? undefined;
     /** The record is on the website (a saved draft then says only its changes are not live yet). */
     const recordLive = Boolean(collection && !isNew && live !== undefined && live !== null);
@@ -951,6 +952,7 @@ export const startAdmin = (options: AdminOptions) => {
       const liveNow = hasDraft ? undefined : publishedStateOf(resourceOf());
       const published = liveNow === "failed" ? undefined : liveNow;
       const reason = stale ? conflicts.length ? `${fieldList(conflicts)} changed on the website too. Choose which version to keep first.` : "The website changed after this draft was started. Discard it and make your change again."
+        : count && badLinks ? INVALID_LINK_REASON
         : publishBlockReason({ conflict, dirty: count > 0, hasDraft, invalid: Boolean(problem), changes: hasDraft && !count ? changesToPublish().length : 0 });
       const state = deriveSaveState({
         unsaved: count, hasDraft, canSave: !conflict && !saving && !discarding && !badLinks, publishBlockReason: reason, recordLive, host: siteHost(),
@@ -968,6 +970,10 @@ export const startAdmin = (options: AdminOptions) => {
       // Mr Spa: while saving, Publish reads "Saving…" too.
       publish.textContent = publishing ? "Publishing…" : saving ? "Saving…" : discarding ? "Discarding…" : "Publish";
       publish.dataset.tooltip = state.publishTooltip;
+      // F4: why Publish is off, in words next to it (a tooltip needs a mouse; the record editor says it in its side card).
+      const why = !recordSide && publish.disabled && state.kind !== "busy" && state.kind !== "published" && (count > 0 || hasDraft || stale) ? state.publishTooltip : "";
+      publishReason.textContent = why;
+      publishReason.hidden = !why;
       discard.hidden = !(hasDraft || count > 0) || saving || discarding;
       reloadKeep.hidden = !conflict;
       checkAgain.hidden = published !== "waiting" && liveNow !== "failed";
@@ -1306,8 +1312,9 @@ export const startAdmin = (options: AdminOptions) => {
     /** Mr Spa: "1 validation error" / "N validation errors". */
     const validationProblem = (count: number) => (count === 1 ? "1 validation error" : `${count} validation errors`);
 
-    const doSave = async () => {
-      if (saving || conflict || !dirty()) return;
+    /** Saves the draft; true when it is saved. `stay` (F4, Publish saving first): a new record keeps this screen. */
+    const doSave = async ({ stay = false } = {}): Promise<boolean> => {
+      if (saving || conflict || !dirty()) return false;
       banner.hidden = true;
       const problems = validate();
       if (problems.length) {
@@ -1315,7 +1322,7 @@ export const startAdmin = (options: AdminOptions) => {
         problem = validationProblem(problems.length);
         refresh();
         form.focus(problems[0].path.replace(/\[\d+\].*$/, "")) || form.focus(problems[0].path);
-        return;
+        return false;
       }
       form.clearErrors();
       problem = "";
@@ -1346,8 +1353,8 @@ export const startAdmin = (options: AdminOptions) => {
           showBanner(`Saved, with some HTML removed for safety: ${unsafe.map((entry) => `${where(entry.path)} — ${entry.removed.join(", ")}`).join("; ")}. Scripts, event handlers (onclick…), styles, frames and javascript: links are never kept.`);
         }
         void refreshDrafts();
-        if (isNew && collection) await go(adminHref.item(collection.key, id!), { replace: true, force: true });
-        return;
+        if (isNew && collection && !stay) await go(adminHref.item(collection.key, id!), { replace: true, force: true });
+        return true;
       }
       if (result.status === 401 || result.error === "password_change_required") { problem = result.message; showBanner(result.message, h(doc, "a", { href: ADMIN_BASE, class: "vc-button", target: "_self" }, "Sign in again")); }
       else if (result.error === "locked_field" && Array.isArray(result.data.fields)) { form.showErrors((result.data.fields as Array<{ path: string; message: string }>).map((entry) => ({ path: entry.path, message: entry.message }))); problem = result.message; }
@@ -1356,6 +1363,7 @@ export const startAdmin = (options: AdminOptions) => {
       else if (result.error === "draft_conflict") { conflict = true; problem = "This page was updated elsewhere. Reload to get the latest version — your unsaved changes will be kept to re-apply."; }
       else problem = result.message;
       refresh();
+      return false;
     };
 
     /** M1: reload this record and put my unsaved edits back on it (they show as unsaved changes again). */
@@ -1368,21 +1376,29 @@ export const startAdmin = (options: AdminOptions) => {
 
     // M6 (Mr Spa): "Review changes" (by section) → "Publish {name}" → publish; Publish reads "Publishing…" and the
     // outcome is the save state (no toast).
+    // F4: with unsaved changes, Publish reviews what is on screen, then saves it and publishes — one step.
     const publishHere = async () => {
-      if (publish.disabled || dirty() || publishing) return;
+      if (publish.disabled || publishing || saving) return;
       const name = titleText();
-      const changes = summarizeChanges({ fields: listedFields, before: live, after: saved, references: referenceLabels(), choiceLabels: choiceLabelsOf(view?.choices), full: true, ...(collection && !live ? { newRecord: { itemLabel: collection.itemLabel, title: name } } : {}) });
+      const unsaved = dirty() > 0;
+      const changes = summarizeChanges({ fields: listedFields, before: live, after: unsaved ? form.value() : saved, references: referenceLabels(), choiceLabels: choiceLabelsOf(view?.choices), full: true, ...(collection && !live ? { newRecord: { itemLabel: collection.itemLabel, title: name } } : {}) });
       if (!changes.length) { problem = "There are no changes to publish."; refresh(); return; }
       if (!(await confirmPublish(name, reviewGroups(changes, sectionList, name)))) return;
+      const created = isNew && collection ? adminHref.item(collection.key, String(form.value()[collection.idField])) : undefined;
+      if (unsaved && !(await doSave({ stay: true }))) return;
       publishing = true;
       problem = "";
       refresh();
       const result = await publishResource(resourceOf(), name);
       publishing = false;
-      if (!result.ok) { problem = publishProblem(result); refresh(); return; }
+      if (!result.ok) {
+        problem = publishProblem(result);
+        refresh();
+        return;
+      }
       hasDraft = false;
       forgetRecovery(storage, resourceOf());
-      await go(currentPath, { replace: true, force: true });
+      await go(created ?? currentPath, { replace: true, force: true });
     };
 
     // F3 "Keep my version": the draft starts again from the website's version; in the fields both changed, mine wins.
@@ -1424,7 +1440,7 @@ export const startAdmin = (options: AdminOptions) => {
 
     save.addEventListener("click", () => { void doSave(); });
     setTopIcons([viewLive, historyLink, discard, reloadKeep, checkAgain]);
-    actions.append(save, publish);
+    actions.append(publishReason, save, publish);
     if (stale && conflicts.length && input.url) {
       showBanner(`Someone published a change to ${fieldList(conflicts)} after you started this draft. Keep your version (the website's other changes are kept as well), or start again from the website.`,
         h(doc, "div", { class: "vc-banner-actions" },
@@ -1448,7 +1464,7 @@ export const startAdmin = (options: AdminOptions) => {
       // U2: the device switch in the middle of the top bar.
       topCenter.append(preview.devices);
     }
-    show({ title: titleText(), crumbs: crumbsFor, dirty, save: doSave, refreshState: refresh, resource: resourceOf(), leave: () => { body.classList.remove("vc-body-seo"); body.classList.remove("vc-body-record"); body.classList.remove("vc-body-document"); body.removeEventListener("scroll", recordScroll); recovery?.stop(); if (flushRecovery === recovery?.flush) flushRecovery = undefined; if (dirty()) forgetRecovery(storage, resourceOf()); preview?.destroy(); inspector?.destroy(); body.classList.remove("vc-body-wide"); } }, split ? [split] : content);
+    show({ title: titleText(), crumbs: crumbsFor, dirty, save: async () => { await doSave(); }, refreshState: refresh, resource: resourceOf(), leave: () => { body.classList.remove("vc-body-seo"); body.classList.remove("vc-body-record"); body.classList.remove("vc-body-document"); body.removeEventListener("scroll", recordScroll); recovery?.stop(); if (flushRecovery === recovery?.flush) flushRecovery = undefined; if (dirty()) forgetRecovery(storage, resourceOf()); preview?.destroy(); inspector?.destroy(); body.classList.remove("vc-body-wide"); } }, split ? [split] : content);
     preview?.start();
     refresh();
     // M4: a Link field turning invalid / valid turns Save off / on.
