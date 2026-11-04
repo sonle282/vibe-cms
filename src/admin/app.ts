@@ -1308,7 +1308,7 @@ export const startAdmin = (options: AdminOptions) => {
         imagesSection = h(doc, "section", { class: "vc-doc-images", "aria-labelledby": headingId }, h(doc, "h2", { id: headingId }, "Images in this post"), imagesBox, insert);
       }
       return h(doc, "div", { class: `vc-doc-paper${plain ? " is-plain" : ""}` }, docBar?.element ?? null, toolbar, form.element,
-        plain ? null : h(doc, "p", { class: "vc-help vc-doc-paste" }, "Pasting keeps text only; HTML code is not accepted."), imagesSection);
+        plain ? null : h(doc, "p", { class: "vc-help vc-doc-paste" }, "Pasted text comes in as plain paragraphs. To make a heading, click in the line and choose Heading 2 or Heading 3."), imagesSection);
     };
     /** M9 (Mr Spa): Hide from website / Show on website again — at once, outside Save draft and Publish. */
     const changeVisibility = async (archive: boolean) => {

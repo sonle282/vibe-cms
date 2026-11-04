@@ -12,6 +12,10 @@
  * Add link · Insert image, plain text buttons; Quote only when the field's `allow` asks for blockquote. Add link opens
  * the Mr Spa dialog ("Choose a page" / "Or enter a secure HTTPS URL").
  *
+ * F10 (like WordPress): the buttons of the line being edited are lit (aria-pressed), so a paragraph that is secretly a
+ * heading shows; Clear formatting makes the selection plain paragraphs; text pasted over several lines comes in as plain
+ * paragraphs, never in the style of the line it was pasted into.
+ *
  * The editor uses the browser's editing commands (execCommand) so Ctrl+Z / Ctrl+Y keep working; what they write is
  * cleaned (src/admin/clean.ts) before it becomes the value, and the server cleans again (P8c).
  */
@@ -173,7 +177,7 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
   const bold = tool("bold", h(doc, "strong", {}, "B"), () => exec("bold"), { "aria-label": "Bold" });
   const italic = tool("italic", h(doc, "em", {}, "I"), () => exec("italic"), { "aria-label": "Italic" });
   /** P12d: the tags each tool writes — a tool is shown only when the field allows all of them. */
-  const NEEDS: Record<string, string[]> = { paragraph: ["p"], heading: ["h2"], subheading: ["h3"], bold: ["strong"], italic: ["em"], bullets: ["ul", "li"], numbers: ["ol", "li"], quote: ["blockquote"], link: ["a"], image: ["img"] };
+  const NEEDS: Record<string, string[]> = { paragraph: ["p"], heading: ["h2"], subheading: ["h3"], bold: ["strong"], italic: ["em"], bullets: ["ul", "li"], numbers: ["ol", "li"], quote: ["blockquote"], link: ["a"], image: ["img"], clear: ["p"] };
   const allowed = (button: HTMLButtonElement) => !options.allow || (NEEDS[button.dataset.command ?? ""] ?? []).every((tag) => options.allow!.includes(tag));
   const formatting = [
     tool("paragraph", "Paragraph", block("p")),
@@ -186,6 +190,7 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
     ...(options.allow?.includes("blockquote") ? [tool("quote", "Quote", () => exec("formatBlock", closest("blockquote") ? "<p>" : "<blockquote>"))] : []),
     tool("link", "Add link", () => openLink()),
     ...(options.pickImage ? [tool("image", "Insert image", () => insertImage())] : []),
+    tool("clear", "Clear formatting", () => clearFormatting(), { "data-tooltip": "Make the selected text plain paragraphs, like the rest of the site" }),
   ].filter(allowed);
   const toolbar = h(doc, "div", { class: "vc-rich-toolbar", role: "toolbar", "aria-label": `${label} formatting`, "aria-controls": id }, ...formatting);
 
@@ -195,8 +200,35 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
     while (element && element !== area) { if (element.tagName?.toLowerCase() === tag) return element; element = element.parentElement; }
     return undefined;
   };
-  /** M10: Mr Spa's toolbar has no on / off states. */
-  const refreshState = () => {};
+  /** F10: the buttons of the line the cursor is in are lit (its kind of line, bold, italic). */
+  const PRESSABLE = ["paragraph", "heading", "subheading", "bullets", "numbers", "bold", "italic"];
+  const refreshState = () => {
+    const node = win?.getSelection?.()?.anchorNode;
+    const on = new Set<string>();
+    if (node && inArea(node)) {
+      let element = (node.nodeType === 1 ? node : node.parentNode) as Element | null;
+      let line = "";
+      while (element && element !== area) {
+        const tag = element.tagName.toLowerCase();
+        if (tag === "strong" || tag === "b") on.add("bold");
+        if (tag === "em" || tag === "i") on.add("italic");
+        if (!line && ["p", "h2", "h3", "ul", "ol"].includes(tag)) line = tag;
+        element = element.parentElement;
+      }
+      const name = { p: "paragraph", h2: "heading", h3: "subheading", ul: "bullets", ol: "numbers" }[line];
+      if (name) on.add(name);
+    }
+    for (const button of formatting) {
+      const name = button.dataset.command ?? "";
+      if (PRESSABLE.includes(name)) button.setAttribute("aria-pressed", String(on.has(name)));
+    }
+  };
+  /** F10: the selected lines become plain paragraphs, without bold or italic (links stay). */
+  const clearFormatting = () => {
+    exec("removeFormat");
+    for (const tag of ["ul", "ol"]) if (closest(tag)) exec(tag === "ul" ? "insertUnorderedList" : "insertOrderedList");
+    exec("formatBlock", "<p>");
+  };
 
   // ---------------------------------------------------------------- links (M10: the Mr Spa CMS's Add link dialog)
 
@@ -362,10 +394,13 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
     if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); removeImage(); }
     else if (event.key === "Escape") deselect();
   });
-  // Paste keeps only the text (like the CMS this grew out of): no foreign styles, scripts or images.
+  // Paste keeps only the text (like the CMS this grew out of): no foreign styles, scripts or images. F10: several
+  // lines come in as plain paragraphs of their own, whatever line the cursor was in (a heading stays a heading).
   area.addEventListener("paste", (event) => {
     event.preventDefault();
     const text = (event as ClipboardEvent).clipboardData?.getData("text/plain") ?? "";
+    const lines = text.replace(/\r\n?/g, "\n").split("\n").map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
+    if (lines.length > 1 && pasteParagraphs(lines)) return;
     if (text && !exec("insertText", text)) {
       remember();
       savedRange?.deleteContents();
@@ -373,6 +408,42 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
       changed();
     }
   });
+  /** F10: put plain paragraphs where the cursor is, splitting the line it is in (both halves keep their own kind). */
+  const pasteParagraphs = (lines: string[]) => {
+    const selection = win?.getSelection?.();
+    const range = selection && selection.rangeCount && inArea(selection.getRangeAt(0).startContainer) ? selection.getRangeAt(0) : savedRange;
+    if (!range || !inArea(range.startContainer)) return false;
+    range.deleteContents();
+    const paragraphs = lines.map((line) => { const p = doc.createElement("p"); p.textContent = line; return p; });
+    let anchor: Node | null = null;
+    if (range.startContainer === area) {
+      const before = area.childNodes[range.startOffset] ?? null;
+      for (const p of paragraphs) area.insertBefore(p, before);
+    } else {
+      let top: Node = range.startContainer;
+      while (top.parentNode && top.parentNode !== area) top = top.parentNode;
+      const tail = doc.createRange();
+      tail.setStart(range.startContainer, range.startOffset);
+      tail.setEnd(top, top.childNodes.length);
+      const after = top.cloneNode(false) as Element;
+      after.append(tail.extractContents());
+      anchor = top.nextSibling;
+      for (const p of paragraphs) area.insertBefore(p, anchor);
+      const visible = (node: Node) => Boolean(node.textContent?.trim() || (node as Element).querySelector?.("img"));
+      if (visible(after)) area.insertBefore(after, anchor);
+      if (!visible(top)) area.removeChild(top);
+    }
+    const last = paragraphs[paragraphs.length - 1];
+    const caret = doc.createRange();
+    caret.selectNodeContents(last);
+    caret.collapse(false);
+    selection?.removeAllRanges();
+    selection?.addRange(caret);
+    remember();
+    changed();
+    refreshState();
+    return true;
+  };
   // Dropped files or HTML would bypass the image sheet; images are added with the Image button.
   area.addEventListener("drop", (event) => event.preventDefault());
   area.addEventListener("scroll", place);

@@ -14,7 +14,7 @@ export type Dictionary = { exact: Record<string, string>; patterns: Array<[RegEx
 const ATTRIBUTES = ["aria-label", "data-tooltip", "placeholder", "title"];
 // What people typed and the site's own content: never translated (record names, values in the review, list cells).
 const SKIP = [
-  "textarea", "input", "select option", "[contenteditable]", "[data-no-translate]", ".vc-rich-editor", ".ProseMirror", "script", "style",
+  "textarea", "input", "select option", "[contenteditable]", "[data-no-translate]", ".vc-rich-area", ".vc-rich-source", ".ProseMirror", "script", "style",
   ".vc-change-what ins", ".vc-change-what del", ".vc-review-values", ".vc-list-name-words", ".vc-list-name-detail", ".vc-list-secondary", ".vc-draft-label",
 ].join(", ");
 

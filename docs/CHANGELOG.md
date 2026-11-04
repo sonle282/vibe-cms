@@ -3,6 +3,19 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.31.1 — 2026-11-04 (rich text like WordPress: pasted text in the site's style)
+
+**F10 — writing a description like a WordPress post.** Site action: none (`vibe-cms update`). From the Mr Spa owner:
+text pasted into a product description came in the style of the heading the cursor was in, and nothing showed it.
+
+- Text pasted over several lines comes in as plain paragraphs, one per line, wherever the cursor is; the line it was
+  pasted into is split and keeps its own style.
+- The buttons of the line being edited are lit (Paragraph, Heading 2, Heading 3, lists, B, I), like WordPress's block
+  toolbar, so a paragraph that is really a heading shows at once.
+- **Clear formatting** (last on the toolbar) makes the selected text plain paragraphs, without bold or italic.
+- The editor shows text and headings at a page's sizes (16 px text, bold 22 / 18 px headings).
+- With `site.locale: "vi"` the toolbar is in Vietnamese too (Đoạn văn, Tiêu đề lớn, Tiêu đề nhỏ, Xoá định dạng).
+
 ## 0.31.0 — 2026-10-29 (the owner's UX: drafts carried over, Publish in one step, a Start screen, Vietnamese)
 
 From a UX review of the Mr Spa admin with its owner (F2–F9). **Site action: `npx vibe-cms migrate` (remote)** — migration
