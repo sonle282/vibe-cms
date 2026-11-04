@@ -71,9 +71,11 @@ const isBlank = (node: Node) => (node.nodeType === TEXT && !node.textContent?.re
  * Tidy what editing commands leave behind: blocks nested in a paragraph (<p><ul>…</ul></p>) are lifted out, text next
  * to blocks is put in its own paragraph, empty paragraphs and trailing <br> go, and no-break spaces typed as spaces
  * become plain spaces. `wrapLoose`: also put loose text at the top level in a paragraph (Markdown; HTML that has no
- * block at all — "Some text" — stays as it is).
+ * block at all — "Some text" — stays as it is). `keepBlankLines` (HTML, as Shopify's and Word's Enter): an empty
+ * paragraph between two others stays, as <p><br></p> — a blank line the reader sees; empty ones at the start or the
+ * end still go.
  */
-export const normalizeBlocks = (root: Element, { wrapLoose = false }: { wrapLoose?: boolean } = {}) => {
+export const normalizeBlocks = (root: Element, { wrapLoose = false, keepBlankLines = false }: { wrapLoose?: boolean; keepBlankLines?: boolean } = {}) => {
   const doc = root.ownerDocument;
   const walker = doc.createTreeWalker(root, 4 /* SHOW_TEXT */);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) if (node.nodeValue?.includes("\u00a0")) node.nodeValue = node.nodeValue.replace(/\u00a0/g, " ");
@@ -103,9 +105,22 @@ export const normalizeBlocks = (root: Element, { wrapLoose = false }: { wrapLoos
   lift(root);
   wrapRuns(root, wrapLoose);
   for (const block of [...root.querySelectorAll("li, blockquote, td, th")]) if ([...block.childNodes].some(isBlock)) wrapRuns(block, false);
+  const blankLines = new Set<Element>();
   for (const p of [...root.querySelectorAll("p, h1, h2, h3, h4, h5, h6")]) {
     while (p.lastChild && p.lastChild.nodeType === ELEMENT && (p.lastChild as Element).tagName.toLowerCase() === "br") p.lastChild.remove();
-    if (![...p.childNodes].some((node) => !isBlank(node))) p.remove();
+    if ([...p.childNodes].some((node) => !isBlank(node))) continue;
+    if (keepBlankLines && p.parentNode === root && p.tagName.toLowerCase() === "p") blankLines.add(p);
+    else p.remove();
+  }
+  if (blankLines.size) {
+    const children = [...root.children];
+    const first = children.findIndex((child) => !blankLines.has(child));
+    const last = children.length - 1 - [...children].reverse().findIndex((child) => !blankLines.has(child));
+    children.forEach((child, index) => {
+      if (!blankLines.has(child)) return;
+      if (first < 0 || index < first || index > last) child.remove();
+      else child.replaceChildren(doc.createElement("br"));
+    });
   }
   return root;
 };

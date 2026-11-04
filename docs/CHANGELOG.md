@@ -3,6 +3,13 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.34.1 — 2026-11-04 (a blank line is kept)
+
+**Fix.** Site action: none. In the visual editor (HTML), Enter on its own — a blank line between two paragraphs — now
+stays, as `<p><br></p>`, the way Shopify's and Word's editors keep it: before, it was tidied away, so the field did not
+change and **Save draft** did not appear (Mr Spa, Z6 description). Blank lines at the start or the end, blank headings
+and Markdown still go. `normalizeBlocks(root, { keepBlankLines })`.
+
 ## 0.34.0 — 2026-11-04 (Duplicate asks the new name)
 
 **M8 Duplicate, as Shopify does it.** Site action: none. ⋯ **Duplicate** now asks the copy's name first (a dialog

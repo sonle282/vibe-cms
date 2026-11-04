@@ -43,6 +43,11 @@ test("normalize: blocks lifted out of paragraphs, loose text wrapped, empty para
   assert.equal(norm("Loose <em>text</em><ul><li>x</li></ul>tail"), "<p>Loose <em>text</em></p><ul><li>x</li></ul><p>tail</p>");
   assert.equal(norm("Just text, no blocks"), "Just text, no blocks", "HTML without blocks stays inline");
   assert.equal(norm("Just text", { wrapLoose: true }), "<p>Just text</p>", "Markdown: always paragraphs");
+  // An Enter on its own (Mr Spa, Z6: "no Save draft"): a blank line between paragraphs stays; at the start or end it goes.
+  const keep = { keepBlankLines: true };
+  assert.equal(norm("<p><br></p><p>One</p><p><br></p><p></p><p>Two</p><p> </p>", keep), "<p>One</p><p><br></p><p><br></p><p>Two</p>");
+  assert.equal(norm("<p>One</p><p>\u00a0</p><h2>T</h2><h3><br></h3><ul><li>x</li></ul>", keep), "<p>One</p><p><br></p><h2>T</h2><ul><li>x</li></ul>", "a blank heading still goes");
+  assert.equal(norm("<p><br></p><p> </p>", keep), "", "only blank lines: nothing");
 });
 
 test("markdown: the post's own style is kept; a sized image is HTML; posts the editor cannot keep are detected", () => {
