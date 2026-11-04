@@ -87,10 +87,10 @@ test("editor (HTML): untouched never changes the value; an edit is cleaned; load
   assert.equal(toolbar.getAttribute("aria-label"), "Text formatting");
   assert.deepEqual([...toolbar.querySelectorAll("button")].map((button) => [button.textContent, button.getAttribute("aria-label"), button.getAttribute("title")]), [
     ["Paragraph", null, null], ["Heading 2", null, null], ["Heading 3", null, null], ["B", "Bold", null], ["I", "Italic", null],
-    ["Bulleted list", null, null], ["Numbered list", null, null], ["Add link", null, null]]);
+    ["Bulleted list", null, null], ["Numbered list", null, null], ["Add link", null, null], ["Clear formatting", null, null]]);
   assert.equal(editor.element.querySelector(".vc-tool-source"), null);
   const quoted = createRichEditor({ doc: document, id: "e1q", label: "Quote", value: "", format: "html", allow: ["p", "blockquote", "a"], onChange: () => {} });
-  assert.deepEqual([...quoted.toolbar.querySelectorAll("button")].map((button) => button.textContent), ["Paragraph", "Quote", "Add link"], "a tool outside the Mr Spa set only when allow asks for it");
+  assert.deepEqual([...quoted.toolbar.querySelectorAll("button")].map((button) => button.textContent), ["Paragraph", "Quote", "Add link", "Clear formatting"], "a tool outside the Mr Spa set only when allow asks for it");
   // Emptying the editor gives "".
   editor.area.innerHTML = "<p><br></p>";
   editor.area.dispatchEvent(new window.Event("input"));
@@ -177,6 +177,32 @@ test("editor: paste keeps only the text; links must be web, mail, phone or site 
   editor.area.dispatchEvent(paste);
   assert.equal(paste.defaultPrevented, true);
   assert.equal(changes.at(-1), "<p>Start pasted &lt;b&gt;text&lt;/b&gt;</p>", "the text, never the HTML");
+});
+
+test("F10 editor: lines pasted into a heading come in as plain paragraphs; the line's buttons are lit", async () => {
+  const { window, document } = dom();
+  const changes = [];
+  const editor = createRichEditor({ doc: document, id: "e10", label: "Text", value: "<h2>Z6 Client Chair</h2><p>Old text</p>", format: "html", onChange: (next) => changes.push(next) });
+  document.body.append(editor.element);
+  await editor.ready;
+  const caretAtEnd = (node) => { const range = document.createRange(); range.selectNodeContents(node); range.collapse(false); window.getSelection().removeAllRanges(); window.getSelection().addRange(range); };
+  caretAtEnd(editor.area.querySelector("h2").firstChild);
+  document.dispatchEvent(new window.Event("selectionchange"));
+  const pressed = () => [...editor.toolbar.querySelectorAll("[aria-pressed=true]")].map((button) => button.dataset.command);
+  assert.deepEqual(pressed(), ["heading"], "the cursor is in a heading: Heading 2 is lit");
+  const paste = new window.Event("paste", { bubbles: true, cancelable: true });
+  paste.clipboardData = { getData: (type) => (type === "text/plain" ? "Upgrade your salon.\r\n\r\nPlush   Paradise\nCrafted with care." : "") };
+  editor.area.dispatchEvent(paste);
+  assert.equal(changes.at(-1), "<h2>Z6 Client Chair</h2><p>Upgrade your salon.</p><p>Plush Paradise</p><p>Crafted with care.</p><p>Old text</p>");
+  assert.deepEqual(pressed(), ["paragraph"], "the cursor ends in the last pasted paragraph");
+  // Pasted in the middle of a paragraph: it is split, both halves stay paragraphs.
+  const old = [...editor.area.querySelectorAll("p")].at(-1).firstChild;
+  const range = document.createRange(); range.setStart(old, 3); range.collapse(true);
+  window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+  const second = new window.Event("paste", { bubbles: true, cancelable: true });
+  second.clipboardData = { getData: (type) => (type === "text/plain" ? "A\nB" : "") };
+  editor.area.dispatchEvent(second);
+  assert.match(changes.at(-1), /<p>Old<\/p><p>A<\/p><p>B<\/p><p> text<\/p>$/);
 });
 
 test("M10 editor: Add link (Mr Spa) — a page of the site or a secure HTTPS address, in its words", async () => {
