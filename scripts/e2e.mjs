@@ -452,10 +452,10 @@ try {
   // ---------------------------------------------------------------- owner: a Markdown post (status, list, body)
   await open("/admin/catalog/posts/welcome");
   // M10: the Mr Spa CMS's Blog post — the paper and Post details / In Google / Ready to publish.
-  check("document (M10): the paper (bar, cover, title, text), Post details · In Google · Ready to publish",
+  check("document (M10): the paper (bar, cover, title, text), Schedule · Outline · Post details · In Google · Ready to publish",
     assertEqual(await page.locator(".vc-doc-paper .vc-form > .vc-field").evaluateAll((boxes) => boxes.map((box) => box.dataset.path)), ["cover", "title", "body"])
     && (await page.locator(".vc-doc-paper > .vc-rich-toolbar").count()) === 1
-    && assertEqual(await page.locator(".vc-record-side-card h2").allTextContents(), ["On the website", "Post details", "In Google", "Ready to publish"])
+    && assertEqual(await page.locator(".vc-record-side-card h2").allTextContents(), ["On the website", "Schedule", "Outline", "Post details", "In Google", "Ready to publish"])
     && (await page.locator(".vc-doc-google-path").textContent()) === "demo.example › blog › welcome",
   { cards: await page.locator(".vc-record-side-card h2").allTextContents() });
   await shot("m10-document");
