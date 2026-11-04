@@ -213,6 +213,7 @@ const patterns: Array<[RegExp, string]> = [
   [/^Publishes by itself (.+)$/, "Hẹn đăng $1"],
   [/^Scheduled: it publishes by itself on (.+)\.$/, "Đã hẹn giờ: bài sẽ tự đăng lúc $1."],
   [/^The scheduled publish did not go out: (.+)$/, "Lần hẹn giờ trước chưa đăng được: $1"],
+  [/^Publishing to GitHub failed \((.+)\)\.?$/, "Không đăng lên GitHub được (mã $1). Nhờ người cài web xem giúp."],
   [/^What would you like to change on (.+) today\?$/, "Hôm nay bạn muốn sửa gì trên $1?"],
   [/^Waiting for you · (.+)$/, "Đang chờ bạn · $1"],
   [/^Review & publish all (\d+)$/, "Xem lại và đăng cả $1"],

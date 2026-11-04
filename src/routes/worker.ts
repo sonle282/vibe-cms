@@ -1,5 +1,6 @@
 // Vibe CMS: the site's Worker with the CMS's scheduled publishing (F12, WordPress's "Schedule"). A site that wants it
-// sets in its wrangler config: "main": "@sonle282/vibe-cms/routes/worker.ts" and "triggers": { "crons": ["*/5 * * * *"] }.
+// adds src/worker.ts with `export { default } from "@sonle282/vibe-cms/worker";` and sets in its wrangler config
+// "main": "./src/worker.ts" and "triggers": { "crons": ["*/5 * * * *"] }.
 // Every request is Astro's own (its Cloudflare handler, as the default entry); every few minutes the cron publishes the
 // scheduled drafts that are due, as the person who scheduled them.
 import { handle } from "@astrojs/cloudflare/handler";

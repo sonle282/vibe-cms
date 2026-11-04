@@ -8,7 +8,8 @@ migration that is not automatic. Each entry says what a site has to do.
 **F12 — more of WordPress's post editor.** Site action: **`npx vibe-cms migrate` (remote)** — migration
 `0007_draft_schedule.sql` adds two nullable columns; until it runs, scheduling answers that the site needs the update and
 everything else works. To publish scheduled posts, the site's wrangler config needs
-`"main": "@sonle282/vibe-cms/routes/worker.ts"` and `"triggers": { "crons": ["*/5 * * * *"] }`.
+a file `src/worker.ts` with `export { default } from "@sonle282/vibe-cms/worker";`, and in its wrangler config
+`"main": "./src/worker.ts"` and `"triggers": { "crons": ["*/5 * * * *"] }`.
 
 - **Outline** (WordPress's Document Overview): the post's headings, live, in the right column; a click goes there.
 - **"/" menu** (WordPress's block inserter): an empty line says "Type / to add a heading, a list or an image"; "/" opens
