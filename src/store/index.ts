@@ -127,6 +127,10 @@ export type Draft = {
   /** 1 on the first save, +1 on every save; checked atomically when expectedRevision is given. */
   revision: number;
   updatedAt: string;
+  /** F12: when the site publishes it by itself (UTC ISO time); absent = not scheduled. A save keeps it. */
+  publishAt?: string;
+  /** F12: why the last scheduled publish did not go out. */
+  scheduleNote?: string;
 };
 export type DraftSummary = Omit<Draft, "content" | "sourceContent"> & { kind: "file" | "item"; resourceKey: string; itemId: string | null };
 /** sourceContent is stored as given: leave it out and the draft keeps none (pass the draft's own to keep it). */
@@ -162,6 +166,18 @@ export interface DraftStore {
   forResource(resource: string): Promise<DraftSummary[]>;
   /** M11: everyone's drafts whose content holds `text` (an upload's address part) — is an image still used by a draft? */
   using(text: string): Promise<DraftSummary[]>;
+  /**
+   * F12: schedule a draft (`at` = UTC ISO time) or take its schedule off (null); clears the last note. False when there
+   * is no such draft. Throws ScheduleUnavailableError when the store cannot hold schedules (migration 0007 not run).
+   */
+  schedule(userId: string, resource: string, at: string | null): Promise<boolean>;
+  /** F12: the scheduled drafts due at `now`, oldest first. */
+  due(now: string): Promise<Array<{ userId: string; resource: string; publishAt: string }>>;
+  /** F12: a scheduled publish did not go out: the schedule comes off, the reason stays on the draft. */
+  scheduleFailed(userId: string, resource: string, note: string): Promise<void>;
+}
+export class ScheduleUnavailableError extends Error {
+  constructor() { super("Scheduling needs migration 0007: run npx vibe-cms migrate."); this.name = "ScheduleUnavailableError"; }
 }
 
 const prepare = (input: SaveDraft) => {
@@ -192,8 +208,10 @@ interface D1StatementLike {
   first<T = Record<string, unknown>>(): Promise<T | null>;
 }
 
-type Row = { user_id: string; resource: string; kind: "file" | "item"; resource_key: string; item_id: string | null; label: string; source_version: string; revision: number; updated_at: string; content?: string; source_content?: string | null };
-const fromRow = (row: Row): DraftSummary => ({ userId: row.user_id, resource: row.resource, kind: row.kind, resourceKey: row.resource_key, itemId: row.item_id, label: row.label, sourceVersion: row.source_version, revision: Number(row.revision), updatedAt: row.updated_at });
+type Row = { user_id: string; resource: string; kind: "file" | "item"; resource_key: string; item_id: string | null; label: string; source_version: string; revision: number; updated_at: string; content?: string; source_content?: string | null; publish_at?: string | null; schedule_note?: string | null };
+/** F12: a draft's schedule, when it has one. */
+const scheduleOf = (row: { publish_at?: string | null; schedule_note?: string | null }) => ({ ...(row.publish_at ? { publishAt: row.publish_at } : {}), ...(row.schedule_note ? { scheduleNote: row.schedule_note } : {}) });
+const fromRow = (row: Row): DraftSummary => ({ userId: row.user_id, resource: row.resource, kind: row.kind, resourceKey: row.resource_key, itemId: row.item_id, label: row.label, sourceVersion: row.source_version, revision: Number(row.revision), updatedAt: row.updated_at, ...scheduleOf(row) });
 const SUMMARY = "user_id, resource, kind, resource_key, item_id, label, source_version, revision, updated_at";
 
 /** Drafts in D1 (table cms_draft_index, migrations 0001 + 0002 + 0006). Revision checks are single atomic statements. */
@@ -201,10 +219,14 @@ export const createD1DraftStore = (db: D1Like, now: () => string = () => new Dat
   // F3: a site deployed before `vibe-cms migrate` ran 0006 has no source_content yet — drafts still work, without it.
   let sourceColumn: Promise<boolean> | undefined;
   const hasSource = () => (sourceColumn ??= db.prepare("SELECT source_content FROM cms_draft_index LIMIT 0").all().then(() => true, () => false));
+  // F12: the same for 0007 (schedules): without it there is nothing to schedule, and drafts work as before.
+  let scheduleColumns: Promise<boolean> | undefined;
+  const hasSchedule = () => (scheduleColumns ??= db.prepare("SELECT publish_at, schedule_note FROM cms_draft_index LIMIT 0").all().then(() => true, () => false));
+  const summary = async () => `${SUMMARY}${(await hasSchedule()) ? ", publish_at, schedule_note" : ""}`;
   const current = async (userId: string, resource: string) => Number((await db.prepare("SELECT revision FROM cms_draft_index WHERE user_id = ? AND resource = ?").bind(userId, resource).first<{ revision: number }>())?.revision ?? 0);
   return {
     async get(userId, resource) {
-      const row = await db.prepare(`SELECT ${SUMMARY}, content${(await hasSource()) ? ", source_content" : ""} FROM cms_draft_index WHERE user_id = ? AND resource = ?`).bind(userId, resource).first<Row>();
+      const row = await db.prepare(`SELECT ${await summary()}, content${(await hasSource()) ? ", source_content" : ""} FROM cms_draft_index WHERE user_id = ? AND resource = ?`).bind(userId, resource).first<Row>();
       if (!row) return undefined;
       const { kind: _kind, resourceKey: _key, itemId: _id, ...rest } = fromRow(row);
       return { ...rest, content: JSON.parse(row.content ?? "null") as unknown, ...sourceOf(row.source_content ?? null) };
@@ -220,29 +242,43 @@ export const createD1DraftStore = (db: D1Like, now: () => string = () => new Dat
       const at = now();
       const label = input.label ?? "";
       const itemId = resource.kind === "item" ? resource.id : null;
-      let row: { revision: number; label: string } | null;
+      const back = `revision, label${(await hasSchedule()) ? ", publish_at, schedule_note" : ""}`;
+      let row: { revision: number; label: string; publish_at?: string | null; schedule_note?: string | null } | null;
       if (input.expectedRevision === undefined) {
         row = await db.prepare(`INSERT INTO cms_draft_index (${SUMMARY}, content${col}) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?${val})
           ON CONFLICT (user_id, resource) DO UPDATE SET content = excluded.content, source_version = excluded.source_version,${set} updated_at = excluded.updated_at,
             label = CASE WHEN excluded.label = '' THEN cms_draft_index.label ELSE excluded.label END, revision = cms_draft_index.revision + 1
-          RETURNING revision, label`).bind(...[input.userId, input.resource, resource.kind, resource.key, itemId, label, input.sourceVersion, at, content, ...(withSource ? [source] : [])]).first();
+          RETURNING ${back}`).bind(...[input.userId, input.resource, resource.kind, resource.key, itemId, label, input.sourceVersion, at, content, ...(withSource ? [source] : [])]).first();
       } else if (input.expectedRevision === 0) {
         row = await db.prepare(`INSERT INTO cms_draft_index (${SUMMARY}, content${col}) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?${val})
-          ON CONFLICT (user_id, resource) DO NOTHING RETURNING revision, label`).bind(...[input.userId, input.resource, resource.kind, resource.key, itemId, label, input.sourceVersion, at, content, ...(withSource ? [source] : [])]).first();
+          ON CONFLICT (user_id, resource) DO NOTHING RETURNING ${back}`).bind(...[input.userId, input.resource, resource.kind, resource.key, itemId, label, input.sourceVersion, at, content, ...(withSource ? [source] : [])]).first();
       } else {
         row = await db.prepare(`UPDATE cms_draft_index SET content = ?, source_version = ?,${withSource ? " source_content = ?," : ""} updated_at = ?, label = CASE WHEN ? = '' THEN label ELSE ? END, revision = revision + 1
-          WHERE user_id = ? AND resource = ? AND revision = ? RETURNING revision, label`).bind(...[content, input.sourceVersion, ...(withSource ? [source] : []), at, label, label, input.userId, input.resource, input.expectedRevision]).first();
+          WHERE user_id = ? AND resource = ? AND revision = ? RETURNING ${back}`).bind(...[content, input.sourceVersion, ...(withSource ? [source] : []), at, label, label, input.userId, input.resource, input.expectedRevision]).first();
       }
       if (!row) throw new DraftConflictError(await current(input.userId, input.resource), input.expectedRevision ?? 0);
-      return { userId: input.userId, resource: input.resource, label: row.label, content: JSON.parse(content) as unknown, sourceVersion: input.sourceVersion, ...sourceOf(source), revision: Number(row.revision), updatedAt: at };
+      return { userId: input.userId, resource: input.resource, label: row.label, content: JSON.parse(content) as unknown, sourceVersion: input.sourceVersion, ...sourceOf(source), revision: Number(row.revision), updatedAt: at, ...scheduleOf(row) };
     },
     async discard(userId, resource) {
       return Boolean(await db.prepare("DELETE FROM cms_draft_index WHERE user_id = ? AND resource = ? RETURNING revision").bind(userId, resource).first());
     },
     async clearAfterPublish(userId, resource) { await db.prepare("DELETE FROM cms_draft_index WHERE user_id = ? AND resource = ?").bind(userId, resource).run(); },
-    async mine(userId) { return (await db.prepare(`SELECT ${SUMMARY} FROM cms_draft_index WHERE user_id = ? ORDER BY updated_at DESC, resource`).bind(userId).all<Row>()).results.map(fromRow); },
-    async forResource(resource) { return (await db.prepare(`SELECT ${SUMMARY} FROM cms_draft_index WHERE resource = ? ORDER BY updated_at DESC, user_id`).bind(resource).all<Row>()).results.map(fromRow); },
-    async using(text) { return (await db.prepare(`SELECT ${SUMMARY} FROM cms_draft_index WHERE instr(content, ?) > 0 ORDER BY updated_at DESC, user_id`).bind(text).all<Row>()).results.map(fromRow); },
+    async mine(userId) { return (await db.prepare(`SELECT ${await summary()} FROM cms_draft_index WHERE user_id = ? ORDER BY updated_at DESC, resource`).bind(userId).all<Row>()).results.map(fromRow); },
+    async forResource(resource) { return (await db.prepare(`SELECT ${await summary()} FROM cms_draft_index WHERE resource = ? ORDER BY updated_at DESC, user_id`).bind(resource).all<Row>()).results.map(fromRow); },
+    async using(text) { return (await db.prepare(`SELECT ${await summary()} FROM cms_draft_index WHERE instr(content, ?) > 0 ORDER BY updated_at DESC, user_id`).bind(text).all<Row>()).results.map(fromRow); },
+    async schedule(userId, resource, at) {
+      if (!(await hasSchedule())) throw new ScheduleUnavailableError();
+      return Boolean(await db.prepare("UPDATE cms_draft_index SET publish_at = ?, schedule_note = NULL WHERE user_id = ? AND resource = ? RETURNING revision").bind(at, userId, resource).first());
+    },
+    async due(at) {
+      if (!(await hasSchedule())) return [];
+      return (await db.prepare("SELECT user_id, resource, publish_at FROM cms_draft_index WHERE publish_at IS NOT NULL AND publish_at <= ? ORDER BY publish_at, user_id").bind(at).all<{ user_id: string; resource: string; publish_at: string }>()).results
+        .map((row) => ({ userId: row.user_id, resource: row.resource, publishAt: row.publish_at }));
+    },
+    async scheduleFailed(userId, resource, note) {
+      if (!(await hasSchedule())) return;
+      await db.prepare("UPDATE cms_draft_index SET publish_at = NULL, schedule_note = ? WHERE user_id = ? AND resource = ?").bind(note.slice(0, 1000), userId, resource).run();
+    },
   };
 };
 
@@ -258,7 +294,8 @@ export const createMemoryDraftStore = (now: () => string = () => new Date().toIS
       const existing = rows.get(key(input.userId, input.resource));
       const revision = existing?.revision ?? 0;
       if (input.expectedRevision !== undefined && input.expectedRevision !== revision) throw new DraftConflictError(revision, input.expectedRevision);
-      const draft: Draft = { userId: input.userId, resource: input.resource, label: input.label || existing?.label || "", content: JSON.parse(content) as unknown, sourceVersion: input.sourceVersion, ...sourceOf(source), revision: revision + 1, updatedAt: now() };
+      const draft: Draft = { userId: input.userId, resource: input.resource, label: input.label || existing?.label || "", content: JSON.parse(content) as unknown, sourceVersion: input.sourceVersion, ...sourceOf(source), revision: revision + 1, updatedAt: now(),
+        ...(existing?.publishAt ? { publishAt: existing.publishAt } : {}), ...(existing?.scheduleNote ? { scheduleNote: existing.scheduleNote } : {}) };
       rows.set(key(input.userId, input.resource), draft);
       return structuredClone(draft);
     },
@@ -267,6 +304,20 @@ export const createMemoryDraftStore = (now: () => string = () => new Date().toIS
     mine: async (userId) => [...rows.values()].filter((row) => row.userId === userId).sort((a, b) => newest(a, b) || a.resource.localeCompare(b.resource)).map(summary),
     forResource: async (resource) => [...rows.values()].filter((row) => row.resource === resource).sort((a, b) => newest(a, b) || a.userId.localeCompare(b.userId)).map(summary),
     using: async (text) => [...rows.values()].filter((row) => JSON.stringify(row.content ?? null).includes(text)).sort((a, b) => newest(a, b) || a.userId.localeCompare(b.userId)).map(summary),
+    schedule: async (userId, resource, at) => {
+      const row = rows.get(key(userId, resource));
+      if (!row) return false;
+      delete row.scheduleNote;
+      if (at) row.publishAt = at; else delete row.publishAt;
+      return true;
+    },
+    due: async (at) => [...rows.values()].filter((row) => row.publishAt && row.publishAt <= at).sort((a, b) => a.publishAt!.localeCompare(b.publishAt!) || a.userId.localeCompare(b.userId)).map((row) => ({ userId: row.userId, resource: row.resource, publishAt: row.publishAt! })),
+    scheduleFailed: async (userId, resource, note) => {
+      const row = rows.get(key(userId, resource));
+      if (!row) return;
+      delete row.publishAt;
+      row.scheduleNote = note.slice(0, 1000);
+    },
   };
 };
 

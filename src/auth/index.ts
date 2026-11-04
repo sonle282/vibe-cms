@@ -347,5 +347,8 @@ export const createCmsAuth = (deps: CmsAuthDeps) => {
   /** P12b: names for the Activity screen (owner-only route). */
   const names = async () => (await db().prepare("SELECT id, username, display_name FROM cms_users").all<{ id: string; username: string; display_name: string }>()).results.map((row) => ({ id: row.id, username: row.username, displayName: row.display_name }));
 
-  return { identify, handleAuth, people, names, session, ready };
+  /** F12: the role a person has now (undefined: disabled or gone) — a scheduled publish runs with it. */
+  const currentRole = async (userId: string) => (await db().prepare("SELECT role FROM cms_users WHERE id = ? AND status = 'active'").bind(userId).first<{ role: "owner" | "editor" }>())?.role;
+
+  return { identify, handleAuth, people, names, currentRole, session, ready };
 };

@@ -13,6 +13,7 @@
  *   DELETE /collections/:key/items/:id      discard my draft
  *   POST   /collections/:key/items/:id/visibility   M9: { action: "archive" | "unarchive" } → one commit of its status
  *   GET    /drafts                          my drafts (label, updated, stale = the live content moved on) — P8
+ *   PUT    /schedule                        F12: schedule my draft { resource, at } (at = ISO time; null = take it off)
  *   GET    /media                           P10: uploads (newest first) + the site's own images (built in)
  *   POST   /media                           P10: upload one prepared image (raw bytes; x-file-name header)
  *   POST   /publish                         { resources: [...] } → exactly one commit (with the uploads it uses)
@@ -38,7 +39,7 @@ import { pluginFiles, runSiteChecks, siteContext } from "../check/site.js";
 import { describeCleaned, RICH_TEXT_MAX_CHARS, sanitizeRecord, unsafeOnly, type CleanedField } from "../check/rich-text.js";
 import { checkPublishLocks, LockedFieldError, lockedFieldBody, saveDraftChecked, type AuditEntry, type AuditLog, type Role } from "../locks/index.js";
 import {
-  assertUserId, createContentReader, DraftConflictError, DraftTooLargeError, MAX_DRAFT_BYTES, parseResourceId, resourceId, textVersion, valueVersion,
+  assertUserId, createContentReader, DraftConflictError, DraftTooLargeError, MAX_DRAFT_BYTES, parseResourceId, ScheduleUnavailableError, resourceId, textVersion, valueVersion,
   type ContentSource, type Draft, type DraftStore,
 } from "../store/index.js";
 import { parseMarkdown } from "../writer/markdown.js";
@@ -116,6 +117,8 @@ export type CmsApiDeps = {
   requirePublishLimiter?: boolean;
   /** P12b: names for the Activity screen (id → username / display name). */
   userNames?: () => Promise<Array<{ id: string; username: string; displayName: string }>>;
+  /** F12: the role a person has now (undefined: disabled or gone); a scheduled publish runs with it. */
+  userRole?: (userId: string) => Promise<Role | undefined>;
   /** Test seam: the writer used at publish (default: the P3 writer). */
   write?: (collectionOrFile: { kind: "file"; pointer?: string } | { kind: "json"; store: JsonStore } | { kind: "markdown" }, text: string | undefined, id: string | undefined, content: unknown) => WriteResult;
 };
@@ -323,7 +326,8 @@ export const createCmsApi = (deps: CmsApiDeps) => {
 
   /** F3: `conflicts` = the fields both the website and the draft changed (labels), when the draft is stale. */
   const draftView = (draft: Draft | undefined, version: string, conflicts?: string[]) =>
-    draft ? { content: draft.content, revision: draft.revision, sourceVersion: draft.sourceVersion, updatedAt: draft.updatedAt, label: draft.label, stale: draft.sourceVersion !== version, ...(conflicts && draft.sourceVersion !== version ? { conflicts } : {}) } : null;
+    draft ? { content: draft.content, revision: draft.revision, sourceVersion: draft.sourceVersion, updatedAt: draft.updatedAt, label: draft.label, stale: draft.sourceVersion !== version, ...(conflicts && draft.sourceVersion !== version ? { conflicts } : {}),
+      ...(draft.publishAt ? { publishAt: draft.publishAt } : {}), ...(draft.scheduleNote ? { scheduleNote: draft.scheduleNote } : {}) } : null;
 
   /**
    * F3: a draft started from content the website no longer has is carried over field by field: what only the website
@@ -504,9 +508,62 @@ export const createCmsApi = (deps: CmsApiDeps) => {
         resource: row.resource, kind: row.kind, key: row.resourceKey, id: row.itemId, label: row.label || target.label,
         group: target.kind === "file" ? target.label : target.collection.label, updatedAt: summary.updatedAt, revision: summary.revision,
         isNew: current.version === "new", stale: summary.sourceVersion !== current.version, ...(conflicts && summary.sourceVersion !== current.version ? { conflicts } : {}),
+        ...(row.publishAt ? { publishAt: row.publishAt } : {}), ...(row.scheduleNote ? { scheduleNote: row.scheduleNote } : {}),
       });
     }
     return json({ drafts: out });
+  };
+
+  /** F12 (WordPress's Schedule): my draft goes out by itself at `at`; null takes the schedule off. */
+  const schedule = async (request: Request, user: Identity) => {
+    const drafts = need(deps.drafts, "storage");
+    const body = await readBody(request);
+    if (typeof body.resource !== "string") fail(400, "bad_request", "resource is required.");
+    const target = (() => { try { return targetOf(body.resource as string); } catch (error) { if (error instanceof ApiError) throw error; return fail(400, "bad_request", `Not a resource id: ${String(body.resource)}`); } })();
+    await requireAccess(user, target, "publish");
+    let at: string | null = null;
+    if (body.at !== null) {
+      const when = typeof body.at === "string" ? new Date(body.at) : new Date(Number.NaN);
+      if (Number.isNaN(when.getTime())) fail(400, "bad_request", "at must be a date and time (ISO), or null to take the schedule off.");
+      const ahead = when.getTime() - Date.parse(now());
+      if (ahead < 60_000) fail(422, "schedule_in_past", "Pick a time at least a minute from now.");
+      if (ahead > 366 * 24 * 3600_000) fail(422, "schedule_too_far", "Pick a time within a year.");
+      at = when.toISOString();
+    }
+    let done: boolean;
+    try { done = await drafts.schedule(user.userId, target.resource, at); } catch (error) {
+      if (error instanceof ScheduleUnavailableError) fail(503, "schedule_unavailable", "Scheduling is not set up on this site yet (its database needs an update: npx vibe-cms migrate).");
+      throw error;
+    }
+    if (!done) fail(404, "no_draft", "Save a draft first, then schedule it.");
+    // The publish it leads to is in the activity log (marked scheduled); setting the time is not.
+    return json({ resource: target.resource, publishAt: at });
+  };
+
+  /**
+   * F12: publish every scheduled draft that is due (the site's cron, every few minutes), as its person with the role
+   * they have now. One that cannot go out keeps its draft, loses its schedule and says why on the draft.
+   */
+  const runScheduled = async (at: Date = new Date()) => {
+    const drafts = deps.drafts;
+    if (!drafts) return { published: [] as string[], failed: [] as string[] };
+    const published: string[] = []; const failed: string[] = [];
+    for (const due of await drafts.due(at.toISOString())) {
+      const role = deps.userRole ? await deps.userRole(due.userId) : undefined;
+      let note: string | undefined;
+      if (!role) note = "The person who scheduled it can no longer sign in, so it was not published.";
+      else {
+        try {
+          const response = await publishResources({ userId: due.userId, role }, [due.resource], true);
+          if (response.status >= 400) { const body = await response.json().catch(() => ({})) as { message?: string }; note = body.message ?? "It could not be published."; }
+        } catch (error) {
+          note = error instanceof ApiError ? error.message : "It could not be published.";
+        }
+      }
+      if (note) { failed.push(due.resource); await drafts.scheduleFailed(due.userId, due.resource, note); }
+      else published.push(due.resource);
+    }
+    return { published, failed };
   };
 
   const deleteDraft = async (user: Identity, target: Target) => {
@@ -515,16 +572,20 @@ export const createCmsApi = (deps: CmsApiDeps) => {
   };
 
   const publish = async (request: Request, user: Identity) => {
-    const drafts = need(deps.drafts, "storage");
-    const audit = need(deps.audit, "storage");
-    const publisher = need(deps.publisher, "publisher");
     if (deps.publishLimiter) {
       let allowed: boolean;
       try { allowed = (await deps.publishLimiter.limit({ key: `cms-publish:${user.userId}` })).success; } catch { return fail(503, "limiter_unavailable", "Publish rate limiting is unavailable."); }
       if (!allowed) fail(429, "too_many_publishes", "Publish limit reached. Please try again in a minute.", { retryAfter: 60 });
     } else if (deps.requirePublishLimiter) fail(503, "publish_limiter_missing", "Publish rate limiting is not configured.");
     const body = await readBody(request);
-    const resources = body.resources;
+    return publishResources(user, body.resources);
+  };
+
+  /** Publish drafts of `user` (the button, or F12: a schedule that is due — then without the rate limit). */
+  const publishResources = async (user: Identity, resources: unknown, scheduled = false) => {
+    const drafts = need(deps.drafts, "storage");
+    const audit = need(deps.audit, "storage");
+    const publisher = need(deps.publisher, "publisher");
     if (!Array.isArray(resources) || !resources.length || resources.length > 50 || !resources.every((entry) => typeof entry === "string") || new Set(resources).size !== resources.length) {
       fail(400, "bad_request", "resources must be a list of 1–50 different resource ids.");
     }
@@ -538,7 +599,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     for (const { target } of loaded) await requireAccess(user, target, "publish");
     const publishId = crypto.randomUUID();
     const record = (action: "started" | "succeeded" | "failed", detail: Record<string, unknown>) =>
-      Promise.all(loaded.map(({ target }) => audit.record({ at: now(), userId: user.userId, role: user.role, action, stage: "publish", resource: target.resource, detail: { publishId, ...detail } })));
+      Promise.all(loaded.map(({ target }) => audit.record({ at: now(), userId: user.userId, role: user.role, action, stage: "publish", resource: target.resource, detail: { publishId, ...(scheduled ? { scheduled: true } : {}), ...detail } })));
     try { await record("started", { resources: loaded.length }); } catch { fail(503, "audit_unavailable", "The audit log cannot be written, so nothing was published."); }
 
     const failWith = async (status: number, code: string, message: string, extra: Record<string, unknown> = {}) => { await record("failed", { code }); return fail(status, code, message, extra); };
@@ -647,7 +708,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
           if ("conflict" in result) continue;
           commitSha = result.sha;
         }
-        await Promise.all(loaded.map(({ target }) => audit.record({ at: now(), userId: user.userId, role: user.role, action: "succeeded", stage: "publish", resource: target.resource, detail: { publishId, commitSha, attempt, ...(warnings.some((warning) => warning.resource === target.resource && warning.code === "rewrote_whole_file") ? { warning: "rewrote_whole_file" } : {}), ...(sanitized.some((entry) => entry.resource === target.resource) ? { sanitized: sanitized.find((entry) => entry.resource === target.resource)!.fields.map((field) => field.path) } : {}) } })));
+        await Promise.all(loaded.map(({ target }) => audit.record({ at: now(), userId: user.userId, role: user.role, action: "succeeded", stage: "publish", resource: target.resource, detail: { publishId, commitSha, attempt, ...(scheduled ? { scheduled: true } : {}), ...(warnings.some((warning) => warning.resource === target.resource && warning.code === "rewrote_whole_file") ? { warning: "rewrote_whole_file" } : {}), ...(sanitized.some((entry) => entry.resource === target.resource) ? { sanitized: sanitized.find((entry) => entry.resource === target.resource)!.fields.map((field) => field.path) } : {}) } })));
         for (const { target } of loaded) await drafts.clearAfterPublish(user.userId, target.resource);
         const expectedLiveVersion = await combinedVersion({ ...(await loadLive()), ...Object.fromEntries(Object.entries(next).filter((entry): entry is [string, string] => entry[1] !== undefined)) });
         return json({ commitSha, resources: loaded.map(({ target }) => target.resource), files: Object.keys(files), media: mediaFiles, expectedLiveVersion, warnings, attempts: attempt });
@@ -1092,6 +1153,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     { pattern: /^\/media\/cleanup$/, methods: { POST: (request) => cleanupMedia(request) } },
     { pattern: /^\/live-version$/, methods: { GET: async (request) => json({ liveVersion: await getLiveVersion(), branch: config.repo.branch, ...(await buildOf(request)) }) } },
     { pattern: /^\/publish$/, methods: { POST: (request, user) => publish(request, user) } },
+    { pattern: /^\/schedule$/, methods: { PUT: (request, user) => schedule(request, user) } },
     { pattern: /^\/files\/([a-z][a-z0-9-]*)$/, methods: {
       GET: (_request, user, match) => getResource(user, targetOf(`file:${match[1]}`)),
       PUT: (request, user, match) => putDraft(request, user, targetOf(`file:${match[1]}`)),
@@ -1143,5 +1205,5 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     }
   };
 
-  return { handle, liveVersion: getLiveVersion };
+  return { handle, liveVersion: getLiveVersion, runScheduled };
 };

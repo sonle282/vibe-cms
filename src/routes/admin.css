@@ -1229,3 +1229,10 @@ a.vc-row-menu-item { display: flex; align-items: center; color: var(--text); tex
 .vc-slash { position: absolute; z-index: 5; display: grid; min-width: 220px; padding: 6px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-10); box-shadow: 0 8px 24px rgb(15 23 42 / .14); }
 .vc-slash-item { padding: 8px 10px; text-align: left; font: inherit; font-size: var(--text-14); color: var(--text); background: none; border: 0; border-radius: var(--radius-6); cursor: pointer; }
 .vc-slash-item[aria-selected="true"], .vc-slash-item:hover { background: var(--accent-bg); color: var(--accent-strong); }
+/* F12: schedule a post (WordPress's Publish › Schedule). */
+.vc-schedule { display: grid; gap: 8px; }
+.vc-schedule p { margin: 0; }
+.vc-schedule-at { font-weight: 600; color: var(--accent-strong); }
+.vc-schedule-pick { display: flex; flex-wrap: wrap; gap: 8px; }
+.vc-schedule-pick .vc-input { flex: 1 1 180px; min-width: 0; }
+.vc-drafts-scheduled { color: var(--accent-strong); font-size: 12px; font-weight: 600; }

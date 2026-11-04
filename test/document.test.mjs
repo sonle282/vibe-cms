@@ -94,7 +94,7 @@ test("M10 blog post (Mr Spa): the paper — bar, cover, title, text — and Post
   assert.equal(h.root.querySelector(".vc-record-required").textContent, "* Required before you can publish");
   // The right column.
   assert.equal(h.side().getAttribute("aria-label"), "Post details");
-  assert.deepEqual(h.cards(), ["On the website", "Outline", "Post details", "In Google", "Ready to publish"]);
+  assert.deepEqual(h.cards(), ["On the website", "Schedule", "Outline", "Post details", "In Google", "Ready to publish"]);
   // F12: the outline lists the body's headings; with none, it says how to add one.
   const outline = h.side().querySelector('[aria-label="Outline"]');
   const headings = [...paper.querySelectorAll(".vc-rich-area h2, .vc-rich-area h3")].map((heading) => heading.textContent.trim());

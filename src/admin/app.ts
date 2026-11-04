@@ -109,7 +109,7 @@ export const changeFields = (target: { kind: "file"; file: BootFile } | { kind: 
   return { [status.field]: { type: "select", label: "Status", options: [status.live, status.draft, ...(status.archived ? [status.archived] : [])] } as Field, ...fields };
 };
 
-type DraftRow = { resource: string; kind: "file" | "item"; key: string; id: string | null; label: string; group: string; updatedAt: string; revision: number; isNew: boolean; stale: boolean; conflicts?: string[] };
+type DraftRow = { resource: string; kind: "file" | "item"; key: string; id: string | null; label: string; group: string; updatedAt: string; revision: number; isNew: boolean; stale: boolean; conflicts?: string[]; publishAt?: string; scheduleNote?: string };
 type PublishResult = { commitSha: string | null; resources: string[]; files: string[]; expectedLiveVersion: string; warnings: Array<{ resource: string; code: string; fields?: string[] }>; attempts: number };
 /** M6: the publish receipt (localStorage, until the change is live): `commit` = the commit, for the build check. */
 type PendingPublish = { expected: string; at: number; userId: string; labels: string[]; resources?: string[]; commit?: string };
@@ -119,7 +119,7 @@ const PENDING_KEY = "vibe-cms:publishing";
 
 type Screen = { title: string; crumbs: Array<[string, string?]>; dirty?: () => number; save?: () => Promise<void>; leave?: () => void; refreshState?: () => void; resource?: string };
 
-type FileView = { resource: string; label: string; content: unknown; version: string; draft: null | { content: unknown; revision: number; sourceVersion: string; stale: boolean; conflicts?: string[]; updatedAt: string }; choices?: PickChoices };
+type FileView = { resource: string; label: string; content: unknown; version: string; draft: null | { content: unknown; revision: number; sourceVersion: string; stale: boolean; conflicts?: string[]; updatedAt: string; publishAt?: string; scheduleNote?: string }; choices?: PickChoices };
 /** P12g: pick values in plain words in the review ("packages/the-essential-reset" → "The Essential Reset"). */
 const choiceLabelsOf = (choices: PickChoices | undefined) => Object.fromEntries(Object.values(choices ?? {}).flat().map((choice) => [choice.value, choice.label]));
 type ListView = { key: string; label: string; itemLabel: string; items: Array<{ id: string; resource: string; label: string; version: string | null; hasDraft: boolean; isNew?: boolean; image?: string;
@@ -1276,7 +1276,51 @@ export const startAdmin = (options: AdminOptions) => {
     };
     // M14: the site's panels in the right column, told the record after every change.
     const recordPanels = sideLayout ? pluginPanels(doc, plugins, "record", input.kind === "file" ? { file: input.file.key } : { collection: input.collection.key }) : [];
-    const sideExtra = documentSpec ? [...(outlineCard ? [outlineCard.element] : []), detailsCard!.element, googleCard!.element] : [];
+    // F12 (WordPress's Publish › Schedule): the post goes out by itself at a time; a save keeps the schedule.
+    const scheduleCard = documentSpec && collection ? (() => {
+      let at = view?.draft?.publishAt;
+      let note = view?.draft?.scheduleNote;
+      const body = h(doc, "div", { class: "vc-schedule" });
+      const element = h(doc, "section", { class: "vc-record-side-card", "aria-label": "Schedule" }, h(doc, "h2", {}, "Schedule"), body);
+      const pad = (value: number) => String(value).padStart(2, "0");
+      const local = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+      const spoken = (iso: string) => new Date(iso).toLocaleString(boot.site.locale === "vi" ? "vi-VN" : undefined, { weekday: "long", day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      const problemLine = h(doc, "p", { class: "vc-error", role: "alert", hidden: true });
+      const say2 = (text: string) => { problemLine.textContent = text; problemLine.hidden = !text; };
+      const send = async (iso: string | null) => {
+        say2("");
+        if (iso && dirty() && !(await doSave({ stay: true }))) return;
+        if (iso && !hasDraft) { say2("There is nothing to publish yet: make a change first."); return; }
+        const result = await api.put<{ publishAt: string | null }>("/api/cms/schedule", { resource: resourceOf(), at: iso });
+        if (!result.ok) { say2(result.message); return; }
+        at = result.data.publishAt ?? undefined; note = undefined;
+        draw();
+        void refreshDrafts();
+        say(at ? `Scheduled: it publishes by itself on ${spoken(at)}.` : "The schedule is off. It will not publish by itself.", "success");
+      };
+      const picker = () => {
+        const tomorrow = new Date(now() + 24 * 3600_000); tomorrow.setHours(9, 0, 0, 0);
+        const when = h(doc, "input", { type: "datetime-local", class: "vc-input", "aria-label": "Date and time", min: local(new Date(now() + 120_000)), value: local(at ? new Date(at) : tomorrow) });
+        const go = h(doc, "button", { type: "button", class: "vc-button", "data-action": "schedule", onclick: () => { void send(when.value ? new Date(when.value).toISOString() : ""); } }, at ? "Change the time" : "Schedule");
+        return h(doc, "div", { class: "vc-schedule-pick" }, when, go);
+      };
+      const draw = () => {
+        clear(body);
+        if (note) body.append(h(doc, "p", { class: "vc-error" }, `The scheduled publish did not go out: ${note}`));
+        if (at) {
+          body.append(h(doc, "p", { class: "vc-schedule-at" }, `Publishes by itself on ${spoken(at)}.`),
+            h(doc, "p", { class: "vc-help" }, "The website shows it a few minutes later. You can still change the post until then: changes saved as a draft go out with it."),
+            picker(),
+            h(doc, "button", { type: "button", class: "vc-button vc-quiet", "data-action": "unschedule", onclick: () => { void send(null); } }, "Cancel the schedule"));
+        } else {
+          body.append(h(doc, "p", { class: "vc-help" }, "Publish now with Publish, or pick a time and the post goes out by itself."), picker());
+        }
+        body.append(problemLine);
+      };
+      draw();
+      return { element };
+    })() : undefined;
+    const sideExtra = documentSpec ? [...(scheduleCard ? [scheduleCard.element] : []), ...(outlineCard ? [outlineCard.element] : []), detailsCard!.element, googleCard!.element] : [];
     const sidePanels = recordPanels.map((panel) => panel.element);
     const recordSide = collection && sideLayout ? createRecordSide(doc, {
       noun: collection.itemLabel.toLowerCase(), nounTitle: collection.itemLabel,
@@ -1731,7 +1775,9 @@ export const startAdmin = (options: AdminOptions) => {
           h(doc, "span", { class: "vc-draft-type" }, typeOf(row)),
           h(doc, "strong", { class: "vc-draft-label" }, row.label),
           h(doc, "span", { class: "vc-draft-changes", ...(row.stale ? { "data-state": "conflict" } : {}) }, row.stale ? row.conflicts?.length ? `${what} · ${fieldList(row.conflicts)} also changed on the website: open it to choose which to keep.` : `${what} · The live version changed since; reload the draft before publishing.` : what),
-          h(doc, "span", { class: "vc-drafts-saved" }, `Saved ${new Date(row.updatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`)),
+          h(doc, "span", { class: "vc-drafts-saved" }, `Saved ${new Date(row.updatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`),
+          row.publishAt ? h(doc, "span", { class: "vc-drafts-scheduled" }, `Publishes by itself ${timeOf(row.publishAt)}`) : null,
+          row.scheduleNote ? h(doc, "span", { class: "vc-draft-changes", "data-state": "conflict" }, `The scheduled publish did not go out: ${row.scheduleNote}`) : null),
         h(doc, "div", { class: "vc-draft-actions" },
           h(doc, "span", { class: "vc-drafts-status" },
             h(doc, "span", { class: `vc-content-status${row.isNew ? " is-draft" : ""}` }, row.isNew ? "Draft" : "Live"),
@@ -1779,7 +1825,7 @@ export const startAdmin = (options: AdminOptions) => {
         h(doc, "strong", { class: "vc-draft-label" }, row.label),
         h(doc, "span", { class: "vc-draft-changes", ...(row.stale ? { "data-state": "conflict" } : {}) }, row.stale
           ? row.conflicts?.length ? `${fieldList(row.conflicts)} also changed on the website: open it to choose which to keep.` : "The website changed since this draft was started."
-          : `${row.isNew ? "Not on the website yet" : row.group} · saved ${timeOf(row.updatedAt)}`)),
+          : row.publishAt ? `Publishes by itself ${timeOf(row.publishAt)}` : `${row.isNew ? "Not on the website yet" : row.group} · saved ${timeOf(row.updatedAt)}`)),
       h(doc, "div", { class: "vc-draft-actions" }, link(hrefOfDraft(row), "Open", { class: "vc-button" }))));
     const waiting = rows.length
       ? [h(doc, "ul", { class: "vc-drafts-list" }, draftRows),

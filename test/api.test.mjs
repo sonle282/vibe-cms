@@ -40,6 +40,7 @@ const harness = async ({ token } = {}) => {
   return {
     github, drafts, audit, request,
     rebuild: (extra) => { api = build(extra); },
+    api: () => api,
     redeploy: async () => { live = { ...github.files() }; api = build(); },
     auditRows: async () => audit.entries,
     close: () => github.close(),
@@ -153,4 +154,52 @@ test("P8: the GitHub API URL can only be redirected to this machine (tests); any
   assert.equal(loopbackApiUrl("http://127.0.0.1:9123/x"), "http://127.0.0.1:9123");
   assert.equal(loopbackApiUrl("http://localhost:8080"), "http://localhost:8080");
   for (const value of ["https://evil.example", "http://10.0.0.1", "http://127.0.0.1.evil.example", "http://user:pw@127.0.0.1", "https://127.0.0.1", "", undefined, 42]) assert.equal(loopbackApiUrl(value), undefined, String(value));
+});
+
+test("F12: schedule a draft (WordPress's Schedule) — the cron publishes it when due, as its person; one that cannot go out says why", async () => {
+  const h = await harness();
+  try {
+    let clock = Date.parse("2026-11-05T09:00:00Z");
+    const roles = new Map([["usr_a", "owner"]]);
+    h.rebuild({ now: () => new Date(clock).toISOString(), userRole: async (id) => roles.get(id) });
+    const user = "usr_a:owner";
+    const site = (await h.request("GET", "/api/cms/files/site", { user })).body;
+    const noDraft = await h.request("PUT", "/api/cms/schedule", { user, body: { resource: "file:site", at: "2026-11-06T02:00:00Z" } });
+    assert.deepEqual([noDraft.status, noDraft.body.error], [404, "no_draft"]);
+    await h.request("PUT", "/api/cms/files/site", { user, body: { content: { ...site.content, tagline: "Scheduled tagline" }, expectedRevision: 0, sourceVersion: site.version } });
+    const past = await h.request("PUT", "/api/cms/schedule", { user, body: { resource: "file:site", at: "2026-11-05T09:00:30Z" } });
+    assert.deepEqual([past.status, past.body.error], [422, "schedule_in_past"]);
+    const set = await h.request("PUT", "/api/cms/schedule", { user, body: { resource: "file:site", at: "2026-11-06T09:00:00+07:00" } });
+    assert.deepEqual([set.status, set.body.publishAt], [200, "2026-11-06T02:00:00.000Z"]);
+    assert.equal((await h.request("GET", "/api/cms/files/site", { user })).body.draft.publishAt, "2026-11-06T02:00:00.000Z");
+    assert.equal((await h.request("GET", "/api/cms/drafts", { user })).body.drafts[0].publishAt, "2026-11-06T02:00:00.000Z");
+    // A save keeps the schedule.
+    const draft = (await h.request("GET", "/api/cms/files/site", { user })).body.draft;
+    await h.request("PUT", "/api/cms/files/site", { user, body: { content: { ...draft.content, tagline: "Scheduled tagline 2" }, expectedRevision: draft.revision } });
+    assert.equal((await h.request("GET", "/api/cms/files/site", { user })).body.draft.publishAt, "2026-11-06T02:00:00.000Z");
+    // Not due yet: nothing happens.
+    const head = h.github.head();
+    assert.deepEqual(await h.api().runScheduled(new Date("2026-11-06T01:59:00Z")), { published: [], failed: [] });
+    assert.equal(h.github.head(), head);
+    // Due: published, the draft (and its schedule) is gone, the activity log says it was scheduled.
+    clock = Date.parse("2026-11-06T02:03:00Z");
+    assert.deepEqual(await h.api().runScheduled(new Date(clock)), { published: ["file:site"], failed: [] });
+    assert.match(h.github.files()["src/data/site.json"], /Scheduled tagline 2/);
+    assert.equal((await h.request("GET", "/api/cms/files/site", { user })).body.draft, null);
+    assert.ok((await h.auditRows()).some((row) => row.action === "succeeded" && row.detail.scheduled === true));
+    // Someone who can no longer sign in: not published, the schedule comes off, the draft says why.
+    await h.redeploy();
+    h.rebuild({ now: () => new Date(clock).toISOString(), userRole: async (id) => roles.get(id) });
+    const again = (await h.request("GET", "/api/cms/files/site", { user })).body;
+    await h.request("PUT", "/api/cms/files/site", { user, body: { content: { ...again.content, tagline: "Never" }, expectedRevision: 0, sourceVersion: again.version } });
+    await h.request("PUT", "/api/cms/schedule", { user, body: { resource: "file:site", at: "2026-11-06T03:00:00Z" } });
+    roles.delete("usr_a");
+    assert.deepEqual(await h.api().runScheduled(new Date("2026-11-06T03:01:00Z")), { published: [], failed: ["file:site"] });
+    const kept = (await h.request("GET", "/api/cms/files/site", { user })).body.draft;
+    assert.deepEqual([kept.publishAt, kept.scheduleNote, kept.content.tagline], [undefined, "The person who scheduled it can no longer sign in, so it was not published.", "Never"]);
+    // null takes a schedule off.
+    await h.request("PUT", "/api/cms/schedule", { user, body: { resource: "file:site", at: "2026-11-06T05:00:00Z" } });
+    const off = await h.request("PUT", "/api/cms/schedule", { user, body: { resource: "file:site", at: null } });
+    assert.deepEqual([off.status, off.body.publishAt, (await h.request("GET", "/api/cms/files/site", { user })).body.draft.publishAt], [200, null, undefined]);
+  } finally { await h.close(); }
 });

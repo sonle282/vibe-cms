@@ -82,3 +82,26 @@ test("F3: a site whose D1 has not run 0006 yet still saves and reads drafts (wit
   const read = await drafts.get("usr_a", "file:site");
   assert.deepEqual([read.content, "sourceContent" in read], [{ a: 2 }, false]);
 });
+
+test("F12: schedules on SQL — kept through a save, due in time order, a failure leaves a note; a D1 without 0007 cannot schedule", async () => {
+  const { createD1DraftStore, ScheduleUnavailableError } = await import("../dist/store/index.js");
+  const { createSqliteD1 } = await import("./helpers/sqlite-d1.mjs");
+  const drafts = createD1DraftStore(createSqliteD1());
+  await drafts.save({ userId: "usr_a", resource: "file:site", content: { a: 1 }, sourceVersion: "v", expectedRevision: 0 });
+  await drafts.save({ userId: "usr_b", resource: "file:site", content: { a: 2 }, sourceVersion: "v", expectedRevision: 0 });
+  assert.equal(await drafts.schedule("usr_a", "file:site", "2026-11-06T02:00:00.000Z"), true);
+  assert.equal(await drafts.schedule("usr_b", "file:site", "2026-11-06T01:00:00.000Z"), true);
+  assert.equal(await drafts.schedule("usr_c", "file:site", "2026-11-06T01:00:00.000Z"), false, "no draft");
+  const saved = await drafts.save({ userId: "usr_a", resource: "file:site", content: { a: 3 }, sourceVersion: "v", expectedRevision: 1 });
+  assert.equal(saved.publishAt, "2026-11-06T02:00:00.000Z", "a save keeps it");
+  assert.deepEqual((await drafts.due("2026-11-06T03:00:00.000Z")).map((row) => row.userId), ["usr_b", "usr_a"]);
+  assert.deepEqual(await drafts.due("2026-11-06T00:00:00.000Z"), []);
+  await drafts.scheduleFailed("usr_b", "file:site", "Not allowed");
+  const failed = await drafts.get("usr_b", "file:site");
+  assert.deepEqual([failed.publishAt, failed.scheduleNote], [undefined, "Not allowed"]);
+  assert.equal((await drafts.mine("usr_a"))[0].publishAt, "2026-11-06T02:00:00.000Z");
+  const old = createD1DraftStore(createSqliteD1({ upTo: "0006_draft_source.sql" }));
+  await old.save({ userId: "usr_a", resource: "file:site", content: {}, sourceVersion: "v", expectedRevision: 0 });
+  await assert.rejects(old.schedule("usr_a", "file:site", "2026-11-06T02:00:00.000Z"), ScheduleUnavailableError);
+  assert.deepEqual(await old.due("2030-01-01T00:00:00.000Z"), []);
+});

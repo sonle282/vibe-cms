@@ -3,6 +3,23 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.33.0 — 2026-11-04 (Outline, the / menu, scheduled posts, shared parts edited in place)
+
+**F12 — more of WordPress's post editor.** Site action: **`npx vibe-cms migrate` (remote)** — migration
+`0007_draft_schedule.sql` adds two nullable columns; until it runs, scheduling answers that the site needs the update and
+everything else works. To publish scheduled posts, the site's wrangler config needs
+`"main": "@sonle282/vibe-cms/routes/worker.ts"` and `"triggers": { "crons": ["*/5 * * * *"] }`.
+
+- **Outline** (WordPress's Document Overview): the post's headings, live, in the right column; a click goes there.
+- **"/" menu** (WordPress's block inserter): an empty line says "Type / to add a heading, a list or an image"; "/" opens
+  the toolbar's tools, filtered as you type (↑ ↓ Enter, Esc).
+- **Schedule** (WordPress's Publish › Schedule): pick a date and time and the post publishes by itself (the site's cron,
+  every 5 minutes, as the person who scheduled it with the role they have then). A save keeps the schedule; one that
+  cannot go out keeps its draft and says why on it. My drafts and Start show the time. `PUT /api/cms/schedule`.
+- **Shared parts edited where they are used** (`document.shared`, as WordPress edits a synced pattern in a post): each
+  part shows what it says now; a click opens it in a dialog with "Publish for every post" — the post stays open.
+  `fields` picks what is edited there (e.g. the Footer's contact lines only).
+
 ## 0.32.0 — 2026-11-04 (writing a post as in WordPress and Shopify)
 
 **F11 — the blog editor learns from WordPress and Shopify.** Site action: none (`vibe-cms update`); new optional settings
