@@ -41,6 +41,9 @@ export const translate = (dictionary: Dictionary, text: string, depth = 0): stri
 };
 
 const skipped = (element: Element | null) => Boolean(element?.closest(SKIP));
+/** F11: an input's own words (placeholder, name, tooltip) are the admin's, not what was typed: only content is skipped. */
+const ATTRIBUTE_SKIP = "[data-no-translate], .vc-rich-area, .vc-list-name-words, .vc-list-name-detail, .vc-list-secondary";
+const attributeSkipped = (element: Element) => Boolean(element.closest(ATTRIBUTE_SKIP));
 
 /** Translate everything under `root` once. */
 export const localize = (dictionary: Dictionary, root: Node) => {
@@ -50,7 +53,8 @@ export const localize = (dictionary: Dictionary, root: Node) => {
     if (!skipped(root.parentElement)) { const next = translate(dictionary, root.nodeValue ?? ""); if (next !== root.nodeValue) root.nodeValue = next; }
     return;
   }
-  if (!element || skipped(element)) return;
+  // Text inside a skipped element is never touched (each text node is checked); attributes follow their own rule.
+  if (!element) return;
   const walker = doc.createTreeWalker(root, 1 | 4);
   for (let node: Node | null = walker.currentNode; node; node = walker.nextNode()) {
     if (node.nodeType === 3) {
@@ -59,7 +63,7 @@ export const localize = (dictionary: Dictionary, root: Node) => {
       if (next !== node.nodeValue) node.nodeValue = next;
     } else if (node.nodeType === 1) {
       const el = node as Element;
-      if (skipped(el)) continue;
+      if (attributeSkipped(el)) continue;
       for (const name of ATTRIBUTES) {
         const value = el.getAttribute(name);
         if (value) { const next = translate(dictionary, value); if (next !== value) el.setAttribute(name, next); }
@@ -79,7 +83,7 @@ export const watchLocale = (dictionary: Dictionary, doc: Document, root: Element
     for (const record of records) {
       if (record.type === "childList") for (const node of record.addedNodes) localize(dictionary, node);
       else if (record.type === "characterData") localize(dictionary, record.target);
-      else if (record.type === "attributes" && record.target.nodeType === 1 && !skipped(record.target as Element)) {
+      else if (record.type === "attributes" && record.target.nodeType === 1 && !attributeSkipped(record.target as Element)) {
         const el = record.target as Element;
         const value = el.getAttribute(record.attributeName!);
         if (value) { const next = translate(dictionary, value); if (next !== value) el.setAttribute(record.attributeName!, next); }
