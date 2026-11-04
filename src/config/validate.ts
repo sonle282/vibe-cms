@@ -40,7 +40,7 @@ const GITHUB_REPO = /^[A-Za-z0-9._-]{1,100}$/;
 
 const BASE_OPTIONS = ["type", "label", "help", "required", "locked", "bind", "sameAs", "control", "hidden"];
 const FIELD_OPTIONS: Record<string, string[]> = {
-  text: ["maxLength", "multiline", "pattern", "patternHint", "tokens", "from", "format"],
+  text: ["maxLength", "multiline", "pattern", "patternHint", "tokens", "from", "format", "options"],
   richText: ["allow"],
   image: ["alt", "mobile", "caption"],
   select: ["options"],
@@ -82,7 +82,7 @@ export const pathProblem = (value: string, dirs: readonly string[]): string | un
 };
 
 /** oldAdminName: where the config still says "owner" (M2: one warning for all of them). */
-type Context = { errors: Problem[]; warnings: Problem[]; collectionKeys: Set<string>; oldAdminName: string[] };
+type Context = { errors: Problem[]; warnings: Problem[]; collectionKeys: Set<string>; oldAdminName: string[]; fileKeys: string[] };
 const err = (context: Context, path: string, message: string, hint?: string) => context.errors.push({ path, message, ...(hint ? { hint } : {}) });
 const warn = (context: Context, path: string, message: string, hint?: string) => context.warnings.push({ path, message, ...(hint ? { hint } : {}) });
 
@@ -118,7 +118,8 @@ export const checkField = (context: Context, field: unknown, at: string, depth: 
   if (field.locked === "owner") context.oldAdminName.push(`${at}.locked`);
   else if (field.locked !== undefined && field.locked !== "admin") err(context, `${at}.locked`, `only "admin" is allowed (got ${show(field.locked)})`, 'write locked: "admin" or remove it');
 
-  if (type === "text" && field.format !== undefined && field.format !== "price") err(context, `${at}.format`, `unknown format ${show(field.format)}`, 'only "price" (f.price)');
+  if (type === "text" && field.format !== undefined && !["price", "date", "tags"].includes(field.format as string)) err(context, `${at}.format`, `unknown format ${show(field.format)}`, '"price" (f.price), "date" or "tags"');
+  if (type === "text" && field.options !== undefined && (field.format !== "tags" || !Array.isArray(field.options) || !field.options.every(filled))) err(context, `${at}.options`, 'is for format "tags": a list of names', 'e.g. options: ["News", "Tips"]');
   // M13: menu cards need a label (a text field) and where it goes (a link field) on every item.
   if (type === "list" && field.menu !== undefined) {
     checkBoolean(context, field, "menu", at);
@@ -248,7 +249,7 @@ const checkPreview = (context: Context, value: unknown, at: string, placeholders
 };
 
 export const checkCmsConfig = (config: unknown): CheckResult => {
-  const context: Context = { errors: [], warnings: [], collectionKeys: new Set(), oldAdminName: [] };
+  const context: Context = { errors: [], warnings: [], collectionKeys: new Set(), oldAdminName: [], fileKeys: isRecord(config) && Array.isArray(config.files) ? config.files.filter(isRecord).map((file) => String(file.key)) : [] };
   if (!isRecord(config)) { err(context, "(default export)", "must be defineCmsConfig({ … })", "export default defineCmsConfig({ configVersion: 1, … })"); return context; }
   for (const key of Object.keys(config)) if (!TOP_LEVEL.includes(key)) err(context, key, "unknown setting", `allowed: ${TOP_LEVEL.join(", ")}`);
   // P21: the site's own binding / secret names (a site that already had a CMS keeps them).
@@ -608,7 +609,15 @@ function checkDocument(context: Context, entry: Record<string, unknown>, at: str
   const document = entry.document;
   if (entry.layout !== "document") { if (document !== undefined) err(context, `${at}.document`, 'is only for layout "document"', 'add layout: "document", or remove document'); return; }
   if (!isRecord(document)) { err(context, `${at}.document`, 'required with layout "document" — which fields are the title and the body', '{ title: "title", body: "body", cover: "cover" }'); return; }
-  for (const key of Object.keys(document)) if (!["title", "body", "cover", "plain", "images"].includes(key)) err(context, `${at}.document.${key}`, "unknown setting", "document has title, body, cover, plain and images");
+  for (const key of Object.keys(document)) if (!["title", "body", "cover", "plain", "images", "shared"].includes(key)) err(context, `${at}.document.${key}`, "unknown setting", "document has title, body, cover, plain, images and shared");
+  if (document.shared !== undefined) {
+    const files = context.fileKeys;
+    if (!Array.isArray(document.shared)) err(context, `${at}.document.shared`, "must be a list of { file, help? }", '[{ file: "blog-post-end", help: "Shown under every post" }]');
+    else document.shared.forEach((part, index) => {
+      if (!isRecord(part) || !files.includes(String(part.file))) err(context, `${at}.document.shared[${index}]`, `${show(isRecord(part) ? part.file : part)} is not a file of cms.config`, '{ file: "<a file key>" }');
+      else for (const key of Object.keys(part)) if (key !== "file" && key !== "help") err(context, `${at}.document.shared[${index}].${key}`, "unknown setting", "a shared part has file and help");
+    });
+  }
   if (document.plain !== undefined && typeof document.plain !== "boolean") err(context, `${at}.document.plain`, "must be true or false");
   const plain = document.plain === true;
   if (fieldTypeAt(entry.fields, String(document.title ?? "")) !== "text") err(context, `${at}.document.title`, `${show(document.title)} is not a text field`, 'e.g. title: "title"');

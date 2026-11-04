@@ -16,6 +16,10 @@
  * heading shows; Clear formatting makes the selection plain paragraphs; text pasted over several lines comes in as plain
  * paragraphs, never in the style of the line it was pasted into.
  *
+ * F11 (as WordPress does): pasting from Word, Google Docs or a web page keeps the structure — headings, paragraphs,
+ * lists, bold, italic, links — and drops colours, fonts, sizes and images (h1 → Heading 2, h4–h6 → Heading 3, so the
+ * site's own styles apply). Typing "## ", "### ", "- ", "* " or "1. " at the start of a line makes it a heading or a list.
+ *
  * The editor uses the browser's editing commands (execCommand) so Ctrl+Z / Ctrl+Y keep working; what they write is
  * cleaned (src/admin/clean.ts) before it becomes the value, and the server cleans again (P8c).
  */
@@ -184,13 +188,13 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
     tool("heading", "Heading 2", block("h2")),
     tool("subheading", "Heading 3", block("h3")),
     bold, italic,
+    tool("clear", "Clear formatting", () => clearFormatting(), { "data-tooltip": "Make the selected text plain paragraphs, like the rest of the site" }),
     tool("bullets", "Bulleted list", () => exec("insertUnorderedList")),
     tool("numbers", "Numbered list", () => exec("insertOrderedList")),
     // Not in the Mr Spa set: only for a field whose `allow` asks for quotes.
     ...(options.allow?.includes("blockquote") ? [tool("quote", "Quote", () => exec("formatBlock", closest("blockquote") ? "<p>" : "<blockquote>"))] : []),
     tool("link", "Add link", () => openLink()),
     ...(options.pickImage ? [tool("image", "Insert image", () => insertImage())] : []),
-    tool("clear", "Clear formatting", () => clearFormatting(), { "data-tooltip": "Make the selected text plain paragraphs, like the rest of the site" }),
   ].filter(allowed);
   const toolbar = h(doc, "div", { class: "vc-rich-toolbar", role: "toolbar", "aria-label": `${label} formatting`, "aria-controls": id }, ...formatting);
 
@@ -389,6 +393,27 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
     if (target?.tagName?.toLowerCase() === "img") select(target as HTMLImageElement);
     else deselect();
   });
+  // F11 (WordPress): "## " / "### " make a heading, "- " / "* " a bulleted list, "1. " a numbered list.
+  const SHORTCUTS: Record<string, [string, string, string]> = { "##": ["formatBlock", "<h2>", "h2"], "###": ["formatBlock", "<h3>", "h3"], "-": ["insertUnorderedList", "", "ul"], "*": ["insertUnorderedList", "", "ul"], "1.": ["insertOrderedList", "", "ol"] };
+  area.addEventListener("keydown", (event) => {
+    if (event.key !== " " || selected || disabled) return;
+    const paragraph = closest("p");
+    const shortcut = paragraph && SHORTCUTS[(paragraph.textContent ?? "").trim()];
+    if (!paragraph || !shortcut || closest("li")) return;
+    if (options.allow && !options.allow.includes(shortcut[2])) return;
+    const range = win?.getSelection?.()?.rangeCount ? win.getSelection()!.getRangeAt(0) : undefined;
+    if (!range || !range.collapsed) return;
+    event.preventDefault();
+    paragraph.textContent = "";
+    paragraph.append(doc.createElement("br"));
+    const caret = doc.createRange();
+    caret.setStart(paragraph, 0);
+    caret.collapse(true);
+    win?.getSelection?.()?.removeAllRanges();
+    win?.getSelection?.()?.addRange(caret);
+    remember();
+    exec(shortcut[0], shortcut[1] || undefined);
+  });
   area.addEventListener("keydown", (event) => {
     if (!selected) return;
     if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); removeImage(); }
@@ -398,6 +423,12 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
   // lines come in as plain paragraphs of their own, whatever line the cursor was in (a heading stays a heading).
   area.addEventListener("paste", (event) => {
     event.preventDefault();
+    const html = (event as ClipboardEvent).clipboardData?.getData("text/html") ?? "";
+    const pasted = html ? pastedBlocks(html) : undefined;
+    if (pasted?.length) {
+      if (pasted.length === 1 && pasted[0].nodeName.toLowerCase() === "p") { if (exec("insertHTML", (pasted[0] as Element).innerHTML)) return; }
+      else if (pasteBlocks(pasted)) return;
+    }
     const text = (event as ClipboardEvent).clipboardData?.getData("text/plain") ?? "";
     const lines = text.replace(/\r\n?/g, "\n").split("\n").map((line) => line.replace(/\s+/g, " ").trim()).filter(Boolean);
     if (lines.length > 1 && pasteParagraphs(lines)) return;
@@ -408,13 +439,39 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
       changed();
     }
   });
-  /** F10: put plain paragraphs where the cursor is, splitting the line it is in (both halves keep their own kind). */
-  const pasteParagraphs = (lines: string[]) => {
+  /**
+   * F11: pasted HTML as the site's own blocks (WordPress keeps headings, lists, bold, italic and links, and drops
+   * styles): Google Docs' bold wrapper and styled spans are read for bold / italic, headings are mapped to the two the
+   * toolbar has, images and empty lines go. Undefined when nothing is left.
+   */
+  const pastedBlocks = (html: string) => {
+    const box = doc.implementation.createHTMLDocument("").body;
+    box.innerHTML = html.replace(/<!--[\s\S]*?-->/g, "");
+    for (const element of [...box.querySelectorAll("img, picture, video, audio, iframe, object, embed, svg, style, script, meta, link, title")]) element.remove();
+    for (const element of [...box.querySelectorAll("[style]")]) {
+      const style = (element.getAttribute("style") ?? "").toLowerCase();
+      const tag = element.tagName.toLowerCase();
+      // Google Docs wraps everything in <b style="font-weight:normal">: not bold.
+      if ((tag === "b" || tag === "strong") && /font-weight\s*:\s*(normal|400)/.test(style)) { element.replaceWith(...element.childNodes); continue; }
+      if (tag !== "span") continue;
+      let wrapped: Element = element;
+      if (/font-weight\s*:\s*(bold|[6-9]00)/.test(style)) { const strong = doc.createElement("strong"); strong.append(...wrapped.childNodes); wrapped.append(strong); wrapped = strong; }
+      if (/font-style\s*:\s*italic/.test(style)) { const em = doc.createElement("em"); em.append(...wrapped.childNodes); wrapped.append(em); }
+    }
+    const rename = (from: string, to: string) => { for (const element of [...box.querySelectorAll(from)]) { const next = doc.createElement(to); next.append(...element.childNodes); element.replaceWith(next); } };
+    rename("h1", "h2"); rename("h4, h5, h6", "h3");
+    normalizeBlocks(cleanRichDom(box, { markdown, allow: options.allow }), { wrapLoose: !options.allow || options.allow.includes("p") });
+    for (const element of [...box.children]) if (!element.textContent?.trim()) element.remove();
+    const blocks = [...box.childNodes].filter((node) => node.nodeType === 1 || node.textContent?.trim());
+    return blocks.length ? blocks.map((node) => doc.importNode(node, true)) : undefined;
+  };
+  const pasteParagraphs = (lines: string[]) => pasteBlocks(lines.map((line) => { const p = doc.createElement("p"); p.textContent = line; return p; }));
+  /** F10 / F11: put blocks where the cursor is, splitting the line it is in (both halves keep their own kind). */
+  const pasteBlocks = (paragraphs: Node[]) => {
     const selection = win?.getSelection?.();
     const range = selection && selection.rangeCount && inArea(selection.getRangeAt(0).startContainer) ? selection.getRangeAt(0) : savedRange;
     if (!range || !inArea(range.startContainer)) return false;
     range.deleteContents();
-    const paragraphs = lines.map((line) => { const p = doc.createElement("p"); p.textContent = line; return p; });
     let anchor: Node | null = null;
     if (range.startContainer === area) {
       const before = area.childNodes[range.startOffset] ?? null;

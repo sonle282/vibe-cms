@@ -1215,6 +1215,9 @@ test("F5 shell: site.locale vi — the rail, the Start screen, the editor's butt
     type(h.window, input, "Save draft");
     await settled();
     assert.equal(input.value, "Save draft", "what people type is never translated");
+    input.setAttribute("placeholder", "Choose a page");
+    await settled();
+    assert.equal(input.getAttribute("placeholder"), "Chọn trang", "an input's placeholder is the admin's own words");
     assert.equal(h.state(), "1 thay đổi chưa lưu");
     assert.equal(h.root.querySelector('[data-action="publish"]').dataset.tooltip, "Lưu phần đã sửa rồi đăng lên web.");
   } finally { await h.close(); }

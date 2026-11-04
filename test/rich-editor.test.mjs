@@ -86,11 +86,11 @@ test("editor (HTML): untouched never changes the value; an edit is cleaned; load
   assert.equal(toolbar.getAttribute("aria-controls"), "e1");
   assert.equal(toolbar.getAttribute("aria-label"), "Text formatting");
   assert.deepEqual([...toolbar.querySelectorAll("button")].map((button) => [button.textContent, button.getAttribute("aria-label"), button.getAttribute("title")]), [
-    ["Paragraph", null, null], ["Heading 2", null, null], ["Heading 3", null, null], ["B", "Bold", null], ["I", "Italic", null],
-    ["Bulleted list", null, null], ["Numbered list", null, null], ["Add link", null, null], ["Clear formatting", null, null]]);
+    ["Paragraph", null, null], ["Heading 2", null, null], ["Heading 3", null, null], ["B", "Bold", null], ["I", "Italic", null], ["Clear formatting", null, null],
+    ["Bulleted list", null, null], ["Numbered list", null, null], ["Add link", null, null]]);
   assert.equal(editor.element.querySelector(".vc-tool-source"), null);
   const quoted = createRichEditor({ doc: document, id: "e1q", label: "Quote", value: "", format: "html", allow: ["p", "blockquote", "a"], onChange: () => {} });
-  assert.deepEqual([...quoted.toolbar.querySelectorAll("button")].map((button) => button.textContent), ["Paragraph", "Quote", "Add link", "Clear formatting"], "a tool outside the Mr Spa set only when allow asks for it");
+  assert.deepEqual([...quoted.toolbar.querySelectorAll("button")].map((button) => button.textContent), ["Paragraph", "Clear formatting", "Quote", "Add link"], "a tool outside the Mr Spa set only when allow asks for it");
   // Emptying the editor gives "".
   editor.area.innerHTML = "<p><br></p>";
   editor.area.dispatchEvent(new window.Event("input"));
@@ -203,6 +203,21 @@ test("F10 editor: lines pasted into a heading come in as plain paragraphs; the l
   second.clipboardData = { getData: (type) => (type === "text/plain" ? "A\nB" : "") };
   editor.area.dispatchEvent(second);
   assert.match(changes.at(-1), /<p>Old<\/p><p>A<\/p><p>B<\/p><p> text<\/p>$/);
+});
+
+test("F11 editor: pasting from Google Docs or a web page keeps headings, lists, bold and links, and drops styles and images", async () => {
+  const { window, document } = dom();
+  const changes = [];
+  const editor = createRichEditor({ doc: document, id: "e11", label: "Text", value: "<p>Start</p>", format: "html", onChange: (next) => changes.push(next) });
+  document.body.append(editor.element);
+  await editor.ready;
+  const range = document.createRange(); range.selectNodeContents(editor.area.querySelector("p")); range.collapse(false);
+  window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+  const html = '<meta charset="utf-8"><b style="font-weight:normal;" id="docs-internal-guid-1"><h1 style="font-size:26pt;color:#333">My Big Title</h1><p dir="ltr" style="line-height:1.38"><span style="font-size:14pt;font-weight:700">Bold intro</span><span style="font-size:14pt"> and </span><a href="https://example.com/x" style="color:red">a link</a>.</p><h4>Why it matters</h4><ul><li><span style="font-style:italic">Point one</span></li><li>Point two</li></ul><p><img src="https://evil.example/x.png"></p><p><br></p></b>';
+  const paste = new window.Event("paste", { bubbles: true, cancelable: true });
+  paste.clipboardData = { getData: (type) => (type === "text/html" ? html : "My Big Title") };
+  editor.area.dispatchEvent(paste);
+  assert.equal(changes.at(-1), '<p>Start</p><h2>My Big Title</h2><p><strong>Bold intro</strong> and <a href="https://example.com/x">a link</a>.</p><h3>Why it matters</h3><ul><li><em>Point one</em></li><li>Point two</li></ul>');
 });
 
 test("M10 editor: Add link (Mr Spa) — a page of the site or a secure HTTPS address, in its words", async () => {
