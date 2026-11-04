@@ -3,6 +3,15 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.34.0 — 2026-11-04 (Duplicate asks the new name)
+
+**M8 Duplicate, as Shopify does it.** Site action: none. ⋯ **Duplicate** now asks the copy's name first (a dialog
+with one box, "Copy of …" to start with; **Create copy** needs a name) and the copy's ID — its web address — comes from
+that name, so a duplicated "T18 Client Chairs" renamed "Z6 Client Chairs" is `z6-client-chairs`, not
+`copy-of-t18-client-chairs`. A field the editor does not show (`keep`) that held the original's ID, such as a `slug`,
+now takes the copy's ID: before, the copy kept it and its card opened the original's page (Mr Spa, Z6). New
+`startAdmin` option `prompt(message, value, options)` answers the question in tests, as `confirm` does for yes/no.
+
 ## 0.33.0 — 2026-11-04 (Outline, the / menu, scheduled posts, shared parts edited in place)
 
 **F12 — more of WordPress's post editor.** Site action: **`npx vibe-cms migrate` (remote)** — migration

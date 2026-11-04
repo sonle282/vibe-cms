@@ -45,6 +45,8 @@ export type AdminOptions = {
   fetch?: Fetch;
   /** Injectable for tests (sync or not); the CMS dialog otherwise (U3, never the browser's confirm). */
   confirm?: (message: string, options?: ConfirmOptions) => boolean | Promise<boolean>;
+  /** M8: a question with a typed answer (Duplicate's new name); null = cancelled. Tests answer it; else a dialog. */
+  prompt?: (message: string, value: string, options?: ConfirmOptions & { label?: string }) => string | null | Promise<string | null>;
   window?: Window;
   /** P8: how often to ask /live-version after publishing, and for how long before saying "still publishing". */
   pollMs?: number;
@@ -761,20 +763,46 @@ export const startAdmin = (options: AdminOptions) => {
     ]);
   };
 
-  /** M8 (Mr Spa: Duplicate product): a new, unpublished record named "Copy of …", opened in the editor. */
+  /** M8: a dialog with one text box (the confirm button needs a value); null = cancelled. */
+  const askText = (message: string, value: string, choice: ConfirmOptions & { label?: string } = {}): Promise<string | null> => {
+    if (options.prompt) return Promise.resolve(options.prompt(message, value, choice));
+    if (options.confirm) return Promise.resolve(options.confirm(message, choice)).then((yes) => (yes ? value : null));
+    const [title, ...rest] = message.split("\n\n");
+    const boxId = uid("ask");
+    const box = h(doc, "input", { id: boxId, class: "vc-input", autocomplete: "off", spellcheck: "false" }) as HTMLInputElement;
+    box.value = value;
+    const dialog = openDialog(doc, {
+      title, text: rest.join("\n\n") || undefined,
+      body: [h(doc, "div", { class: "vc-field" }, h(doc, "label", { class: "vc-label", for: boxId }, choice.label ?? "Name"), box)],
+      buttons: [{ label: choice.cancel ?? "Cancel", value: "cancel", kind: "plain" }, { label: choice.confirm ?? "OK", value: "ok", kind: "primary" }],
+      onButton: (pressed) => (pressed === "ok" && !box.value.trim() ? (box.focus(), false) : undefined),
+    });
+    box.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); dialog.element.querySelector<HTMLButtonElement>('[data-value="ok"]')?.click(); } });
+    box.focus(); box.select();
+    return dialog.done.then((pressed) => (pressed === "ok" ? box.value.trim() : null));
+  };
+
+  /**
+   * M8 (as Shopify's Duplicate): a new, unpublished record from this one, opened in the editor. Its name is asked first
+   * ("Copy of …" to start with) and its ID — its web address — comes from that name. A field the editor does not show
+   * that held the original's ID (a "slug") takes the copy's ID, so the copy never opens the original's page.
+   */
   const duplicateRecord = async (collection: BootCollection, item: ListView["items"][number]) => {
     const one = collection.itemLabel.toLowerCase();
     const name = item.label || item.id;
     const settings = typeof collection.list?.duplicate === "object" ? collection.list.duplicate : {};
     const clearNames = (settings.clear ?? []).map((field) => (listFieldOf(collection, field)?.label ?? field).toLowerCase());
-    const fresh = clearNames.length ? `, and the ${clearNames.length > 1 ? `${clearNames.slice(0, -1).join(", ")} and ${clearNames[clearNames.length - 1]}` : clearNames[0]} start${clearNames.length > 1 ? "" : "s"} fresh` : "";
-    if (!(await ask(`Duplicate ${one}\n\nCreate a new, unpublished ${one} from "${name}"? The name starts as "Copy of …"${fresh}; everything else is kept. The original ${one} is not changed.`, { confirm: "Create copy" }))) return;
+    const fresh = clearNames.length ? ` (the ${clearNames.length > 1 ? `${clearNames.slice(0, -1).join(", ")} and ${clearNames[clearNames.length - 1]}` : clearNames[0]} start${clearNames.length > 1 ? "" : "s"} empty)` : "";
     const view = await api.get<FileView>(`/api/cms/collections/${encodeURIComponent(collection.key)}/items/${encodeURIComponent(item.id)}`);
     if (!view.ok) { say(view.message || "The copy could not be created."); return; }
     const copy = clone((view.data.draft?.content ?? view.data.content) as Record<string, unknown>);
     const labelKey = Object.keys(collection.fields).find((field) => collection.fields[field].type === "text" && field !== collection.idField && typeof copy[field] === "string" && copy[field]);
     const labelField = labelKey ? collection.fields[labelKey] : undefined;
-    const copyName = `Copy of ${name}`.slice(0, labelField?.type === "text" && labelField.maxLength ? labelField.maxLength : 500);
+    const maxLength = labelField?.type === "text" && labelField.maxLength ? labelField.maxLength : 500;
+    const answer = await askText(`Duplicate ${one}\n\nA new, unpublished ${one} with everything from "${name}"${fresh}. Type its name: its web address comes from it. The original ${one} is not changed.`,
+      `Copy of ${name}`.slice(0, maxLength), { confirm: "Create copy", label: labelField?.label ?? "Name" });
+    if (answer === null) return;
+    const copyName = answer.slice(0, maxLength);
     if (labelKey) copy[labelKey] = copyName;
     for (const field of settings.clear ?? []) delete copy[field];
     if (collection.status) copy[collection.status.field] = collection.status.draft;
@@ -784,6 +812,7 @@ export const startAdmin = (options: AdminOptions) => {
     const base = slugify(copyName) || `copy-of-${item.id}`;
     let id = base; for (let n = 2; taken.has(id); n += 1) id = `${base}-${n}`;
     copy[collection.idField] = id;
+    for (const [field, value] of Object.entries(copy)) if (field !== collection.idField && !(field in collection.fields) && value === item.id) copy[field] = id;
     const saved = await api.request<unknown>("PUT", `/api/cms/collections/${encodeURIComponent(collection.key)}/items/${encodeURIComponent(id)}`, { content: copy, expectedRevision: 0, sourceVersion: "new" });
     if (!saved.ok) { say(saved.message || "The copy could not be created."); return; }
     await go(adminHref.item(collection.key, id));

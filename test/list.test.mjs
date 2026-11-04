@@ -21,7 +21,7 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const until = async (check, what) => { for (let i = 0; i < 200; i += 1) { if (check()) return; await new Promise((resolve) => setTimeout(resolve, 5)); } assert.fail(`timed out waiting for ${what}`); };
 const archivedPost = "---\nslug: old-news\ntitle: Old news\nstatus: archived\n---\nGone from the website, kept here.\n";
 
-const shell = async ({ confirm = () => true, content = files, settings = config } = {}) => {
+const shell = async ({ confirm = () => true, content = files, settings = config, prompt, dialogs = false } = {}) => {
   const window = new Window({ url: "http://localhost/admin", settings: { disableIframePageLoading: true } });
   const drafts = createMemoryDraftStore();
   const user = { userId: "usr_owner", role: "owner" };
@@ -31,7 +31,7 @@ const shell = async ({ confirm = () => true, content = files, settings = config 
   const root = window.document.createElement("div");
   window.document.body.append(root);
   const asked = [];
-  const app = startAdmin({ root, boot: adminBoot(settings, { id: user.userId, username: "owner", displayName: "Owner", role: "owner" }), fetch, window, storage: null, confirm: (message, choice) => { asked.push([message, choice]); return confirm(message); } });
+  const app = startAdmin({ root, boot: adminBoot(settings, { id: user.userId, username: "owner", displayName: "Owner", role: "owner" }), fetch, window, storage: null, ...(dialogs ? {} : { confirm: (message, choice) => { asked.push([message, choice]); return confirm(message); } }), ...(prompt ? { prompt: (message, value, choice) => { asked.push([message, value, choice]); return prompt(message, value); } } : {}) });
   await app.ready;
   const go = async (path) => { await app.go(path); await settle(); await app.idle(); };
   const rows = () => [...root.querySelectorAll(".vc-list-table tbody tr.vc-list-row")];
@@ -131,8 +131,9 @@ test("M8 ⋯ (Mr Spa): Edit · Duplicate · View on website (only when Live); Du
   assert.deepEqual([items[2].getAttribute("href"), items[2].getAttribute("target")], ["/services/", "_blank"]);
   // Duplicate asks first; no keeps everything as it is.
   items[1].click();
+  await until(() => h.asked.length > 0, "the question");
   await settle();
-  assert.deepEqual(h.asked.at(-1), ['Duplicate service\n\nCreate a new, unpublished service from "Spa Pedicure"? The name starts as "Copy of …"; everything else is kept. The original service is not changed.', { confirm: "Create copy" }]);
+  assert.deepEqual(h.asked.at(-1), ['Duplicate service\n\nA new, unpublished service with everything from "Spa Pedicure". Type its name: its web address comes from it. The original service is not changed.', { confirm: "Create copy", label: "Name" }]);
   assert.equal((await h.drafts.mine("usr_owner")).length, 0);
   // Yes: a new draft "Copy of Spa Pedicure" (id from the name), the same price and category, opened in the editor.
   answer = true;
@@ -152,6 +153,53 @@ test("M8 ⋯ (Mr Spa): Edit · Duplicate · View on website (only when Live); Du
   assert.deepEqual([...menu("spring-colours").querySelectorAll(".vc-row-menu-item")].map((item) => item.textContent), ["Edit"]);
   menu("welcome").querySelector(".vc-row-menu-button").click();
   assert.deepEqual([...menu("welcome").querySelectorAll(".vc-row-menu-item")].map((item) => [item.textContent, item.getAttribute("href")]), [["Edit", null], ["View on website", "/blog/welcome/"]]);
+});
+
+test("M8 Duplicate asks the new name (as Shopify): the address comes from it; a hidden field holding the original's ID follows", async () => {
+  const services = JSON.parse(files["src/data/services.json"]);
+  const content = { ...files, "src/data/services.json": JSON.stringify(services.map((service) => ({ ...service, slug: service.id })), null, 2) };
+  const settings = { ...config, collections: config.collections.map((collection) => (collection.key === "services" ? { ...collection, keep: [...(collection.keep ?? []), "slug"] } : collection)) };
+  const h = await shell({ content, settings, prompt: () => "Z6 Pedicure" });
+  await h.go("/admin/catalog/services");
+  const menu = h.root.querySelector('tr[data-id="spa-pedicure"] .vc-row-menu');
+  menu.querySelector(".vc-row-menu-button").click();
+  [...menu.querySelectorAll(".vc-row-menu-item")].find((item) => item.textContent === "Duplicate").click();
+  await until(() => h.window.location.pathname === "/admin/catalog/services/z6-pedicure", "the copy's editor");
+  assert.equal(h.asked.at(-1)[1], "Copy of Spa Pedicure");
+  const copy = await h.drafts.get("usr_owner", "item:services:z6-pedicure");
+  assert.deepEqual([copy.content.id, copy.content.slug, copy.content.name, copy.content.price], ["z6-pedicure", "z6-pedicure", "Z6 Pedicure", "$35"]);
+  const original = await h.drafts.get("usr_owner", "item:services:spa-pedicure");
+  assert.equal(original, undefined, "the original is not changed");
+});
+
+test("M8 Duplicate's own dialog: one name box, Create copy needs a name, Cancel creates nothing", async () => {
+  const h = await shell({ dialogs: true });
+  await h.go("/admin/catalog/services");
+  const open = () => {
+    const menu = h.root.querySelector('tr[data-id="spa-pedicure"] .vc-row-menu');
+    menu.querySelector(".vc-row-menu-button").click();
+    [...menu.querySelectorAll(".vc-row-menu-item")].find((item) => item.textContent === "Duplicate").click();
+  };
+  open();
+  await until(() => h.window.document.querySelector(".vc-dialog input"), "the dialog");
+  const dialog = h.window.document.querySelector(".vc-dialog");
+  const box = dialog.querySelector("input");
+  assert.equal(dialog.querySelector(".vc-dialog-title").textContent, "Duplicate service");
+  assert.equal(dialog.querySelector("label").textContent, "Name");
+  assert.equal(box.value, "Copy of Spa Pedicure");
+  box.value = "  ";
+  dialog.querySelector('[data-value="ok"]').click();
+  await settle();
+  assert.ok(dialog.isConnected, "an empty name keeps the dialog open");
+  dialog.querySelector('[data-value="cancel"]').click();
+  await settle();
+  assert.equal((await h.drafts.mine("usr_owner")).length, 0);
+  open();
+  await until(() => h.window.document.querySelector(".vc-dialog input"), "the dialog again");
+  const again = h.window.document.querySelector(".vc-dialog input");
+  again.value = "Gel X Deluxe";
+  again.dispatchEvent(new h.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  await until(() => h.window.location.pathname === "/admin/catalog/services/gel-x-deluxe", "the copy");
 });
 
 test("M8: a second line under the name ({field} words, only when every word has a value); many choices are a dropdown", async () => {
