@@ -1307,8 +1307,16 @@ export const startAdmin = (options: AdminOptions) => {
         const headingId = `doc-images-${Math.random().toString(36).slice(2, 8)}`;
         imagesSection = h(doc, "section", { class: "vc-doc-images", "aria-labelledby": headingId }, h(doc, "h2", { id: headingId }, "Images in this post"), imagesBox, insert);
       }
+      // F11: what the website adds under every post, written once (WordPress's synced patterns, Shopify's article template).
+      const sharedParts = (documentSpec?.shared ?? []).map((part) => ({ part, file: boot.files.find((entry) => entry.key === part.file) })).filter((entry) => entry.file);
+      const sharedSection = sharedParts.length ? h(doc, "section", { class: "vc-doc-shared", "aria-label": "Shared on every post" },
+        h(doc, "p", { class: "vc-doc-shared-title" }, "Shown at the end of every post"),
+        h(doc, "p", { class: "vc-help" }, "Written once for all posts: no need to copy it into this one. A change there shows on every post."),
+        h(doc, "ul", {}, sharedParts.map(({ part, file }) => h(doc, "li", { class: "vc-doc-shared-part" },
+          h(doc, "div", {}, h(doc, "strong", {}, file!.label), part.help ? h(doc, "span", {}, part.help) : null),
+          link(adminHref.file(file!.key), "Edit once for every post", { class: "vc-button" }))))) : null;
       return h(doc, "div", { class: `vc-doc-paper${plain ? " is-plain" : ""}` }, docBar?.element ?? null, toolbar, form.element,
-        plain ? null : h(doc, "p", { class: "vc-help vc-doc-paste" }, "Pasted text comes in as plain paragraphs. To make a heading, click in the line and choose Heading 2 or Heading 3."), imagesSection);
+        plain ? null : h(doc, "p", { class: "vc-help vc-doc-paste" }, "Pasting from Word, Google Docs or a web page keeps headings, lists, bold and links, and drops colours and font sizes. Type ## and a space for a heading, - and a space for a list."), sharedSection, imagesSection);
     };
     /** M9 (Mr Spa): Hide from website / Show on website again — at once, outside Save draft and Publish. */
     const changeVisibility = async (archive: boolean) => {

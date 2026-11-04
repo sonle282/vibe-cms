@@ -46,7 +46,13 @@ export type TextField = Base & { type: "text"; maxLength?: number; multiline?: b
   /** P16a: an id made from another field of the same object while the item is new ("Classic Manicure" → "classic-manicure"). */
   from?: string;
   /** M13: "price" = the Mr Spa CMS's price box ("$" in front; 1299 is written "$1,299", "From $980" as typed) — f.price(). */
-  format?: "price" };
+  /**
+   * F11 (as WordPress's post sidebar): "date" = a calendar and Today (the value is YYYY-MM-DD; a value with a time keeps its
+   * time, "2024-10-25T10:14:13+00:00"); "tags" = tick boxes of `options` plus Add new (the value is "A, B").
+   */
+  format?: "price" | "date" | "tags";
+  /** F11: the choices of format "tags" (more can be added in the admin). */
+  options?: readonly string[] };
 /** P12d: `allow` = the tags this field may hold (a part of the rich-text allow-list, e.g. ["em", "br"]); the toolbar follows. */
 export type RichTextField = Base & { type: "richText"; allow?: readonly string[] };
 /** P20: `caption` = the image also holds a caption ({ src, alt, caption }), edited under it. */
@@ -155,7 +161,11 @@ export type Section = { key: string; label: string; fields: string[] };
  * contentImages) — shown under the body as "Images in this post"; it follows the body, and replacing, describing or
  * removing an image there changes it in the body too.
  */
-export type DocumentLayout = { title: string; body: string; cover?: string; plain?: boolean; images?: string };
+/**
+ * F11: `shared` = the parts the website shows on every post that are written once (WordPress's synced patterns, the
+ * sections of Shopify's article template): files of cms.config, shown under the post with "Edit once for every post".
+ */
+export type DocumentLayout = { title: string; body: string; cover?: string; plain?: boolean; images?: string; shared?: ReadonlyArray<{ file: string; help?: string }> };
 
 /** One file = one record (a page, the salon info). */
 export type CmsFile = {

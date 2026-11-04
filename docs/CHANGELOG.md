@@ -3,10 +3,25 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
-## 0.31.2 — 2026-11-04 (Clear formatting next to B and I)
+## 0.32.0 — 2026-11-04 (writing a post as in WordPress and Shopify)
 
-Site action: none (`vibe-cms update`). Clear formatting sat alone at the right end of the toolbar; it now comes right
-after B and I, with the other text formatting.
+**F11 — the blog editor learns from WordPress and Shopify.** Site action: none (`vibe-cms update`); new optional settings
+`format: "date"`, `format: "tags"` + `options`, `document.shared`.
+
+- **Pasting keeps the structure, as in WordPress:** from Word, Google Docs or a web page, headings, paragraphs, lists,
+  bold, italic and links come in; colours, fonts, sizes and images do not (h1 → Heading 2, h4–h6 → Heading 3, so the
+  site's own styles apply; Google Docs' bold wrapper and styled spans are read correctly). 0.31.1 kept only the text.
+- **Shortcuts, as in WordPress:** "## " or "### " at the start of a line makes a heading, "- " / "* " a bulleted list,
+  "1. " a numbered list.
+- **`f.text({ format: "date" })`:** a calendar and Today, instead of typing "2024-10-25T10:14:13+00:00" (only the day
+  changes; a time already in the value is kept). The value must be a real day.
+- **`f.text({ format: "tags", options })`:** tick boxes and Add new, like WordPress's categories (the value stays
+  "A, B").
+- **`document.shared`:** what the website shows under every post, written once (WordPress's synced patterns, the
+  sections of Shopify's article template). It is shown under the post, marked, with "Edit once for every post", so
+  nobody copies it into each post.
+- Clear formatting sits right after B and I (it was alone at the toolbar's right end).
+- Vietnamese for the post editor's remaining English ("Đặt tiêu đề cho bài viết", "Thông tin Bài viết", …).
 
 ## 0.31.1 — 2026-11-04 (rich text like WordPress: pasted text in the site's style)
 

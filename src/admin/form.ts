@@ -241,8 +241,71 @@ export const createForm = (options: FormOptions): Form => {
     return { control, id, show };
   };
 
+  /**
+   * F11 (WordPress's post sidebar): a calendar and Today. Only the day changes: a value with a time after it keeps it
+   * ("2024-10-25T10:14:13+00:00" → "2026-11-04T10:14:13+00:00"); an empty one becomes "2026-11-04".
+   */
+  const dateInput = (path: Path, disabled: boolean) => {
+    const id = uid("f");
+    const wasAbsent = getAt(state, path) === undefined;
+    let saved = typeof getAt(state, path) === "string" ? (getAt(state, path) as string) : "";
+    const input = h(doc, "input", { id, type: "date", class: "vc-input vc-date-input", disabled });
+    const write = (day: string) => {
+      const next = day ? (/^\d{4}-\d{2}-\d{2}T/.test(saved) ? `${day}${saved.slice(10)}` : day) : "";
+      saved = next;
+      set(path, next === "" && wasAbsent ? undefined : next);
+    };
+    const today = h(doc, "button", { type: "button", class: "vc-button vc-date-today", disabled, onclick: () => {
+      const now = new Date();
+      const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      input.value = day; write(day);
+    } }, "Today");
+    const show = (value: unknown) => { saved = typeof value === "string" ? value : ""; input.value = /^\d{4}-\d{2}-\d{2}/.test(saved) ? saved.slice(0, 10) : ""; };
+    show(saved);
+    input.addEventListener("change", () => write(input.value));
+    return { control: h(doc, "div", { class: "vc-date" }, input, today), id, show };
+  };
+
+  /** F11 (WordPress's categories): tick boxes of the choices, and Add new; the value is the names joined by ", ". */
+  const tagsInput = (field: Extract<Field, { type: "text" }>, path: Path, disabled: boolean) => {
+    const id = uid("f");
+    const wasAbsent = getAt(state, path) === undefined;
+    const split = (value: unknown) => (typeof value === "string" ? value.split(",").map((part) => part.trim()).filter(Boolean) : []);
+    let chosen = split(getAt(state, path));
+    const names = [...new Set([...(field.options ?? []), ...chosen])];
+    const box = h(doc, "div", { class: "vc-tags", role: "group", id, "aria-label": field.label });
+    const draw = () => {
+      box.replaceChildren(...names.map((name) => {
+        const tick = h(doc, "input", { type: "checkbox", class: "vc-tags-tick", disabled, value: name });
+        tick.checked = chosen.includes(name);
+        tick.addEventListener("change", () => {
+          chosen = names.filter((entry) => (entry === name ? tick.checked : chosen.includes(entry)));
+          const value = chosen.join(", ");
+          set(path, value === "" && wasAbsent ? undefined : value);
+        });
+        return h(doc, "label", { class: "vc-tags-item" }, tick, " ", name);
+      }));
+    };
+    draw();
+    const added = h(doc, "input", { type: "text", class: "vc-input vc-tags-new", disabled, placeholder: "New category", "aria-label": `New ${field.label.toLowerCase()}` });
+    const add = h(doc, "button", { type: "button", class: "vc-button", disabled, onclick: () => {
+      const name = added.value.replace(/,/g, " ").replace(/\s+/g, " ").trim();
+      if (!name) return;
+      if (!names.includes(name)) names.push(name);
+      if (!chosen.includes(name)) chosen = names.filter((entry) => entry === name || chosen.includes(entry));
+      added.value = "";
+      set(path, chosen.join(", "));
+      draw();
+    } }, "Add new");
+    added.addEventListener("keydown", (event) => { if ((event as KeyboardEvent).key === "Enter") { event.preventDefault(); add.click(); } });
+    const show = (value: unknown) => { chosen = split(value); for (const name of chosen) if (!names.includes(name)) names.push(name); draw(); };
+    return { control: h(doc, "div", { class: "vc-tags-field" }, box, h(doc, "div", { class: "vc-tags-add" }, added, add)), id, show };
+  };
+
   const textInput = (field: Extract<Field, { type: "text" }>, path: Path, disabled: boolean) => {
     if (field.format === "price") return priceInput(field, path, disabled);
+    if (field.format === "date") return dateInput(path, disabled);
+    if (field.format === "tags") return tagsInput(field, path, disabled);
     const id = uid("f");
     const current = getAt(state, path);
     const wasAbsent = current === undefined;

@@ -53,6 +53,9 @@ test("M10 config: layout \"document\" and its document: { title, body, cover, pl
   assert.deepEqual(problems("posts", { document: { title: "title", body: "body", cover: "title", size: 1 } }), ["collections[2].document.size: unknown setting", 'collections[2].document.cover: "title" is not an image field']);
   assert.deepEqual(problems("posts", { layout: "page" }), ['collections[2].document: is only for layout "document"']);
   assert.deepEqual(problems("privacy", { document: { title: "title", body: "nope", plain: true } }), ['files[3].document.body: "nope" is not a field']);
+  // F11: what every post shows, written once, is a file of cms.config.
+  assert.deepEqual(problems("posts", { document: { title: "title", body: "body", cover: "cover", shared: [{ file: "site", help: "Under every post" }] } }), []);
+  assert.deepEqual(problems("posts", { document: { title: "title", body: "body", shared: [{ file: "nope" }, { file: "site", where: "x" }] } }), ['collections[2].document.shared[0]: "nope" is not a file of cms.config', "collections[2].document.shared[1].where: unknown setting"]);
   assert.deepEqual(problems("site", { layout: "document", document: { title: "name", body: "hero", plain: true } }), ["files[0].document.body: plain text is a text field or a list of sections"]);
 });
 
@@ -87,7 +90,7 @@ test("M10 blog post (Mr Spa): the paper — bar, cover, title, text — and Post
   const enter = new h.window.KeyboardEvent("keydown", { key: "Enter", cancelable: true });
   title.dispatchEvent(enter);
   assert.equal(enter.defaultPrevented, true, "the title stays one line");
-  assert.equal(paper.querySelector(".vc-doc-paste").textContent, "Pasted text comes in as plain paragraphs. To make a heading, click in the line and choose Heading 2 or Heading 3.");
+  assert.equal(paper.querySelector(".vc-doc-paste").textContent, "Pasting from Word, Google Docs or a web page keeps headings, lists, bold and links, and drops colours and font sizes. Type ## and a space for a heading, - and a space for a list.");
   assert.equal(h.root.querySelector(".vc-record-required").textContent, "* Required before you can publish");
   // The right column.
   assert.equal(h.side().getAttribute("aria-label"), "Post details");

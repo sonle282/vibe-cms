@@ -78,6 +78,8 @@ export const checkValue = (ctx: Ctx, field: Field, value: unknown, path: string)
       if (!field.multiline && value.includes("\n")) add(ctx.warnings, path, "has a line break but the field is single-line", "remove the line break or set multiline: true");
       // P12d: the whole value must match the pattern; only the site's own {tokens} may appear between braces.
       if (field.pattern && !patternOf(field.pattern).test(value)) add(ctx.errors, path, `${describe(value)} is not ${field.patternHint ?? `in the form ${field.pattern}`}`, field.patternHint ? `write ${field.patternHint}` : "change it to match the pattern");
+      // F11: a date is a real day (YYYY-MM-DD, with or without a time after it).
+      if (field.format === "date" && value && (!/^\d{4}-\d{2}-\d{2}(T.*)?$/.test(value) || Number.isNaN(Date.parse(value.slice(0, 10))))) add(ctx.errors, path, `${describe(value)} is not a date`, "pick a day in the calendar (YYYY-MM-DD)");
       if (field.tokens) for (const match of value.matchAll(TOKEN)) if (!field.tokens.includes(match[1])) add(ctx.errors, path, `{${match[1]}} is not filled in by the website`, field.tokens.length ? `use ${field.tokens.map((token) => `{${token}}`).join(", ")}` : "this text cannot hold {words}");
       return;
     case "richText":

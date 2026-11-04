@@ -142,3 +142,30 @@ test("review: a tuple change reads per place", () => {
   const changes = summarizeChanges({ fields: menuFields, before: menu, after: changed });
   assert.deepEqual(changes.map(describeChange), ["Categories › Category 1 (natural) › Services › Service 2 (Gel Manicure) › Price: $30 → $35"]);
 });
+
+test("F11: a date with a calendar and Today keeps the time of the value; categories are tick boxes with Add new", () => {
+  const window = new Window();
+  const fields = { date: f.text({ label: "Date", format: "date" }), fresh: f.text({ label: "Fresh", format: "date" }), category: f.text({ label: "Category", format: "tags", options: ["Blog English", "Tips"] }) };
+  const form = createForm({ doc: window.document, fields, value: { date: "2024-10-25T10:14:13+00:00", category: "Tips, Old one" }, role: "editor", references: {} });
+  window.document.body.append(form.element);
+  const date = form.element.querySelector('[data-path="date"] input[type=date]');
+  assert.equal(date.value, "2024-10-25");
+  date.value = "2026-11-04";
+  date.dispatchEvent(new window.Event("change"));
+  assert.equal(form.value().date, "2026-11-04T10:14:13+00:00", "only the day changes");
+  form.element.querySelector('[data-path="fresh"] .vc-date-today').click();
+  assert.match(form.value().fresh, /^\d{4}-\d{2}-\d{2}$/, "Today on an empty date: just the day");
+  const ticks = () => [...form.element.querySelectorAll('[data-path="category"] .vc-tags-item')].map((item) => [item.textContent.trim(), item.querySelector("input").checked]);
+  assert.deepEqual(ticks(), [["Blog English", false], ["Tips", true], ["Old one", true]], "the choices, then values not among them");
+  form.element.querySelector('[data-path="category"] .vc-tags-tick[value="Blog English"]').click();
+  assert.equal(form.value().category, "Blog English, Tips, Old one");
+  const added = form.element.querySelector('[data-path="category"] .vc-tags-new');
+  added.value = "Pedicure, chairs";
+  [...form.element.querySelectorAll('[data-path="category"] button')].find((button) => button.textContent === "Add new").click();
+  assert.equal(form.value().category, "Blog English, Tips, Old one, Pedicure chairs", "a new name is added and ticked (commas cannot split it)");
+  const problems = (value) => checkRecordValues({ fields, record: value }).errors.map((problem) => `${problem.path}: ${problem.message}`);
+  assert.deepEqual(problems({ date: "2026-11-04" }), []);
+  assert.deepEqual(problems({ date: "2026-11-04T10:00:00+00:00" }), []);
+  assert.deepEqual(problems({ date: "4 Nov 2026" }), ['date: text "4 Nov 2026" is not a date']);
+  assert.deepEqual(checkCmsConfig({ configVersion: 1, site: { name: "S", url: "https://s.example" }, repo: { owner: "o", name: "r", branch: "main" }, collections: [], files: [{ key: "a", label: "A", path: "src/data/a.json", format: "json", fields: { t: f.text({ label: "T", format: "when" }), u: f.text({ label: "U", options: ["x"] }) } }] }).errors.map((problem) => problem.path), ["files[0].fields.t.format", "files[0].fields.u.options"]);
+});
