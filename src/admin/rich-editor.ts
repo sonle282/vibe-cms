@@ -113,7 +113,8 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
 
   const serialize = () => {
     const copy = area.cloneNode(true) as HTMLElement;
-    normalizeBlocks(cleanRichDom(copy, { markdown, allow: options.allow }), { wrapLoose: (markdown || paragraphs) && (!options.allow || options.allow.includes("p")) });
+    // An Enter on its own is a blank line the reader sees (HTML only: Markdown has no blank paragraph).
+    normalizeBlocks(cleanRichDom(copy, { markdown, allow: options.allow }), { wrapLoose: (markdown || paragraphs) && (!options.allow || options.allow.includes("p")), keepBlankLines: !markdown && (!options.allow || options.allow.includes("p")) });
     if (isEmptyRich(copy)) return "";
     if (markdown) return md && style ? md.htmlToMarkdown(copy, style) : current;
     return copy.innerHTML;
