@@ -35,7 +35,7 @@ const shell = async () => {
   const cards = () => [...side().querySelectorAll(".vc-record-side-card")].filter((card) => !card.hidden).map((card) => card.querySelector("h2").textContent);
   const google = () => [".vc-doc-google-path", ".vc-doc-google-title", ".vc-doc-google-text"].map((selector) => side().querySelector(selector).textContent);
   const ready = () => [...side().querySelectorAll(".vc-publish-check")].map((button) => [button.childNodes[1].textContent, button.hasAttribute("data-done")]);
-  const readyTitle = () => side().querySelectorAll(".vc-record-side-card")[3].querySelector("h2").textContent;
+  const readyTitle = () => side().querySelector(".vc-record-side-card:has(.vc-record-ready-list)").querySelector("h2").textContent;
   const type = (element, value) => { element.value = value; element.dispatchEvent(new window.Event("input", { bubbles: true })); };
   return { window, root, drafts, go, side, cards, google, ready, readyTitle, type };
 };
@@ -94,7 +94,12 @@ test("M10 blog post (Mr Spa): the paper — bar, cover, title, text — and Post
   assert.equal(h.root.querySelector(".vc-record-required").textContent, "* Required before you can publish");
   // The right column.
   assert.equal(h.side().getAttribute("aria-label"), "Post details");
-  assert.deepEqual(h.cards(), ["On the website", "Post details", "In Google", "Ready to publish"]);
+  assert.deepEqual(h.cards(), ["On the website", "Schedule", "Outline", "Post details", "In Google", "Ready to publish"]);
+  // F12: the outline lists the body's headings; with none, it says how to add one.
+  const outline = h.side().querySelector('[aria-label="Outline"]');
+  const headings = [...paper.querySelectorAll(".vc-rich-area h2, .vc-rich-area h3")].map((heading) => heading.textContent.trim());
+  assert.deepEqual([...outline.querySelectorAll(".vc-doc-outline-link")].map((button) => button.textContent), headings);
+  if (!headings.length) assert.match(outline.querySelector(".vc-help").textContent, /^No headings yet/);
   const details = h.side().querySelector(".vc-doc-details");
   assert.deepEqual([...details.children].map((box) => box.dataset.path ?? box.querySelector("label").textContent), ["tags", "Web address"]);
   const address = details.querySelector(".vc-doc-address input");

@@ -1192,6 +1192,7 @@ test("F5: the dictionary — exact words, patterns with their parts translated, 
   assert.equal(translate(vi, "Add điểm nổi bật"), "Thêm điểm nổi bật");
   assert.equal(translate(vi, "New Arrival Chair"), "New Arrival Chair", "a Title Case name is content, not the UI's “New …”");
   assert.equal(translate(vi, "Ghế T18"), "Ghế T18");
+  assert.equal(translate(vi, "The scheduled publish did not go out: Publishing to GitHub failed (github_unauthorized)."), "Lần hẹn giờ trước chưa đăng được: Không đăng lên GitHub được (mã github_unauthorized). Nhờ người cài web xem giúp.");
   assert.equal(translate(vi, translate(vi, "Live on demo.example")), "Đã lên web demo.example", "translating twice changes nothing");
 });
 

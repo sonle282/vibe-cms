@@ -16,6 +16,7 @@ const ATTRIBUTES = ["aria-label", "data-tooltip", "placeholder", "title"];
 const SKIP = [
   "textarea", "input", "select option", "[contenteditable]", "[data-no-translate]", ".vc-rich-area", ".vc-rich-source", ".ProseMirror", "script", "style",
   ".vc-change-what ins", ".vc-change-what del", ".vc-review-values", ".vc-list-name-words", ".vc-list-name-detail", ".vc-list-secondary", ".vc-draft-label",
+  ".vc-doc-outline-link", ".vc-doc-shared-lines dd",
 ].join(", ");
 
 /** One string in the dictionary's language (unknown → unchanged). Spaces around it are kept. */

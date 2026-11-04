@@ -75,9 +75,9 @@ export const createSiteRuntime = ({ config, content, env, dev, githubApiUrl, ima
     config, source: createBundledSource(content),
     drafts: env.CMS_DB ? createD1DraftStore(env.CMS_DB) : undefined, audit,
     publisher: env.VIBE_GITHUB_TOKEN ? createGitHubPublisher({ token: env.VIBE_GITHUB_TOKEN, repo: config.repo, ...(apiUrl ? { apiUrl } : {}) }) : undefined,
-    identify: auth.identify, people: auth.people, userNames: env.CMS_DB ? auth.names : undefined, media, siteImages: images,
+    identify: auth.identify, people: auth.people, userNames: env.CMS_DB ? auth.names : undefined, userRole: env.CMS_DB ? auth.currentRole : undefined, media, siteImages: images,
     imageNames: imageNamesOf(config.media, names, mediaSettings(config.media).base),
     publishLimiter: env.CMS_PUBLISH_LIMITER, requirePublishLimiter: !dev,
   });
-  return { api, auth, media };
+  return { api, auth, media, scheduled: (at?: Date) => api.runScheduled(at) };
 };

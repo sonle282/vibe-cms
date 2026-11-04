@@ -31,7 +31,7 @@ import { activityScreen } from "./activity.js";
 import { openHistory, type HistoryTarget } from "./history.js";
 import { createRecordSide, createRecordToc } from "./record.js";
 import { pluginControls, pluginPanels, type AdminPlugin } from "./plugins.js";
-import { createDetailsCard, createDocBar, createGoogleCard, excerptOf, googlePath, plainTextOf, stringsIn, wordCount } from "./document.js";
+import { createDetailsCard, createDocBar, createGoogleCard, createOutlineCard, excerptOf, googlePath, plainTextOf, stringsIn, wordCount } from "./document.js";
 import { ADMIN_BASE, adminHref, legacyHashPath, parseAdminPath, type AdminRoute } from "./routes.js";
 import { applyLeafChanges, buildFailedText, deriveSaveState, elapsedText, publishBlockReason, unsavedLeafChanges, type LeafChange, type PublishedState, type SaveState } from "./save-state.js";
 import { createRecovery, forgetAllRecovery, forgetRecovery, readRecovery, recoveryQuestion, type Recovery } from "./recovery.js";
@@ -109,7 +109,7 @@ export const changeFields = (target: { kind: "file"; file: BootFile } | { kind: 
   return { [status.field]: { type: "select", label: "Status", options: [status.live, status.draft, ...(status.archived ? [status.archived] : [])] } as Field, ...fields };
 };
 
-type DraftRow = { resource: string; kind: "file" | "item"; key: string; id: string | null; label: string; group: string; updatedAt: string; revision: number; isNew: boolean; stale: boolean; conflicts?: string[] };
+type DraftRow = { resource: string; kind: "file" | "item"; key: string; id: string | null; label: string; group: string; updatedAt: string; revision: number; isNew: boolean; stale: boolean; conflicts?: string[]; publishAt?: string; scheduleNote?: string };
 type PublishResult = { commitSha: string | null; resources: string[]; files: string[]; expectedLiveVersion: string; warnings: Array<{ resource: string; code: string; fields?: string[] }>; attempts: number };
 /** M6: the publish receipt (localStorage, until the change is live): `commit` = the commit, for the build check. */
 type PendingPublish = { expected: string; at: number; userId: string; labels: string[]; resources?: string[]; commit?: string };
@@ -119,7 +119,7 @@ const PENDING_KEY = "vibe-cms:publishing";
 
 type Screen = { title: string; crumbs: Array<[string, string?]>; dirty?: () => number; save?: () => Promise<void>; leave?: () => void; refreshState?: () => void; resource?: string };
 
-type FileView = { resource: string; label: string; content: unknown; version: string; draft: null | { content: unknown; revision: number; sourceVersion: string; stale: boolean; conflicts?: string[]; updatedAt: string }; choices?: PickChoices };
+type FileView = { resource: string; label: string; content: unknown; version: string; draft: null | { content: unknown; revision: number; sourceVersion: string; stale: boolean; conflicts?: string[]; updatedAt: string; publishAt?: string; scheduleNote?: string }; choices?: PickChoices };
 /** P12g: pick values in plain words in the review ("packages/the-essential-reset" → "The Essential Reset"). */
 const choiceLabelsOf = (choices: PickChoices | undefined) => Object.fromEntries(Object.values(choices ?? {}).flat().map((choice) => [choice.value, choice.label]));
 type ListView = { key: string; label: string; itemLabel: string; items: Array<{ id: string; resource: string; label: string; version: string | null; hasDraft: boolean; isNew?: boolean; image?: string;
@@ -1227,6 +1227,21 @@ export const startAdmin = (options: AdminOptions) => {
     const documentNoun = collection ? collection.itemLabel.toLowerCase() : "page";
     const detailsCard = documentSpec ? createDetailsCard(doc, collection ? `${collection.itemLabel} details` : "Page details") : undefined;
     const googleCard = documentSpec ? createGoogleCard(doc, `Worked out from the title and the first lines of the ${documentNoun}.`) : undefined;
+    // F12: the outline of a formatted body (not of a plain one), live; a click goes to the heading in the text.
+    const bodyArea = () => (documentSpec ? form.element.querySelector<HTMLElement>(`[data-path="${documentSpec.body}"] .vc-rich-area`) : null);
+    const outlineCard = documentSpec && !plain ? createOutlineCard(doc, (index) => {
+      const heading = bodyArea()?.querySelectorAll("h2, h3")[index];
+      if (!heading) return;
+      heading.scrollIntoView({ block: "center", behavior: "smooth" });
+      const caret = doc.createRange(); caret.selectNodeContents(heading); caret.collapse(false);
+      bodyArea()!.focus();
+      win.getSelection?.()?.removeAllRanges(); win.getSelection?.()?.addRange(caret);
+    }) : undefined;
+    const outlineOf = (html: string) => {
+      const box = doc.createElement("div");
+      box.innerHTML = html.replace(/<img\b[^>]*>/gi, "");
+      return [...box.querySelectorAll("h2, h3")].map((heading) => ({ level: heading.tagName === "H2" ? 2 as const : 3 as const, text: (heading.textContent ?? "").trim() }));
+    };
     const docBar = plain && documentSpec ? createDocBar(doc, fields[documentSpec.body]?.type !== "list" || (fields[documentSpec.body] as { fixed?: boolean }).fixed ? "Plain text · the sections stay as they are" : "Plain text") : undefined;
     const markdownBody = Boolean(collection?.markdown && documentSpec?.body === "body" && !("body" in collection.fields));
     // Mr Spa: "Web address" — fixed once the record exists; a new post's comes from its title (it can be shortened).
@@ -1253,13 +1268,59 @@ export const startAdmin = (options: AdminOptions) => {
       const titleValue = String(getAt(value, keyPath(documentSpec.title)) ?? "").trim();
       const bodyValue = getAt(value, keyPath(documentSpec.body));
       const text = plain || typeof bodyValue !== "string" ? stringsIn(bodyValue).join(" ").replace(/\s+/g, " ").trim() : plainTextOf(doc, bodyValue, markdownBody);
+      if (outlineCard && typeof bodyValue === "string" && !markdownBody) outlineCard.update(outlineOf(bodyValue));
+      else if (outlineCard) { const area = bodyArea(); outlineCard.update(area ? [...area.querySelectorAll("h2, h3")].map((heading) => ({ level: heading.tagName === "H2" ? 2 as const : 3 as const, text: (heading.textContent ?? "").trim() })) : []); }
       googleCard.update({ path: googlePath(siteHost(), addressPath() ?? ""), title: `${titleValue || (collection ? `Untitled ${documentNoun}` : "")} | ${boot.site.name}`, text: excerptOf(text) });
       docBar?.setCount(wordCount([titleValue, ...stringsIn(bodyValue)]));
       showAddress();
     };
     // M14: the site's panels in the right column, told the record after every change.
     const recordPanels = sideLayout ? pluginPanels(doc, plugins, "record", input.kind === "file" ? { file: input.file.key } : { collection: input.collection.key }) : [];
-    const sideExtra = documentSpec ? [detailsCard!.element, googleCard!.element] : [];
+    // F12 (WordPress's Publish › Schedule): the post goes out by itself at a time; a save keeps the schedule.
+    const scheduleCard = documentSpec && collection ? (() => {
+      let at = view?.draft?.publishAt;
+      let note = view?.draft?.scheduleNote;
+      const body = h(doc, "div", { class: "vc-schedule" });
+      const element = h(doc, "section", { class: "vc-record-side-card", "aria-label": "Schedule" }, h(doc, "h2", {}, "Schedule"), body);
+      const pad = (value: number) => String(value).padStart(2, "0");
+      const local = (date: Date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+      const spoken = (iso: string) => new Date(iso).toLocaleString(boot.site.locale === "vi" ? "vi-VN" : undefined, { weekday: "long", day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+      const problemLine = h(doc, "p", { class: "vc-error", role: "alert", hidden: true });
+      const say2 = (text: string) => { problemLine.textContent = text; problemLine.hidden = !text; };
+      const send = async (iso: string | null) => {
+        say2("");
+        if (iso && dirty() && !(await doSave({ stay: true }))) return;
+        if (iso && !hasDraft) { say2("There is nothing to publish yet: make a change first."); return; }
+        const result = await api.put<{ publishAt: string | null }>("/api/cms/schedule", { resource: resourceOf(), at: iso });
+        if (!result.ok) { say2(result.message); return; }
+        at = result.data.publishAt ?? undefined; note = undefined;
+        draw();
+        void refreshDrafts();
+        say(at ? `Scheduled: it publishes by itself on ${spoken(at)}.` : "The schedule is off. It will not publish by itself.", "success");
+      };
+      const picker = () => {
+        const tomorrow = new Date(now() + 24 * 3600_000); tomorrow.setHours(9, 0, 0, 0);
+        const when = h(doc, "input", { type: "datetime-local", class: "vc-input", "aria-label": "Date and time", min: local(new Date(now() + 120_000)), value: local(at ? new Date(at) : tomorrow) });
+        const go = h(doc, "button", { type: "button", class: "vc-button", "data-action": "schedule", onclick: () => { void send(when.value ? new Date(when.value).toISOString() : ""); } }, at ? "Change the time" : "Schedule");
+        return h(doc, "div", { class: "vc-schedule-pick" }, when, go);
+      };
+      const draw = () => {
+        clear(body);
+        if (note) body.append(h(doc, "p", { class: "vc-error" }, `The scheduled publish did not go out: ${note}`));
+        if (at) {
+          body.append(h(doc, "p", { class: "vc-schedule-at" }, `Publishes by itself on ${spoken(at)}.`),
+            h(doc, "p", { class: "vc-help" }, "The website shows it a few minutes later. You can still change the post until then: changes saved as a draft go out with it."),
+            picker(),
+            h(doc, "button", { type: "button", class: "vc-button vc-quiet", "data-action": "unschedule", onclick: () => { void send(null); } }, "Cancel the schedule"));
+        } else {
+          body.append(h(doc, "p", { class: "vc-help" }, "Publish now with Publish, or pick a time and the post goes out by itself."), picker());
+        }
+        body.append(problemLine);
+      };
+      draw();
+      return { element };
+    })() : undefined;
+    const sideExtra = documentSpec ? [...(scheduleCard ? [scheduleCard.element] : []), ...(outlineCard ? [outlineCard.element] : []), detailsCard!.element, googleCard!.element] : [];
     const sidePanels = recordPanels.map((panel) => panel.element);
     const recordSide = collection && sideLayout ? createRecordSide(doc, {
       noun: collection.itemLabel.toLowerCase(), nounTitle: collection.itemLabel,
@@ -1273,6 +1334,67 @@ export const startAdmin = (options: AdminOptions) => {
       ...(collection.status?.archived ? { visibility: (archive: boolean) => { void changeVisibility(archive); } } : {}),
     }) : documentSpec ? createRecordSide(doc, { noun: "page", nounTitle: "Page", extra: sideExtra, panels: sidePanels, label: "Page details" }) : undefined;
     if (recordSide) recordUpdate = (count, blocked) => { recordSide.update(webStateOf(count), readyItemsOf(), blocked ?? undefined); updateDocument(); for (const panel of recordPanels) panel.update({ record: form.value() }); };
+    /** F12: a shared part of every post (a file of cms.config): what it says now, and a click edits it in a dialog. */
+    const sharedPartCard = (part: { file: string; help?: string; fields?: readonly string[] }, file: BootFile) => {
+      const editable = (key: string) => { const field = file.fields[key]; return Boolean(field) && !field.hidden && field.type !== "image" && field.type !== "richText"; };
+      const keys = (part.fields?.length ? part.fields : Object.keys(file.fields).filter((key) => ["text", "select", "toggle"].includes(file.fields[key].type))).filter(editable);
+      const url = `/api/cms/files/${encodeURIComponent(file.key)}`;
+      let loaded: FileView | undefined;
+      const lines = h(doc, "dl", { class: "vc-doc-shared-lines" });
+      const shown = (value: unknown, field: Field): string => {
+        if (field.type === "toggle") return value === true ? "On" : "Off";
+        if (Array.isArray(value)) return value.map((item) => (item && typeof item === "object" ? String((item as Record<string, unknown>).label ?? (item as Record<string, unknown>).name ?? "") : String(item))).filter(Boolean).join(" · ");
+        return typeof value === "string" ? value : value === undefined || value === null ? "" : String(value);
+      };
+      const draw = () => {
+        const value = (loaded?.draft?.content ?? loaded?.content ?? {}) as Record<string, unknown>;
+        lines.replaceChildren(...keys.map((key) => { const text = shown(value[key], file.fields[key]); return text ? h(doc, "div", {}, h(doc, "dt", {}, file.fields[key].label), h(doc, "dd", {}, text)) : null; }).filter((row): row is HTMLDivElement => Boolean(row)));
+      };
+      const load = async () => { const result = await api.get<FileView>(url); if (result.ok) { loaded = result.data; draw(); } };
+      const edit = async () => {
+        if (!loaded) await load();
+        if (!loaded) { say(`${file.label} could not be opened.`, "error"); return; }
+        const base = (loaded.draft?.content ?? loaded.content ?? {}) as Record<string, unknown>;
+        const fields = Object.fromEntries(keys.map((key) => [key, file.fields[key]]));
+        const sub = createForm({ doc, fields, value: Object.fromEntries(keys.map((key) => [key, base[key]])), role: user.role, references: {}, controls, confirm: (text, choice) => ask(text, choice), notify: (text) => say(text, "info"),
+          links: { pages: boot.site.pages ?? [], host: siteHost(), ...(boot.site.phone ? { country: boot.site.phone.country } : {}) } });
+        const problemBox = h(doc, "p", { class: "vc-error", role: "alert", hidden: true });
+        const problem = (text: string) => { problemBox.textContent = text; problemBox.hidden = !text; };
+        const dialog = openDialog(doc, {
+          title: file.label,
+          text: "This shows on every post. Publish here and every post changes; the post you are writing stays as it is.",
+          body: [h(doc, "div", { class: "vc-doc-shared-form" }, sub.element), problemBox],
+          buttons: [{ label: "Cancel", value: "cancel", kind: "plain" }, { label: "Publish for every post", value: "publish", kind: "primary" }],
+          dismiss: "cancel",
+          onButton: async (value, open) => {
+            if (value !== "publish") return;
+            problem("");
+            open.busy(true);
+            const next = { ...base, ...sub.value() };
+            const saved = await api.put<{ draft: { revision: number } }>(url, { content: next, expectedRevision: loaded!.draft?.revision ?? 0, sourceVersion: loaded!.version });
+            if (!saved.ok) {
+              open.busy(false);
+              const errors = Array.isArray(saved.data.errors) ? (saved.data.errors as Array<{ path: string; message: string }>) : [];
+              if (errors.length) sub.showErrors(errors);
+              problem(saved.message);
+              return false;
+            }
+            const published = await publishResource(`file:${file.key}`, file.label);
+            open.busy(false);
+            if (!published.ok) { problem(publishProblem(published)); return false; }
+            say(`${file.label} is published for every post. The website updates in a few minutes.`, "success");
+            void load();
+          },
+        });
+        dialog.element.classList.add("vc-doc-shared-dialog");
+      };
+      const card = h(doc, "button", { type: "button", class: "vc-doc-shared-part", onclick: () => { void edit(); } },
+        h(doc, "span", { class: "vc-doc-shared-head" }, h(doc, "strong", {}, file.label), part.help ? h(doc, "span", {}, part.help) : null),
+        lines,
+        h(doc, "span", { class: "vc-doc-shared-edit" }, icon(doc, "pencil"), "Edit for every post"));
+      void load();
+      return card;
+    };
     /** M10: the paper — the formatting bar (or a policy's bar), the cover, the title, the body; the rest goes right. */
     const documentPaper = () => {
       const spec = documentSpec!;
@@ -1309,12 +1431,12 @@ export const startAdmin = (options: AdminOptions) => {
       }
       // F11: what the website adds under every post, written once (WordPress's synced patterns, Shopify's article template).
       const sharedParts = (documentSpec?.shared ?? []).map((part) => ({ part, file: boot.files.find((entry) => entry.key === part.file) })).filter((entry) => entry.file);
+      // F12 (WordPress edits a synced pattern where it is used): each part shows what it says now; a click edits it
+      // right here, in a dialog, and "Publish for every post" saves and publishes it — the post stays open.
       const sharedSection = sharedParts.length ? h(doc, "section", { class: "vc-doc-shared", "aria-label": "Shared on every post" },
         h(doc, "p", { class: "vc-doc-shared-title" }, "Shown at the end of every post"),
-        h(doc, "p", { class: "vc-help" }, "Written once for all posts: no need to copy it into this one. A change there shows on every post."),
-        h(doc, "ul", {}, sharedParts.map(({ part, file }) => h(doc, "li", { class: "vc-doc-shared-part" },
-          h(doc, "div", {}, h(doc, "strong", {}, file!.label), part.help ? h(doc, "span", {}, part.help) : null),
-          link(adminHref.file(file!.key), "Edit once for every post", { class: "vc-button" }))))) : null;
+        h(doc, "p", { class: "vc-help" }, "Written once for all posts: no need to copy it into this one. Click a part to change it for every post."),
+        h(doc, "ul", {}, sharedParts.map(({ part, file }) => h(doc, "li", {}, sharedPartCard(part, file!))))) : null;
       return h(doc, "div", { class: `vc-doc-paper${plain ? " is-plain" : ""}` }, docBar?.element ?? null, toolbar, form.element,
         plain ? null : h(doc, "p", { class: "vc-help vc-doc-paste" }, "Pasting from Word, Google Docs or a web page keeps headings, lists, bold and links, and drops colours and font sizes. Type ## and a space for a heading, - and a space for a list."), sharedSection, imagesSection);
     };
@@ -1653,7 +1775,9 @@ export const startAdmin = (options: AdminOptions) => {
           h(doc, "span", { class: "vc-draft-type" }, typeOf(row)),
           h(doc, "strong", { class: "vc-draft-label" }, row.label),
           h(doc, "span", { class: "vc-draft-changes", ...(row.stale ? { "data-state": "conflict" } : {}) }, row.stale ? row.conflicts?.length ? `${what} · ${fieldList(row.conflicts)} also changed on the website: open it to choose which to keep.` : `${what} · The live version changed since; reload the draft before publishing.` : what),
-          h(doc, "span", { class: "vc-drafts-saved" }, `Saved ${new Date(row.updatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`)),
+          h(doc, "span", { class: "vc-drafts-saved" }, `Saved ${new Date(row.updatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`),
+          row.publishAt ? h(doc, "span", { class: "vc-drafts-scheduled" }, `Publishes by itself ${timeOf(row.publishAt)}`) : null,
+          row.scheduleNote ? h(doc, "span", { class: "vc-draft-changes", "data-state": "conflict" }, `The scheduled publish did not go out: ${row.scheduleNote}`) : null),
         h(doc, "div", { class: "vc-draft-actions" },
           h(doc, "span", { class: "vc-drafts-status" },
             h(doc, "span", { class: `vc-content-status${row.isNew ? " is-draft" : ""}` }, row.isNew ? "Draft" : "Live"),
@@ -1701,7 +1825,7 @@ export const startAdmin = (options: AdminOptions) => {
         h(doc, "strong", { class: "vc-draft-label" }, row.label),
         h(doc, "span", { class: "vc-draft-changes", ...(row.stale ? { "data-state": "conflict" } : {}) }, row.stale
           ? row.conflicts?.length ? `${fieldList(row.conflicts)} also changed on the website: open it to choose which to keep.` : "The website changed since this draft was started."
-          : `${row.isNew ? "Not on the website yet" : row.group} · saved ${timeOf(row.updatedAt)}`)),
+          : row.publishAt ? `Publishes by itself ${timeOf(row.publishAt)}` : `${row.isNew ? "Not on the website yet" : row.group} · saved ${timeOf(row.updatedAt)}`)),
       h(doc, "div", { class: "vc-draft-actions" }, link(hrefOfDraft(row), "Open", { class: "vc-button" }))));
     const waiting = rows.length
       ? [h(doc, "ul", { class: "vc-drafts-list" }, draftRows),
