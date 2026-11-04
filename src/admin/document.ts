@@ -73,3 +73,20 @@ export const createDocBar = (doc: Document, words: string) => {
   const element = h(doc, "div", { class: "vc-doc-bar", "aria-live": "polite" }, h(doc, "span", {}, words), count);
   return { element, setCount: (text: string) => { count.textContent = text; } };
 };
+
+/**
+ * F12 (WordPress's Document Overview › Outline): the post's headings, live; a click goes to that heading in the text.
+ * With none, it says how to add one.
+ */
+export const createOutlineCard = (doc: Document, go: (index: number) => void) => {
+  const list = h(doc, "ol", { class: "vc-doc-outline" });
+  const empty = h(doc, "p", { class: "vc-help" }, "No headings yet. Click Heading 2 in the toolbar, or type ## and a space at the start of a line.");
+  const element = h(doc, "section", { class: "vc-record-side-card", "aria-label": "Outline" }, h(doc, "h2", {}, "Outline"), list, empty);
+  const update = (headings: Array<{ level: 2 | 3; text: string }>) => {
+    list.replaceChildren(...headings.map((heading, index) => h(doc, "li", { class: `vc-doc-outline-${heading.level}` },
+      h(doc, "button", { type: "button", class: "vc-doc-outline-link", onclick: () => go(index) }, heading.text || "(empty heading)"))));
+    list.hidden = !headings.length;
+    empty.hidden = headings.length > 0;
+  };
+  return { element, update };
+};

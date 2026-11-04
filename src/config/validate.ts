@@ -615,7 +615,10 @@ function checkDocument(context: Context, entry: Record<string, unknown>, at: str
     if (!Array.isArray(document.shared)) err(context, `${at}.document.shared`, "must be a list of { file, help? }", '[{ file: "blog-post-end", help: "Shown under every post" }]');
     else document.shared.forEach((part, index) => {
       if (!isRecord(part) || !files.includes(String(part.file))) err(context, `${at}.document.shared[${index}]`, `${show(isRecord(part) ? part.file : part)} is not a file of cms.config`, '{ file: "<a file key>" }');
-      else for (const key of Object.keys(part)) if (key !== "file" && key !== "help") err(context, `${at}.document.shared[${index}].${key}`, "unknown setting", "a shared part has file and help");
+      else {
+        for (const key of Object.keys(part)) if (!["file", "help", "fields"].includes(key)) err(context, `${at}.document.shared[${index}].${key}`, "unknown setting", "a shared part has file, help and fields");
+        if (part.fields !== undefined && (!Array.isArray(part.fields) || !part.fields.every(filled))) err(context, `${at}.document.shared[${index}].fields`, "must be a list of field names of that file");
+      }
     });
   }
   if (document.plain !== undefined && typeof document.plain !== "boolean") err(context, `${at}.document.plain`, "must be true or false");

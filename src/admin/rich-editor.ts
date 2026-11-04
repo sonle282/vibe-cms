@@ -20,6 +20,10 @@
  * lists, bold, italic, links — and drops colours, fonts, sizes and images (h1 → Heading 2, h4–h6 → Heading 3, so the
  * site's own styles apply). Typing "## ", "### ", "- ", "* " or "1. " at the start of a line makes it a heading or a list.
  *
+ * F12 (WordPress's block inserter): on an empty line a faint hint says "Type / to add a heading, a list or an image";
+ * typing "/" opens a short menu of the toolbar's tools (filtered as you type, ↑ ↓ Enter, Esc), which runs the same
+ * tool on that line.
+ *
  * The editor uses the browser's editing commands (execCommand) so Ctrl+Z / Ctrl+Y keep working; what they write is
  * cleaned (src/admin/clean.ts) before it becomes the value, and the server cleans again (P8c).
  */
@@ -381,12 +385,81 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
     options.pickImage?.(image.getAttribute("src") ?? "", (picked) => { image.setAttribute("src", picked.src); select(image); changed(); });
   };
 
+  // ---------------------------------------------------------------- F12: the empty-line hint and the "/" menu
+
+  const hint = h(doc, "span", { class: "vc-rich-hint", "aria-hidden": "true", hidden: true }, "Type / to add a heading, a list or an image");
+  const menu = h(doc, "div", { class: "vc-slash", role: "listbox", "aria-label": "Add to this line", hidden: true });
+  /** The menu's entries: the toolbar's own tools (the field's allow-list already applied), in this order. */
+  const SLASH: Array<[string, string]> = [["heading", "heading h2 title"], ["subheading", "subheading h3"], ["bullets", "list bullet ul"], ["numbers", "list number ol"], ["image", "image picture photo"], ["paragraph", "paragraph text"]];
+  const slashTools = () => SLASH.map(([command, keys]) => ({ button: formatting.find((tool) => tool.dataset.command === command) as HTMLButtonElement | undefined, keys })).filter((entry) => entry.button);
+  const plainWords = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase();
+  let slashLine: Element | undefined;
+  let slashActive = 0;
+  const positionAt = (line: Element, box: HTMLElement) => {
+    const lineRect = line.getBoundingClientRect(); const own = element.getBoundingClientRect();
+    box.style.top = `${lineRect.top - own.top}px`;
+    box.style.left = `${lineRect.left - own.left}px`;
+  };
+  const closeSlash = () => { menu.hidden = true; slashLine = undefined; };
+  const pickSlash = (button: HTMLButtonElement) => {
+    const line = slashLine;
+    closeSlash();
+    if (line) {
+      line.textContent = "";
+      line.append(doc.createElement("br"));
+      const caret = doc.createRange(); caret.setStart(line, 0); caret.collapse(true);
+      win?.getSelection?.()?.removeAllRanges(); win?.getSelection?.()?.addRange(caret);
+      remember();
+      changed();
+    }
+    button.click();
+  };
+  const drawSlash = (query: string) => {
+    const words = plainWords(query);
+    const entries = slashTools().filter(({ button, keys }) => !words || plainWords(`${button!.textContent ?? ""} ${keys}`).includes(words));
+    if (!entries.length) { closeSlash(); return; }
+    slashActive = Math.min(slashActive, entries.length - 1);
+    menu.replaceChildren(...entries.map(({ button }, index) => {
+      const option = h(doc, "button", { type: "button", class: "vc-slash-item", role: "option", "aria-selected": String(index === slashActive), "data-command": button!.dataset.command ?? "" }, button!.textContent ?? "");
+      option.addEventListener("mousedown", (event) => event.preventDefault());
+      option.addEventListener("click", () => pickSlash(button!));
+      return option;
+    }));
+    menu.hidden = false;
+  };
+  /** After each keystroke: the hint on an empty line, the menu while the line is "/…". */
+  const updateSlash = () => {
+    const line = closest("p");
+    const text = line?.textContent ?? "";
+    const empty = Boolean(line && !text.trim() && !line.querySelector("img") && mode === "visual" && !disabled && doc.activeElement === area);
+    hint.hidden = !empty;
+    if (empty && line) positionAt(line, hint);
+    const query = line && /^\/[^\s/]{0,20}$/.test(text) ? text.slice(1) : undefined;
+    if (query === undefined || !line) { closeSlash(); return; }
+    if (slashLine !== line) slashActive = 0;
+    slashLine = line;
+    drawSlash(query);
+    if (!menu.hidden) { positionAt(line, menu); menu.style.top = `${parseFloat(menu.style.top) + line.getBoundingClientRect().height + 4}px`; }
+  };
+
   // ---------------------------------------------------------------- area events
 
-  area.addEventListener("input", () => { changed(); place(); });
+  area.addEventListener("input", () => { changed(); place(); updateSlash(); });
+  area.addEventListener("blur", () => { hint.hidden = true; closeSlash(); });
+  area.addEventListener("keydown", (event) => {
+    if (menu.hidden) return;
+    const options = [...menu.querySelectorAll<HTMLButtonElement>(".vc-slash-item")];
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      slashActive = (slashActive + (event.key === "ArrowDown" ? 1 : options.length - 1)) % options.length;
+      options.forEach((option, index) => option.setAttribute("aria-selected", String(index === slashActive)));
+    } else if (event.key === "Enter") { event.preventDefault(); options[slashActive]?.click(); }
+    else if (event.key === "Escape") { event.preventDefault(); closeSlash(); }
+  });
   area.addEventListener("focus", () => { if (mode === "visual" && !disabled) { ensureParagraph(); try { doc.execCommand("defaultParagraphSeparator", false, "p"); doc.execCommand("styleWithCSS", false, "false"); } catch { /* old browsers */ } } });
-  area.addEventListener("keyup", () => { remember(); refreshState(); });
-  area.addEventListener("mouseup", () => { remember(); refreshState(); });
+  area.addEventListener("keyup", (event) => { remember(); refreshState(); if (!["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(event.key) || menu.hidden) updateSlash(); });
+  area.addEventListener("mouseup", () => { remember(); refreshState(); updateSlash(); });
+  area.addEventListener("focus", () => updateSlash());
   area.addEventListener("click", (event) => {
     if (disabled) return;
     const target = event.target as Element;
@@ -533,7 +606,7 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
     setMode("source");
   };
 
-  const element = h(doc, "div", { class: `vc-rich-editor${disabled ? " vc-rich-disabled" : ""}`, "data-format": format }, toolbar, imageBar, area, source, frame, handle, status);
+  const element = h(doc, "div", { class: `vc-rich-editor${disabled ? " vc-rich-disabled" : ""}`, "data-format": format }, toolbar, imageBar, area, source, frame, handle, hint, menu, status);
   setMode(mode);
 
   const ready = (async () => {

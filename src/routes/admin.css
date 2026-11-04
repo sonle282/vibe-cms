@@ -1206,6 +1206,26 @@ a.vc-row-menu-item { display: flex; align-items: center; color: var(--text); tex
 .vc-doc-shared { margin-top: 20px; padding: 14px 16px; border: 1px dashed var(--accent); border-radius: var(--radius-12); background: var(--accent-bg); }
 .vc-doc-shared-title { margin: 0 0 4px; font-weight: 700; color: var(--accent-strong); }
 .vc-doc-shared ul { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
-.vc-doc-shared-part { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: var(--radius-10); background: var(--surface); }
-.vc-doc-shared-part div { display: grid; gap: 2px; }
-.vc-doc-shared-part span { color: var(--text-secondary); font-size: var(--text-13); }
+/* F12: a shared part is one big button: what it says now, and "Edit for every post". */
+.vc-doc-shared-part { display: grid; gap: 8px; width: 100%; padding: 12px 14px; text-align: left; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-10); cursor: pointer; }
+.vc-doc-shared-part:hover, .vc-doc-shared-part:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.vc-doc-shared-head { display: grid; gap: 2px; }
+.vc-doc-shared-head span { color: var(--text-secondary); font-size: var(--text-13); }
+.vc-doc-shared-lines { display: grid; gap: 4px; margin: 0; font-size: var(--text-13); }
+.vc-doc-shared-lines > div { display: grid; grid-template-columns: 150px 1fr; gap: 8px; }
+.vc-doc-shared-lines dt { color: var(--text-secondary); }
+.vc-doc-shared-lines dd { margin: 0; overflow-wrap: anywhere; }
+.vc-doc-shared-edit { display: inline-flex; align-items: center; gap: 6px; justify-self: start; color: var(--accent-strong); font-weight: 600; font-size: var(--text-13); }
+.vc-doc-shared-dialog { width: min(640px, calc(100vw - 32px)); }
+.vc-doc-shared-form { max-height: 60vh; overflow: auto; padding-right: 4px; }
+@media (max-width: 640px) { .vc-doc-shared-lines > div { grid-template-columns: 1fr; gap: 0; } }
+/* F12: the outline of a post (WordPress's Document Overview › Outline). */
+.vc-doc-outline { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.vc-doc-outline-link { display: block; width: 100%; padding: 5px 8px; text-align: left; font: inherit; font-size: var(--text-14); color: var(--text); background: none; border: 0; border-radius: var(--radius-6); cursor: pointer; }
+.vc-doc-outline-link:hover, .vc-doc-outline-link:focus-visible { background: var(--surface-hover); color: var(--accent-strong); }
+.vc-doc-outline-3 .vc-doc-outline-link { padding-left: 22px; font-size: var(--text-13); color: var(--text-secondary); }
+/* F12: the hint on an empty line, and the "/" menu (WordPress's block inserter). */
+.vc-rich-hint { position: absolute; z-index: 1; margin: 0 0 0 1px; color: var(--text-tertiary, #9ca3af); pointer-events: none; font-size: 16px; line-height: 1.6; white-space: nowrap; }
+.vc-slash { position: absolute; z-index: 5; display: grid; min-width: 220px; padding: 6px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-10); box-shadow: 0 8px 24px rgb(15 23 42 / .14); }
+.vc-slash-item { padding: 8px 10px; text-align: left; font: inherit; font-size: var(--text-14); color: var(--text); background: none; border: 0; border-radius: var(--radius-6); cursor: pointer; }
+.vc-slash-item[aria-selected="true"], .vc-slash-item:hover { background: var(--accent-bg); color: var(--accent-strong); }

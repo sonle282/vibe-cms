@@ -165,7 +165,8 @@ export type Section = { key: string; label: string; fields: string[] };
  * F11: `shared` = the parts the website shows on every post that are written once (WordPress's synced patterns, the
  * sections of Shopify's article template): files of cms.config, shown under the post with "Edit once for every post".
  */
-export type DocumentLayout = { title: string; body: string; cover?: string; plain?: boolean; images?: string; shared?: ReadonlyArray<{ file: string; help?: string }> };
+/** F12: `fields` = the fields of that file shown and edited from the post (default: its text, choice and toggle fields). */
+export type DocumentLayout = { title: string; body: string; cover?: string; plain?: boolean; images?: string; shared?: ReadonlyArray<{ file: string; help?: string; fields?: readonly string[] }> };
 
 /** One file = one record (a page, the salon info). */
 export type CmsFile = {
