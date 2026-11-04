@@ -394,7 +394,6 @@ legend.vc-label { float: left; width: 100%; } legend.vc-label + * { clear: both;
 .vc-tool:disabled { opacity: 0.4; cursor: not-allowed; }
 /* F10: the kind of line being edited is lit, like the block toolbar of WordPress. */
 .vc-tool[aria-pressed="true"] { color: var(--accent-strong); background: var(--accent-bg); border-color: var(--accent); }
-.vc-tool-clear { margin-left: auto; }
 .vc-tool-bold, .vc-tool-italic { min-width: 34px; font-size: 13px; }
 .vc-rich-area { min-height: 180px; max-height: 70vh; overflow: auto; padding: 12px 16px; line-height: 1.6; background: var(--surface); border: 1px solid var(--border-input); border-radius: var(--radius-10); }
 .vc-rich-area:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }

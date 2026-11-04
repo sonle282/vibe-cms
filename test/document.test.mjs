@@ -79,7 +79,7 @@ test("M10 blog post (Mr Spa): the paper — bar, cover, title, text — and Post
   const paper = h.root.querySelector(".vc-doc-paper");
   // The bar is on top of the paper (sticky), the Mr Spa set with Insert image.
   assert.equal(paper.firstElementChild.className, "vc-rich-toolbar");
-  assert.deepEqual([...paper.firstElementChild.querySelectorAll("button")].map((button) => button.textContent), ["Paragraph", "Heading 2", "Heading 3", "B", "I", "Bulleted list", "Numbered list", "Add link", "Insert image", "Clear formatting"]);
+  assert.deepEqual([...paper.firstElementChild.querySelectorAll("button")].map((button) => button.textContent), ["Paragraph", "Heading 2", "Heading 3", "B", "I", "Clear formatting", "Bulleted list", "Numbered list", "Add link", "Insert image"]);
   assert.deepEqual([...paper.querySelectorAll(".vc-form > .vc-field")].map((box) => box.dataset.path), ["cover", "title", "body"]);
   const title = paper.querySelector("textarea.vc-doc-title");
   assert.deepEqual([title.value, title.placeholder, String(title.rows)], ["Welcome to the demo blog", "", "1"]);

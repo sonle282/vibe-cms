@@ -184,13 +184,13 @@ export const createRichEditor = (options: RichEditorOptions): RichEditor => {
     tool("heading", "Heading 2", block("h2")),
     tool("subheading", "Heading 3", block("h3")),
     bold, italic,
+    tool("clear", "Clear formatting", () => clearFormatting(), { "data-tooltip": "Make the selected text plain paragraphs, like the rest of the site" }),
     tool("bullets", "Bulleted list", () => exec("insertUnorderedList")),
     tool("numbers", "Numbered list", () => exec("insertOrderedList")),
     // Not in the Mr Spa set: only for a field whose `allow` asks for quotes.
     ...(options.allow?.includes("blockquote") ? [tool("quote", "Quote", () => exec("formatBlock", closest("blockquote") ? "<p>" : "<blockquote>"))] : []),
     tool("link", "Add link", () => openLink()),
     ...(options.pickImage ? [tool("image", "Insert image", () => insertImage())] : []),
-    tool("clear", "Clear formatting", () => clearFormatting(), { "data-tooltip": "Make the selected text plain paragraphs, like the rest of the site" }),
   ].filter(allowed);
   const toolbar = h(doc, "div", { class: "vc-rich-toolbar", role: "toolbar", "aria-label": `${label} formatting`, "aria-controls": id }, ...formatting);
 

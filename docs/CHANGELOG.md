@@ -3,6 +3,11 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.31.2 — 2026-11-04 (Clear formatting next to B and I)
+
+Site action: none (`vibe-cms update`). Clear formatting sat alone at the right end of the toolbar; it now comes right
+after B and I, with the other text formatting.
+
 ## 0.31.1 — 2026-11-04 (rich text like WordPress: pasted text in the site's style)
 
 **F10 — writing a description like a WordPress post.** Site action: none (`vibe-cms update`). From the Mr Spa owner:

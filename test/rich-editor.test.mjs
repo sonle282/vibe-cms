@@ -86,11 +86,11 @@ test("editor (HTML): untouched never changes the value; an edit is cleaned; load
   assert.equal(toolbar.getAttribute("aria-controls"), "e1");
   assert.equal(toolbar.getAttribute("aria-label"), "Text formatting");
   assert.deepEqual([...toolbar.querySelectorAll("button")].map((button) => [button.textContent, button.getAttribute("aria-label"), button.getAttribute("title")]), [
-    ["Paragraph", null, null], ["Heading 2", null, null], ["Heading 3", null, null], ["B", "Bold", null], ["I", "Italic", null],
-    ["Bulleted list", null, null], ["Numbered list", null, null], ["Add link", null, null], ["Clear formatting", null, null]]);
+    ["Paragraph", null, null], ["Heading 2", null, null], ["Heading 3", null, null], ["B", "Bold", null], ["I", "Italic", null], ["Clear formatting", null, null],
+    ["Bulleted list", null, null], ["Numbered list", null, null], ["Add link", null, null]]);
   assert.equal(editor.element.querySelector(".vc-tool-source"), null);
   const quoted = createRichEditor({ doc: document, id: "e1q", label: "Quote", value: "", format: "html", allow: ["p", "blockquote", "a"], onChange: () => {} });
-  assert.deepEqual([...quoted.toolbar.querySelectorAll("button")].map((button) => button.textContent), ["Paragraph", "Quote", "Add link", "Clear formatting"], "a tool outside the Mr Spa set only when allow asks for it");
+  assert.deepEqual([...quoted.toolbar.querySelectorAll("button")].map((button) => button.textContent), ["Paragraph", "Clear formatting", "Quote", "Add link"], "a tool outside the Mr Spa set only when allow asks for it");
   // Emptying the editor gives "".
   editor.area.innerHTML = "<p><br></p>";
   editor.area.dispatchEvent(new window.Event("input"));
