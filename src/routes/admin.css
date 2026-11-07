@@ -893,6 +893,14 @@ label.vc-button[role="button"] { cursor: pointer; }
 .vc-media-status[data-state="saving"] { color: var(--accent-hover); }
 .vc-media-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; margin-bottom: 18px; }
 .vc-media-filter-row .vc-sheet-search { flex: 0 1 300px; }
+.vc-media-select { margin-left: auto; }
+/* Select (WordPress's Bulk select): a bar above the grid, an empty circle on each tile, a filled one when ticked. */
+.vc-media-bulk { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: -6px 0 16px; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 12px; background: var(--surface, #fff); }
+.vc-media-bulk[hidden] { display: none; }
+.vc-media-bulk-count { margin-right: auto; font-weight: 600; }
+.vc-media-selecting .vc-sheet-tile { cursor: pointer; }
+.vc-media-selecting .vc-sheet-check { display: grid; background: rgba(255, 255, 255, 0.9); color: transparent; box-shadow: 0 0 0 2px var(--accent); }
+.vc-media-selecting .vc-sheet-tile[aria-selected="true"] .vc-sheet-check { background: var(--accent); color: #fff; box-shadow: 0 0 0 2px #fff; }
 .vc-sheet-grid.vc-media-library { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 18px 16px; }
 .vc-media-library .vc-sheet-thumb { height: auto; aspect-ratio: 4 / 3; }
 .vc-media-panel { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; padding: 16px 20px 24px; border-left: 1px solid var(--hairline); background: var(--surface); }
