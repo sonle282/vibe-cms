@@ -4,7 +4,8 @@
  * and the detail panel (360 px; × or Esc): Rename (a display name — the address never changes), Copy link, Adjust,
  * Dimensions / Format / File size / Uploaded, "Used on" (each row opens the field), Remove image (an upload never
  * published and used nowhere), Archive / Unarchive (a published upload used nowhere: hidden from the image sheet).
- * The top bar: ⋯ "Remove unused images…" and "Upload images".
+ * The top bar: ⋯ "Remove unused images…" and "Upload images". Select (WordPress's Bulk select): tick images, then
+ * Delete — the ones not on the website yet go for good, the published ones are archived, the ones in use stay.
  */
 import type { Client } from "./api.js";
 import type { BootMedia } from "./boot.js";
@@ -69,6 +70,9 @@ export const openMediaScreen = (options: MediaScreenOptions) => {
   let sort = savedSort(win);
   let shown = SHEET_PAGE;
   let selected: Entry | undefined;
+  /** Select mode: the ticked images (by address). */
+  let selecting = false;
+  const picked = new Set<string>();
 
   // ---- the filter row
   const search = h(doc, "input", { type: "search", class: "vc-sheet-search-input", placeholder: "Search by file name, page or product", "aria-label": "Search images", autocomplete: "off" });
@@ -81,8 +85,15 @@ export const openMediaScreen = (options: MediaScreenOptions) => {
   const empty = h(doc, "p", { class: "vc-sheet-empty", hidden: true });
   const more = h(doc, "button", { type: "button", class: "vc-sheet-more", hidden: true, onclick: () => { shown += SHEET_PAGE; render(); } }, "Load more");
   const panel = h(doc, "aside", { class: "vc-media-panel", "aria-labelledby": "vc-media-panel-name", hidden: true });
+  // ---- Select: tick several images, then Delete (as WordPress's Media Library › Bulk select).
+  const selectButton = h(doc, "button", { type: "button", class: "vc-button vc-media-select", "aria-pressed": "false", onclick: () => setSelecting(!selecting) }, "Select");
+  const pickedCount = h(doc, "span", { class: "vc-media-bulk-count", "aria-live": "polite" });
+  const selectAll = h(doc, "button", { type: "button", class: "vc-button", onclick: () => { const list = visible().slice(0, shown); const all = list.every((entry) => picked.has(entry.src)); for (const entry of list) { if (all) picked.delete(entry.src); else picked.add(entry.src); } render(); } }, "Select all");
+  const deleteButton = h(doc, "button", { type: "button", class: "vc-button vc-danger-fill", disabled: true, onclick: () => { void bulkDelete(); } }, "Delete");
+  const bulkBar = h(doc, "div", { class: "vc-media-bulk", role: "toolbar", "aria-label": "Selected images", hidden: true },
+    pickedCount, selectAll, deleteButton, h(doc, "button", { type: "button", class: "vc-button", onclick: () => setSelecting(false) }, "Cancel"));
   const main = h(doc, "div", { class: "vc-media-main" }, status,
-    h(doc, "div", { class: "vc-media-filter-row" }, h(doc, "label", { class: "vc-sheet-search" }, icon(doc, "search"), search), chips, sortMenu(doc, sort, (next) => { sort = next; shown = SHEET_PAGE; render(); }), count), grid, empty, more);
+    h(doc, "div", { class: "vc-media-filter-row" }, h(doc, "label", { class: "vc-sheet-search" }, icon(doc, "search"), search), chips, sortMenu(doc, sort, (next) => { sort = next; shown = SHEET_PAGE; render(); }), count, media.uploads ? selectButton : null), bulkBar, grid, empty, more);
   const element = h(doc, "div", { class: "vc-media-view" }, h(doc, "div", { class: "vc-media-layout" }, main, panel));
   const say = (text: string, state: "" | "saving" | "error" | "success" = "") => { status.textContent = text; status.dataset.state = state; };
 
@@ -103,9 +114,33 @@ export const openMediaScreen = (options: MediaScreenOptions) => {
   const tileId = (src: string) => `vc-media-image-${[...src].reduce((hash, char) => (Math.imul(hash, 31) + char.charCodeAt(0)) | 0, 7).toString(36).replace("-", "n")}`;
   const select = (entry: Entry | undefined, open = false) => {
     selected = entry;
-    for (const tile of grid.querySelectorAll<HTMLElement>(".vc-sheet-tile")) tile.setAttribute("aria-selected", String(tile.dataset.src === entry?.src));
+    if (!selecting) for (const tile of grid.querySelectorAll<HTMLElement>(".vc-sheet-tile")) tile.setAttribute("aria-selected", String(tile.dataset.src === entry?.src));
     if (entry) { grid.setAttribute("aria-activedescendant", tileId(entry.src)); grid.querySelector<HTMLElement>(`#${tileId(entry.src)}`)?.scrollIntoView?.({ block: "nearest" }); }
-    if (entry && (open || !panel.hidden)) void openPanel(entry);
+    if (entry && !selecting && (open || !panel.hidden)) void openPanel(entry);
+  };
+  const toggle = (entry: Entry) => {
+    if (picked.has(entry.src)) picked.delete(entry.src); else picked.add(entry.src);
+    selected = entry;
+    grid.querySelector<HTMLElement>(`#${tileId(entry.src)}`)?.setAttribute("aria-selected", String(picked.has(entry.src)));
+    renderBulk(visible());
+  };
+  const renderBulk = (list: Entry[]) => {
+    selectButton.setAttribute("aria-pressed", String(selecting));
+    selectButton.hidden = selecting;
+    bulkBar.hidden = !selecting;
+    element.classList.toggle("vc-media-selecting", selecting);
+    grid.setAttribute("aria-multiselectable", String(selecting));
+    pickedCount.textContent = picked.size ? `${picked.size} selected` : "Click images to select them";
+    // Select all = the images shown (Load more shows more), never the whole library at once.
+    const onScreen = list.slice(0, shown);
+    selectAll.textContent = onScreen.length && onScreen.every((entry) => picked.has(entry.src)) ? "Clear selection" : "Select all";
+    selectAll.hidden = !onScreen.length;
+    (deleteButton as HTMLButtonElement).disabled = !picked.size;
+  };
+  const setSelecting = (on: boolean) => {
+    selecting = on; picked.clear();
+    if (on && !panel.hidden) { panel.hidden = true; element.classList.remove("has-media-panel"); clear(panel); }
+    render();
   };
   const render = () => {
     for (const chip of chips.querySelectorAll<HTMLElement>(".vc-chip")) chip.setAttribute("aria-pressed", String(chip.dataset.filter === filter));
@@ -114,13 +149,13 @@ export const openMediaScreen = (options: MediaScreenOptions) => {
     for (const entry of list.slice(0, shown)) {
       const name = nameOf(entry);
       const badge = entry.staged ? "Not published yet" : entry.archivedAt && filter !== "archived" ? "Archived" : "";
-      const tile = h(doc, "div", { class: "vc-sheet-tile", role: "option", id: tileId(entry.src), "data-src": entry.src, "aria-selected": String(selected?.src === entry.src), "aria-label": [name, entry.staged ? "not published yet" : "", entry.archivedAt ? "archived" : "", imageDetails(entry.width, entry.height, sheetBytes(entry.bytes))].filter(Boolean).join(", ") },
+      const tile = h(doc, "div", { class: "vc-sheet-tile", role: "option", id: tileId(entry.src), "data-src": entry.src, "aria-selected": String(selecting ? picked.has(entry.src) : selected?.src === entry.src), "aria-label": [name, entry.staged ? "not published yet" : "", entry.archivedAt ? "archived" : "", imageDetails(entry.width, entry.height, sheetBytes(entry.bytes))].filter(Boolean).join(", ") },
         h(doc, "span", { class: "vc-sheet-thumb" }, h(doc, "img", { src: entry.src, alt: "", loading: "lazy", decoding: "async" }),
           badge ? h(doc, "span", { class: `vc-sheet-badge${entry.staged ? " vc-sheet-badge-new" : ""}` }, badge) : null,
           h(doc, "span", { class: "vc-sheet-check", "aria-hidden": "true" }, "✓")),
         h(doc, "span", { class: "vc-sheet-name", title: name }, name),
         h(doc, "span", { class: "vc-sheet-meta", ...(entry.places.length ? { title: `Used on ${[...new Set(entry.places.map((place) => place.label))].join(", ")}` } : {}) }, metaOf(entry)));
-      tile.addEventListener("click", () => { select(entry, true); grid.focus(); });
+      tile.addEventListener("click", () => { if (selecting) toggle(entry); else select(entry, true); grid.focus(); });
       grid.append(tile);
     }
     const query = search.value.trim();
@@ -128,6 +163,7 @@ export const openMediaScreen = (options: MediaScreenOptions) => {
     empty.hidden = Boolean(list.length) || !loaded;
     empty.textContent = query ? `No images match "${query}".` : filter !== "all" ? `No images under ${chipLabel}.` : media.uploads ? "No images yet. Use Upload images to add one." : "No images yet.";
     more.hidden = list.length <= shown;
+    renderBulk(list);
     count.textContent = !loaded ? "Loading images…" : `${list.length.toLocaleString("en-US")} ${list.length === 1 ? "image" : "images"}${query || filter !== "all" ? " found" : ""}`;
   };
   search.addEventListener("input", () => { shown = SHEET_PAGE; render(); });
@@ -138,7 +174,7 @@ export const openMediaScreen = (options: MediaScreenOptions) => {
     const template = win?.getComputedStyle?.(grid).gridTemplateColumns ?? "";
     const columns = template.split(" ").filter(Boolean).length || 5;
     const step: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: columns, ArrowUp: -columns };
-    if (event.key === "Enter") { event.preventDefault(); if (selected) void openPanel(selected); return; }
+    if (event.key === "Enter" || (selecting && event.key === " ")) { event.preventDefault(); if (selected) { if (selecting) toggle(selected); else void openPanel(selected); } return; }
     let next: number | undefined;
     if (event.key in step) next = index < 0 ? 0 : Math.min(list.length - 1, Math.max(0, index + step[event.key]));
     else if (event.key === "Home") next = 0; else if (event.key === "End") next = list.length - 1;
@@ -149,7 +185,10 @@ export const openMediaScreen = (options: MediaScreenOptions) => {
 
   // ---- the detail panel
   const closePanel = () => { panel.hidden = true; element.classList.remove("has-media-panel"); clear(panel); grid.focus(); if (selected) grid.querySelector<HTMLElement>(`#${tileId(selected.src)}`)?.scrollIntoView?.({ block: "nearest" }); };
-  const onKey = (event: KeyboardEvent) => { if (event.key === "Escape" && !panel.hidden && !doc.querySelector(".vc-overlay")) { event.preventDefault(); closePanel(); } };
+  const onKey = (event: KeyboardEvent) => {
+    if (event.key !== "Escape" || doc.querySelector(".vc-overlay")) return;
+    if (!panel.hidden) { event.preventDefault(); closePanel(); } else if (selecting) { event.preventDefault(); setSelecting(false); }
+  };
   doc.addEventListener("keydown", onKey);
   let panelFor = "";
   const openPanel = async (entry: Entry) => {
@@ -264,6 +303,37 @@ export const openMediaScreen = (options: MediaScreenOptions) => {
     closePanel(); render();
     if (on) options.say("Image archived. Find it under Archived.", "info", { label: "Undo", run: () => { void archive(entry, false); } });
     else options.say("Image is back in the library");
+  };
+  const bulkDelete = async () => {
+    const srcs = [...picked];
+    if (!srcs.length) return;
+    if (srcs.length > 200) { say("Select up to 200 images at a time.", "error"); return; }
+    say("Checking where the selected images are used…", "saving");
+    type Sorted = { removed: string[]; archived: string[]; inUse: string[]; website: string[] };
+    const checked = await api.post<Sorted>("/api/cms/media/bulk-remove", { srcs, dryRun: true });
+    if (!options.stillHere()) return;
+    if (!checked.ok) { say(checked.message || "The images could not be deleted.", "error"); return; }
+    say("");
+    const { removed, archived, inUse, website } = checked.data;
+    const images = (n: number) => `${n} ${n === 1 ? "image" : "images"}`;
+    const lines = [
+      removed.length ? `${images(removed.length)} not on the website yet: deleted for good.` : "",
+      archived.length ? `${images(archived.length)} already on the website: archived (hidden from the library; the file stays, so links to it keep working).` : "",
+      inUse.length ? `${images(inUse.length)} used on a page, a product or a saved draft: kept. Replace ${inUse.length === 1 ? "it" : "them"} there first.` : "",
+      website.length ? `${images(website.length)} part of the website's own design: kept.` : "",
+    ].filter(Boolean);
+    const total = removed.length + archived.length;
+    if (!total) { options.say(`Nothing to delete. ${lines.join(" ")}`, "info"); return; }
+    if (!(await options.ask(`Delete ${images(total)}\n\n${lines.join("\n")}`, { confirm: `Delete ${images(total)}`, danger: true }))) return;
+    say(`Deleting ${images(total)}…`, "saving");
+    const done = await api.post<Sorted>("/api/cms/media/bulk-remove", { srcs, dryRun: false });
+    if (!options.stillHere()) return;
+    if (!done.ok) { say(done.message || "The images could not be deleted.", "error"); return; }
+    say("");
+    setSelecting(false);
+    await load();
+    const parts = [done.data.removed.length ? `${images(done.data.removed.length)} deleted` : "", done.data.archived.length ? `${images(done.data.archived.length)} archived` : "", done.data.inUse.length ? `${done.data.inUse.length} in use kept` : ""].filter(Boolean);
+    options.say(parts.join(", ").replace(/^./, (first) => first.toUpperCase()), "success");
   };
   const cleanup = async () => {
     say("Checking which images are unused…", "saving");

@@ -3,6 +3,16 @@
 Semver: patch = fixes; minor = new features, no change to a site's config or data; major = a new `configVersion` or a
 migration that is not automatic. Each entry says what a site has to do.
 
+## 0.35.0 — 2026-11-07 (Media: select several images and delete them)
+
+**M11 Select (WordPress's Media Library › Bulk select).** Site action: none. Media has a **Select** button: click
+images to tick them (or **Select all** for the ones shown), then **Delete**. The question says what happens to each:
+uploads not on the website yet and used nowhere are deleted for good; ones already on the website and used nowhere are
+archived (hidden from the library; the file stays, so links to it keep working); ones used on a page, a record or anyone's
+saved draft, and the website's own images, are kept. **Cancel** or Esc leaves Select. New
+`POST /api/cms/media/bulk-remove { srcs (1–200), dryRun }` → `{ removed, archived, inUse, website }` (dryRun, the
+default, changes nothing).
+
 ## 0.34.1 — 2026-11-04 (a blank line is kept)
 
 **Fix.** Site action: none. In the visual editor (HTML), Enter on its own — a blank line between two paragraphs — now

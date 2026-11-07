@@ -1077,6 +1077,71 @@ test("M11 Media (Mr Spa): chips, the detail panel (facts, Used on → the field)
   assert.equal(window.location.pathname, "/admin/pages/site");
 });
 
+test("M11 Media › Select (WordPress's Bulk select): tick several, Delete — not published → gone, published → archived, in use and the website's own → kept", async () => {
+  const { createMediaStore, createMemoryBucket, mediaSettings } = await import("../dist/index.js");
+  const { tinyPng } = await import("./helpers/images.mjs");
+  const { window, document } = dom();
+  const media = createMediaStore({ bucket: createMemoryBucket(), settings: mediaSettings(config.media), now: () => new Date("2026-03-05T10:00:00Z") });
+  const fresh = await media.stage({ bytes: tinyPng(4, 3), fileName: "fresh.png", userId: "usr_owner" });
+  const fresh2 = await media.stage({ bytes: tinyPng(5, 3), fileName: "fresh2.png", userId: "usr_owner" });
+  const pub = await media.stage({ bytes: tinyPng(6, 3), fileName: "pub.png", userId: "usr_owner" });
+  const drafted = await media.stage({ bytes: tinyPng(8, 3), fileName: "drafted.png", userId: "usr_owner" });
+  const user = { userId: "usr_owner", role: "owner" };
+  const drafts = createMemoryDraftStore();
+  await drafts.save({ userId: "usr_editor", resource: "file:site", content: { hero: { image: { src: drafted.src } } }, sourceVersion: "x" });
+  const siteImages = [{ src: "/images/hero.svg", bytes: 3000 }, { src: pub.src, bytes: pub.bytes, width: 6, height: 3 }];
+  const api = createCmsApi({ config, source: createBundledSource(files), drafts, audit: createMemoryAuditLog(), identify: () => user, media, siteImages, now: () => "2026-03-05T10:00:00.000Z" });
+  const fetch = async (url, init = {}) => api.handle(new Request(new URL(url, "http://localhost"), { ...init, headers: { ...(init.headers ?? {}), origin: "http://localhost" } }));
+  const call = async (body) => { const response = await fetch("/api/cms/media/bulk-remove", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); return { status: response.status, body: await response.json() }; };
+  assert.equal((await call({ srcs: [] })).status, 400);
+  // The API sorts them first and changes nothing.
+  const all = [fresh.src, fresh2.src, pub.src, drafted.src, "/images/hero.svg"];
+  assert.deepEqual((await call({ srcs: all })).body, { dryRun: true, removed: [fresh.src, fresh2.src], archived: [pub.src], inUse: [drafted.src], website: ["/images/hero.svg"] });
+  assert.ok(await media.staged(fresh.src), "a dry run deletes nothing");
+
+  const root = document.createElement("div");
+  document.body.append(root);
+  const boot = adminBoot(config, { id: user.userId, username: "owner", displayName: "Owner", role: "owner" }, { uploads: true });
+  const asked = [];
+  const app = startAdmin({ root, boot, fetch, window, confirm: (message, choice) => { asked.push([message, choice]); return true; } });
+  await app.ready;
+  await app.go("/admin/media"); await settle(); await app.idle();
+  const until = async (test, what) => { for (let i = 0; i < 200; i += 1) { if (test()) return; await new Promise((resolve) => setTimeout(resolve, 5)); } assert.fail(`timed out waiting for ${what}`); };
+  await until(() => /^\d/.test(root.querySelector(".vc-sheet-count")?.textContent ?? ""), "the library");
+  const tile = (src) => root.querySelector(`.vc-media-library .vc-sheet-tile[data-src="${src}"]`);
+  const bar = () => root.querySelector(".vc-media-bulk");
+  const button = (text) => [...bar().querySelectorAll("button")].find((entry) => entry.textContent === text);
+  assert.equal(bar().hidden, true);
+  root.querySelector(".vc-media-select").click();
+  assert.equal(bar().hidden, false);
+  assert.equal(root.querySelector(".vc-media-select").hidden, true);
+  assert.equal(bar().querySelector(".vc-media-bulk-count").textContent, "Click images to select them");
+  assert.equal(button("Delete").disabled, true);
+  // A click ticks (no detail panel); a second click unticks.
+  tile(fresh.src).click(); tile(pub.src).click(); tile(drafted.src).click(); tile("/images/hero.svg").click(); tile(fresh2.src).click(); tile(fresh2.src).click();
+  assert.equal(root.querySelector(".vc-media-panel").hidden, true);
+  assert.deepEqual([fresh.src, fresh2.src, pub.src].map((src) => tile(src).getAttribute("aria-selected")), ["true", "false", "true"]);
+  assert.equal(bar().querySelector(".vc-media-bulk-count").textContent, "4 selected");
+  button("Delete").click();
+  await until(() => asked.length, "the question");
+  assert.deepEqual(asked.at(-1), ["Delete 2 images\n\n1 image not on the website yet: deleted for good.\n1 image already on the website: archived (hidden from the library; the file stays, so links to it keep working).\n1 image used on a page, a product or a saved draft: kept. Replace it there first.\n1 image part of the website's own design: kept.", { confirm: "Delete 2 images", danger: true }]);
+  await until(() => !tile(fresh.src), "deleted");
+  assert.equal(await media.staged(fresh.src), undefined, "gone for good");
+  assert.ok(await media.staged(fresh2.src), "not ticked: kept");
+  assert.ok(!tile(pub.src), "archived: off the library");
+  assert.ok((await (await fetch("/api/cms/media")).json()).notes[pub.src].archivedAt);
+  assert.ok(tile(drafted.src) && tile("/images/hero.svg"), "in use and the website's own stay");
+  assert.equal(bar().hidden, true, "back out of Select");
+  assert.match(document.querySelector(".vc-toast").textContent, /^1 image deleted, 1 image archived, 1 in use kept/);
+  // Select all / Clear selection; Escape leaves Select.
+  root.querySelector(".vc-media-select").click();
+  button("Select all").click();
+  assert.equal(bar().querySelector(".vc-media-bulk-count").textContent, `${root.querySelectorAll(".vc-media-library .vc-sheet-tile").length} selected`);
+  assert.ok(button("Clear selection"));
+  document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  assert.equal(bar().hidden, true);
+});
+
 test("P10 shell: without the bucket the sheet says uploading is not set up; an editor sees no buttons on a locked image; prepare refuses GIF / SVG", async () => {
   const { window, document } = dom();
   const { prepareImage, openImagePicker, createClient } = await import("../dist/admin/index.js");

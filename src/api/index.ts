@@ -914,6 +914,40 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     return json({ src, removed: true });
   };
 
+  /**
+   * M11 (WordPress's Bulk select › Delete): the images the person ticked. An upload not on the website yet and used
+   * nowhere is deleted for good; one already on the website and used nowhere is archived (the file stays, so links to
+   * it keep working); one in use (a page, a record, anyone's saved draft) and the website's own images stay. dryRun
+   * (the default) only sorts them, for the question.
+   */
+  const bulkRemoveMedia = async (request: Request, user: Identity) => {
+    const media = need(deps.media, "media");
+    const body = await readBody(request) as { srcs?: unknown; dryRun?: unknown };
+    const dryRun = body.dryRun !== false;
+    if (!Array.isArray(body.srcs) || !body.srcs.length || body.srcs.length > 200 || body.srcs.some((src) => typeof src !== "string")) fail(400, "invalid_request", "Choose 1 to 200 images.");
+    const srcs = [...new Set(body.srcs as string[])];
+    const removed: string[] = []; const archived: string[] = []; const inUse: string[] = []; const website: string[] = [];
+    try {
+      const usage = await imageUsage();
+      const uploads = srcs.filter((src) => media.pattern.test(src));
+      website.push(...srcs.filter((src) => !media.pattern.test(src)));
+      const built = new Set((deps.siteImages ?? []).map((image) => image.src));
+      let committed = new Set<string>();
+      if (deps.publisher?.exists && uploads.length) committed = await deps.publisher.exists((await deps.publisher.head()).sha, uploads.map((src) => repoPath(media, src)));
+      for (const src of uploads) {
+        const stem = uploadStem(media, src);
+        if (usage[src]?.length || (stem && deps.drafts && (await deps.drafts.using(stem)).length)) { inUse.push(src); continue; }
+        (built.has(src) || committed.has(repoPath(media, src)) ? archived : removed).push(src);
+      }
+    } catch (error) { if (error instanceof ApiError) throw error; return fail(503, "usage_unknown", "Could not check whether these images are still used, so nothing was deleted. Please try again."); }
+    if (!dryRun) {
+      const at = now();
+      for (const src of removed) { try { await media.remove(src); } catch (error) { if (!(error instanceof MediaError)) throw error; } }
+      for (const src of archived) await media.setNote(src, { archivedAt: at, archivedBy: user.userId });
+    }
+    return json({ dryRun, removed, archived, inUse, website });
+  };
+
   /** Remove unused images…: uploads never published, used nowhere, uploaded more than 30 days ago. */
   const CLEANUP_AGE = 30 * 24 * 3600 * 1000;
   const cleanupMedia = async (request: Request) => {
@@ -1151,6 +1185,7 @@ export const createCmsApi = (deps: CmsApiDeps) => {
     { pattern: /^\/media\/archive$/, methods: { POST: (request, user) => archiveMedia(request, user, true) } },
     { pattern: /^\/media\/unarchive$/, methods: { POST: (request, user) => archiveMedia(request, user, false) } },
     { pattern: /^\/media\/cleanup$/, methods: { POST: (request) => cleanupMedia(request) } },
+    { pattern: /^\/media\/bulk-remove$/, methods: { POST: (request, user) => bulkRemoveMedia(request, user) } },
     { pattern: /^\/live-version$/, methods: { GET: async (request) => json({ liveVersion: await getLiveVersion(), branch: config.repo.branch, ...(await buildOf(request)) }) } },
     { pattern: /^\/publish$/, methods: { POST: (request, user) => publish(request, user) } },
     { pattern: /^\/schedule$/, methods: { PUT: (request, user) => schedule(request, user) } },
